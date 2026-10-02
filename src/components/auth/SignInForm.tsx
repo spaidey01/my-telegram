@@ -11,8 +11,13 @@ type Inputs = {
   password: string;
 };
 
+type SignInState =
+  | { success: true; data: Record<string, unknown>; message: string }
+  | { success: false; error: string }
+  | null;
+
 //  Server action for form submission
-async function signInAction(prevState: any, formData: FormData) {
+async function signInAction(_prevState: SignInState, formData: FormData): Promise<SignInState> {
   try {
     const phone = formData.get("phone") as string;
     const password = formData.get("password") as string;
@@ -26,11 +31,11 @@ async function signInAction(prevState: any, formData: FormData) {
         message: "You logged in successfully.",
       };
     }
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error.response?.data?.message || "Login failed",
-    };
+  } catch (error: unknown) {
+    const message = axios.isAxiosError(error)
+      ? error.response?.data?.message || "Login failed"
+      : "Login failed";
+    return { success: false, error: message };
   }
 }
 
