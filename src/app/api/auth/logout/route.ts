@@ -3,7 +3,7 @@ import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 
-export const GET = async () => {
+export const POST = async () => {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("token")?.value;
@@ -11,7 +11,10 @@ export const GET = async () => {
 
     if (decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number") {
       await connectToDB();
-      await UserSchema.updateOne({ _id: decoded.sub, sessionVersion: decoded.sv }, { $inc: { sessionVersion: 1 } });
+      await UserSchema.updateOne(
+        { _id: decoded.sub, sessionVersion: decoded.sv },
+        { $inc: { sessionVersion: 1 } },
+      );
     }
 
     cookieStore.delete("token");
