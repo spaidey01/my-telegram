@@ -302,7 +302,11 @@ io.on("connection", (socket) => {
     }
 
     const lastMsg = await MessageSchema.findOne({ roomID, hideFor: { $nin: [userID] } }).sort({ createdAt: -1, _id: -1 }).lean();
-    io.to(roomID).emit("updateLastMsgData", { msgData: lastMsg || null, roomID });
+    if (forAll) {
+      io.to(roomID).emit("updateLastMsgData", { msgData: lastMsg || null, roomID });
+    } else {
+      socket.emit("updateLastMsgData", { msgData: lastMsg || null, roomID });
+    }
   });
 
   socket.on("editMessage", async ({ msgID, editedMsg, roomID }) => {
