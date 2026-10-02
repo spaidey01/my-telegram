@@ -6,7 +6,7 @@ import { SubmitHandler, useForm } from "react-hook-form";
 import Button from "../modules/ui/Button";
 import Loading from "../modules/ui/Loading";
 
-type Inputs = Partial<User>;
+type Inputs = { username: string; phone: number; password: string };
 
 const SignUpForm = () => {
   const { setter } = useUserStore((state) => state);
@@ -30,9 +30,11 @@ const SignUpForm = () => {
         });
         toaster("success", "You signed up successfully.");
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      toaster("error", error.response.data.message);
+    } catch (error: unknown) {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.message || "Registration failed"
+        : "Registration failed";
+      toaster("error", message);
     }
   };
 
@@ -67,14 +69,14 @@ const SignUpForm = () => {
         <input
           {...register("username", {
             required: " ",
-            pattern: /^(?!.*[_.-]{2,})[a-zA-Z0-9_]{5,20}$/,
+            pattern: /^(?!.*[_.-]{2,})[a-zA-Z0-9_]{3,20}$/,
             minLength: {
-              value: 5,
-              message: "Must be 5 to 20 characters",
+              value: 3,
+              message: "Must be 3 to 20 characters",
             },
             maxLength: {
               value: 20,
-              message: "Must be 5 to 20 characters",
+              message: "Must be 3 to 20 characters",
             },
           })}
           dir="auto"
