@@ -80,6 +80,7 @@ const isAdmin = (room, userID) =>
 const isMessageInRoom = async (msgID, roomID) => {
   if (!isValidId(msgID) || !isValidId(roomID)) return null;
   return MessageSchema.findOne({ _id: msgID, roomID });
+};
 
 io.use(async (socket, next) => {
   try {
