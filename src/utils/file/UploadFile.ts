@@ -9,7 +9,7 @@ const checkNetworkConnectivity = async (): Promise<boolean> => {
     clearTimeout(timeoutId);
     return true;
   } catch {
-    return true;
+    return false;
   }
 };
 
