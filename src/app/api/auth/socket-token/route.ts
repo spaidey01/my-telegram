@@ -18,5 +18,8 @@ export async function GET() {
   const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean();
   if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-  return NextResponse.json({ token: socketTokenGenerator(decoded.sub, user.sessionVersion ?? 0) }, { status: 200 });
+  const sessionVersion = Number((user as { sessionVersion?: number }).sessionVersion ?? decoded.sv);
+  return NextResponse.json({
+    token: socketTokenGenerator(decoded.sub, sessionVersion),
+  }, { status: 200 });
 }
