@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - production-fixes
+permissions:
+  contents: write
+
 jobs:
   fix:
     runs-on: ubuntu-latest
