@@ -260,8 +260,12 @@ io.on("connection", (socket) => {
     if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
     io.to(roomID).emit("deleteRoom", roomID);
     io.to(roomID).emit("updateLastMsgData", { msgData: null, roomID });
-    await RoomSchema.deleteOne({ _id: roomID });
-    await MessageSchema.deleteMany({ roomID });
+    await Promise.all([
+      RoomSchema.deleteOne({ _id: roomID }),
+      MessageSchema.deleteMany({ roomID }),
+      MediaSchema.deleteMany({ roomID }),
+      LocationSchema.deleteMany({ roomID }),
+    ]);
   });
 
   socket.on("deleteMsg", async ({ forAll, msgID, roomID }) => {
