@@ -20,7 +20,7 @@ const JoinToRoom = ({ roomData, roomSocket, userID }: Props) => {
     setIsLoading(true);
 
     timer.current = setTimeout(() => {
-      roomSocket?.emit("joinRoom", { roomID: roomData._id, userID });
+      roomSocket?.emit("joinRoom", { roomID: roomData._id, link: roomData.link });
       if (timer.current) {
         clearTimeout(timer.current);
       }
