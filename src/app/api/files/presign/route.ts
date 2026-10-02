@@ -9,6 +9,7 @@ import UserSchema from "@/schemas/userSchema";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac"]);
 
 const userIdFromCookie = async () => {
   const token = (await cookies()).get("token")?.value;
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Invalid file" }, { status: 400 });
     }
 
-    if (!contentType.startsWith("image/") && !contentType.startsWith("audio/")) {
+    if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
       return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
     }
 
