@@ -466,6 +466,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("pinMessage", async (id, roomID, isLastMessage) => {
+    if (!allowEvent(userID, "pinMessage", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
     if (!room || !msg || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
@@ -476,6 +477,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("updateLastMsgPos", async ({ roomID, scrollPos, shouldEmitBack = true }) => {
+    if (!allowEvent(userID, "updateLastMsgPos", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     if (!room || !Number.isFinite(Number(scrollPos))) return;
     const userTarget = await UserSchema.findById(userID);
@@ -533,8 +535,13 @@ io.on("connection", (socket) => {
       if (duplicate) return socket.emit("updateUserDataError", { message: "Username already exists" });
     }
     if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 70);
-    await UserSchema.updateOne({ _id: userID }, { $set }, { runValidators: true });
-    socket.emit("updateUserData");
+    try {
+      await UserSchema.updateOne({ _id: userID }, { $set }, { runValidators: true });
+      socket.emit("updateUserData");
+    } catch (error) {
+      console.error("updateUserData:", error);
+      socket.emit("updateUserDataError", { message: "Unable to update profile" });
+    }
   });
 
   socket.on("updateRoomData", async (updatedFields) => {
