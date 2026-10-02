@@ -9,7 +9,7 @@ import getTimeReportFromDate from "./Date/GetTimeReportFromDate";
 import secondsToTimeString from "./Date/SecondToTimeString";
 import dateString from "./Date/DateString";
 import formatDate from "./Date/FormatDate";
-import uploadFile from "./file/UploadFile";
+import uploadFile, { checkNetworkConnectivity } from "./file/UploadFile";
 import deleteFile from "./file/DeleteFile";
 import compressImage from "./file/CompressImage";
 import registerSW from "./RegisterSW";
@@ -30,4 +30,5 @@ export {
   deleteFile,
   registerSW,
   compressImage,
+  checkNetworkConnectivity,
 };
