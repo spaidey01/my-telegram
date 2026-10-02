@@ -329,25 +329,55 @@ io.on("connection", (socket) => {
 
   socket.on("getRooms", async () => {
     if (!allowEvent(userID, "getRooms", 20, 60_000)) return;
-    const rawRooms = await RoomSchema.find({ participants: userID }).lean();
-    const userRooms = await Promise.all(rawRooms.map(async (room) => {
-      if (room.type !== "private") return room;
-      const participants = await UserSchema.find({ _id: { $in: room.participants } }).select("name username avatar _id").lean();
-      return { ...room, participants };
-    }));
-    for (const room of userRooms) socket.join(room._id.toString());
 
-    const rooms = await Promise.all(userRooms.map(async (room) => {
-      const lastMessageId = room.lastMessageId || room.messages?.at(-1);
-      const lastMsgData = lastMessageId
-        ? await MessageSchema.findById(lastMessageId).populate("sender", "name username avatar _id").lean()
-        : null;
-      const notSeenCount = await MessageSchema.countDocuments({
-        roomID: room._id, sender: { $ne: userID }, seen: { $nin: [userID] },
-      });
-      return { ...room, lastMsgData, notSeenCount };
+    const rawRooms = await RoomSchema.find({ participants: userID })
+      .select("_id name avatar type participants admins creator link biography lastMessageId lastMessageAt createdAt updatedAt")
+      .lean();
+
+    const participantIds = [...new Set(
+      rawRooms
+        .filter((room) => room.type === "private")
+        .flatMap((room) => room.participants.map((id) => id.toString())),
+    )];
+
+    const privateUsers = participantIds.length
+      ? await UserSchema.find({ _id: { $in: participantIds } }).select("name username avatar _id").lean()
+      : [];
+    const usersById = new Map(privateUsers.map((user) => [user._id.toString(), user]));
+
+    const lastMessageIds = rawRooms.map((room) => room.lastMessageId).filter(Boolean);
+    const lastMessages = lastMessageIds.length
+      ? await MessageSchema.find({ _id: { $in: lastMessageIds } })
+          .populate("sender", "name username avatar _id")
+          .lean()
+      : [];
+    const lastMessagesById = new Map(lastMessages.map((message) => [message._id.toString(), message]));
+
+    const unreadCounts = await MessageSchema.aggregate([
+      {
+        $match: {
+          roomID: { $in: rawRooms.map((room) => room._id) },
+          sender: { $ne: new (await import("mongoose")).default.Types.ObjectId(userID) },
+          seen: { $nin: [new (await import("mongoose")).default.Types.ObjectId(userID)] },
+        },
+      },
+      { $group: { _id: "$roomID", count: { $sum: 1 } } },
+    ]);
+    const unreadByRoom = new Map(unreadCounts.map((item) => [item._id.toString(), item.count]));
+
+    const rooms = rawRooms.map((room) => ({
+      ...room,
+      participants: room.type === "private"
+        ? room.participants.map((id) => usersById.get(id.toString()) || id)
+        : room.participants,
+      messages: [],
+      medias: [],
+      locations: [],
+      lastMsgData: room.lastMessageId ? lastMessagesById.get(room.lastMessageId.toString()) || null : null,
+      notSeenCount: unreadByRoom.get(room._id.toString()) || 0,
     }));
 
+    for (const room of rooms) socket.join(room._id.toString());
     socket.emit("getRooms", rooms);
   });
 
