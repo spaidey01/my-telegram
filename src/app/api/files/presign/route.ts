@@ -9,7 +9,7 @@ import UserSchema from "@/schemas/userSchema";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
-const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac"]);
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac", "audio/webm"]);
 
 const userIdFromCookie = async () => {
   const token = (await cookies()).get("token")?.value;
