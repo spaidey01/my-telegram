@@ -85,17 +85,17 @@ export const POST = async (req: Request) => {
 
     for (const participant of participants) {
       const room = rooms.find(
-        (candidate) => candidate.type === "private" && candidate.participants.some((id) => String(id) === String(participant._id)),
+        (candidate) => candidate.type === "private" && candidate.participants.some((id: unknown) => String(id) === String(participant._id)),
       );
       if (!room) continue;
       results.push({ ...room, findBy: "participants", name: participant.name, lastName: participant.lastName, avatar: participant.avatar });
     }
 
     for (const message of matchingMessages) {
-      const room = roomById.get(message.roomID.toString());
+      const room = roomById.get(String(message.roomID));
       if (!room) continue;
       const otherParticipant = room.type === "private"
-        ? participants.find((user) => room.participants.some((id) => String(id) === String(user._id)))
+        ? participants.find((user) => room.participants.some((id: unknown) => String(id) === String(user._id)))
         : null;
       results.push({
         ...room,
