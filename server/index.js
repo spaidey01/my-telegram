@@ -14,7 +14,8 @@ if (!secret) throw new Error("secretKey is not configured");
 const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
   .split(",").map((v) => v.trim()).filter(Boolean);
 
-const io = new Server(3001, {
+const socketPort = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
+const io = new Server(socketPort, {
   cors: {
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
@@ -28,7 +29,7 @@ const io = new Server(3001, {
   },
 });
 
-console.log("Socket server is running on port 3001");
+console.log(`Socket server is running on port ${socketPort}`);
 
 const onlineUsers = new Map();
 const typingByRoom = new Map();
@@ -542,7 +543,7 @@ io.on("connection", (socket) => {
         const existingUsers = await UserSchema.find({ _id: { $in: requested } }).select("_id").lean();
         const validIds = new Set(existingUsers.map((u) => u._id.toString()));
         const participants = [...new Set([room.creator?.toString(), ...requested])]
-          .filter((id) => id && validIds.has(id) || id === room.creator?.toString())
+          .filter((id) => Boolean(id) && (validIds.has(id) || id === room.creator?.toString()))
           .slice(0, 500);
         $set.participants = participants;
       }
