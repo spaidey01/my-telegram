@@ -36,16 +36,19 @@ await connectToDB();
 
 const getUserId = (socket) => socket.userId;
 
+const isValidId = (value) => typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+
 const isMember = async (roomID, userID) => {
-  if (!roomID || !userID) return null;
+  if (!isValidId(roomID) || !isValidId(userID)) return null;
   return RoomSchema.findOne({ _id: roomID, participants: userID });
 };
 
 const isAdmin = (room, userID) =>
   !!room && (room.creator?.toString() === userID || room.admins?.some((id) => id.toString() === userID));
 
-const isMessageInRoom = async (msgID, roomID) =>
-  MessageSchema.findOne({ _id: msgID, roomID });
+const isMessageInRoom = async (msgID, roomID) => {
+  if (!isValidId(msgID) || !isValidId(roomID)) return null;
+  return MessageSchema.findOne({ _id: msgID, roomID });
 
 io.use((socket, next) => {
   try {
@@ -75,11 +78,18 @@ io.on("connection", (socket) => {
     try {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
+      if (room.type === "channel" && !isAdmin(room, userID)) return callback({ success: false, error: "Forbidden" });
       if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
 
       if (tempId) {
+        if (typeof tempId !== "string" || tempId.length > 200) return callback({ success: false, error: "Invalid tempId" });
         const existing = await MessageSchema.findOne({ tempId }).lean();
-        if (existing) return callback({ success: true, _id: existing._id });
+        if (existing) {
+          if (existing.sender.toString() !== userID || existing.roomID.toString() !== roomID) {
+            return callback({ success: false, error: "Invalid tempId" });
+          }
+          return callback({ success: true, _id: existing._id });
+        }
       }
 
       const msgData = {
@@ -180,6 +190,7 @@ io.on("connection", (socket) => {
 
   socket.on("joinRoom", async ({ roomID }) => {
     try {
+      if (!isValidId(roomID)) return;
       const room = await RoomSchema.findById(roomID);
       if (!room || room.type === "private") return;
       if (!room.participants.some((id) => id.toString() === userID)) {
@@ -194,6 +205,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("deleteRoom", async (roomID) => {
+    if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
     const room = await RoomSchema.findById(roomID);
     if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
     io.to(roomID).emit("deleteRoom", roomID);
