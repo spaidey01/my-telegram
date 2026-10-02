@@ -36,6 +36,7 @@ const useConnection = ({
   updater,
 }: useConnectionProps) => {
   const socketRef = useRef<Socket | null>(null);
+  const refreshingTokenRef = useRef(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isPageLoaded, setIsPageLoaded] = useState<boolean>(false);
   const [status, setStatus] = useState<ReactNode>(
@@ -350,16 +351,36 @@ const useConnection = ({
       socket.emit("getRooms", userId);
     });
 
-    socket.on("disconnect", () => {
+    const refreshSocketAuth = async () => {
+      if (refreshingTokenRef.current || !socketRef.current) return;
+      refreshingTokenRef.current = true;
+      try {
+        const response = await fetch("/api/auth/socket-token", { cache: "no-store" });
+        if (!response.ok) return;
+        const { token } = await response.json();
+        const currentSocket = socketRef.current;
+        if (!currentSocket) return;
+        currentSocket.auth = { token };
+        if (!currentSocket.connected) currentSocket.connect();
+      } catch {
+        // Keep the existing reconnect flow; the next connection attempt can retry.
+      } finally {
+        refreshingTokenRef.current = false;
+      }
+    };
+
+    socket.on("disconnect", (reason) => {
       setStatus(
         <span>
           Connecting
-          <Loading loading="dots" size="xs" classNames="text-white mt-1.5" />
+          <Loading loading="dots" classNames="text-white mt-1.5" />
         </span>
       );
+      if (reason === "io server disconnect") void refreshSocketAuth();
     });
 
     socket.on("connect_error", () => {
+      void refreshSocketAuth();
       setStatus(
         <span>
           Connecting
