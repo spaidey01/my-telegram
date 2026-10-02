@@ -34,12 +34,15 @@ console.log(`Socket server is running on port ${socketPort}`);
 const onlineUsers = new Map();
 const typingByRoom = new Map();
 const eventBuckets = new Map();
+const MAX_EVENT_BUCKETS = 50_000;
 
 const allowEvent = (userID, event, limit, windowMs) => {
   const key = userID + ":" + event;
   const now = Date.now();
   const bucket = eventBuckets.get(key);
   if (!bucket || bucket.resetAt <= now) {
+    if (eventBuckets.size >= MAX_EVENT_BUCKETS) cleanupEventBuckets();
+    if (eventBuckets.size >= MAX_EVENT_BUCKETS) return false;
     eventBuckets.set(key, { count: 1, resetAt: now + windowMs });
     return true;
   }
@@ -628,6 +631,9 @@ io.on("connection", (socket) => {
   sessionCheckTimer.unref();
 
   socket.on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
+    if (!allowEvent(userID, "loadOlderMessages", 60, 60_000)) {
+      return callback({ success: false, error: "Rate limit exceeded" });
+    }
     try {
       if (!isValidId(roomID) || !isValidId(before)) return callback({ success: false, error: "Invalid cursor" });
       const room = await isMember(roomID, userID);
@@ -667,5 +673,8 @@ io.on("connection", (socket) => {
   });
 });
 
-process.on("uncaughtException", (err) => console.error("Uncaught Exception:", err));
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+  process.exit(1);
+});
 process.on("unhandledRejection", (reason, promise) => console.error("Unhandled Rejection at:", promise, "reason:", reason));
