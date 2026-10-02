@@ -47,14 +47,12 @@ export async function GET(req: Request) {
     let canAccess = ownsFile;
 
     if (!canAccess) {
-      const [messageRef, roomRef] = await Promise.all([
-        MessageSchema.findOne({ "voiceData.src": accessUrl }).select("roomID").lean(),
-        RoomSchema.findOne({ avatar: accessUrl, participants: userId }).select("_id").lean(),
-      ]);
-      if (messageRef) {
+      const messageRef = await MessageSchema.findOne({ "voiceData.src": accessUrl }).select("roomID").lean();
+      const roomRef = await RoomSchema.findOne({ avatar: accessUrl, participants: userId }).select("_id").lean();
+      if (messageRef && !Array.isArray(messageRef)) {
         canAccess = Boolean(await RoomSchema.exists({ _id: messageRef.roomID, participants: userId }));
       }
-      if (roomRef) canAccess = true;
+      if (roomRef && !Array.isArray(roomRef)) canAccess = true;
     }
 
     if (!canAccess) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
