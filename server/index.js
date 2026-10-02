@@ -383,7 +383,7 @@ io.on("connection", (socket) => {
               hideFor: { $nin: [new mongoose.Types.ObjectId(userID)] },
             } },
           { $sort: { createdAt: -1, _id: -1 } },
-          { $group: { _id: "$roomID", message: { $first: "$ROOT" } } },
+          { $group: { _id: "$roomID", message: { $first: "$$ROOT" } } },
         ])
       : [];
 
