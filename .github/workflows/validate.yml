@@ -22,8 +22,4 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --json > npm-audit.json || true
-      - name: Summarize audit
-        run: node -e "const a=require(\"./npm-audit.json\"); console.log(a.metadata); for (const [n,v] of Object.entries(a.vulnerabilities||{})) console.log(n, v.severity, v.range, v.fixAvailable ? JSON.stringify(v.fixAvailable) : \"no-fix\");"
       - run: node --check server/index.js
