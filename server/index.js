@@ -101,6 +101,7 @@ io.use(async (socket, next) => {
 
 io.on("connection", (socket) => {
   const userID = getUserId(socket);
+  const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id").lean();
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
 
   const broadcastOnlineUsers = () => {
@@ -451,7 +452,7 @@ io.on("connection", (socket) => {
     const current = typingByRoom.get(data.roomID) || new Set();
     current.add(userID);
     typingByRoom.set(data.roomID, current);
-    const user = await UserSchema.findById(userID).select("name username avatar _id").lean();
+    const user = await publicUserPromise;
     io.to(data.roomID).emit("typing", { roomID: data.roomID, sender: user });
   });
 
@@ -462,7 +463,7 @@ io.on("connection", (socket) => {
     const current = typingByRoom.get(data.roomID) || new Set();
     current.delete(userID);
     if (!current.size) typingByRoom.delete(data.roomID);
-    const user = await UserSchema.findById(userID).select("name username avatar _id").lean();
+    const user = await publicUserPromise;
     io.to(data.roomID).emit("stop-typing", { roomID: data.roomID, sender: user });
   });
 
