@@ -421,12 +421,18 @@ const useConnection = ({
   const initializeSocket = useCallback(async () => {
     if (socketRef.current) return;
     try {
-      const response = await fetch("/api/auth/socket-token", { cache: "no-store" });
-      if (!response.ok) throw new Error("Unauthorized");
-      const { token } = await response.json();
       const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL, {
-        auth: { token },
-        autoConnect: true,
+        auth: async (cb) => {
+          try {
+            const response = await fetch("/api/auth/socket-token", { cache: "no-store" });
+            if (!response.ok) return cb({ token: "" });
+            const { token } = await response.json();
+            cb({ token: typeof token === "string" ? token : "" });
+          } catch {
+            cb({ token: "" });
+          }
+        },
+        autoConnect: false,
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
@@ -436,6 +442,7 @@ const useConnection = ({
       });
       socketRef.current = newSocket;
       setupSocketListeners();
+      newSocket.connect();
     } catch {
       setStatus(<span>Connecting <Loading loading="dots" size="xs" classNames="text-white mt-1.5" /></span>);
     }
