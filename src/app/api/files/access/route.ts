@@ -4,6 +4,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { cookies } from "next/headers";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
+import RoomSchema from "@/schemas/roomSchema";
+import MessageSchema from "@/schemas/messageSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 
 const s3 = () => new S3Client({
@@ -39,6 +41,23 @@ export async function GET(req: Request) {
     if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.S3_ENDPOINT) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
     }
+
+    const accessUrl = `/api/files/access?key=${encodeURIComponent(key)}`;
+    const ownsFile = key.split("/")[1] === userId;
+    let canAccess = ownsFile;
+
+    if (!canAccess) {
+      const [messageRef, roomRef] = await Promise.all([
+        MessageSchema.findOne({ "voiceData.src": accessUrl }).select("roomID").lean(),
+        RoomSchema.findOne({ avatar: accessUrl, participants: userId }).select("_id").lean(),
+      ]);
+      if (messageRef) {
+        canAccess = Boolean(await RoomSchema.exists({ _id: messageRef.roomID, participants: userId }));
+      }
+      if (roomRef) canAccess = true;
+    }
+
+    if (!canAccess) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
     const signedUrl = await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), {
       expiresIn: 5 * 60,
