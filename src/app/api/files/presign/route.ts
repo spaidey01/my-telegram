@@ -68,7 +68,7 @@ export async function POST(req: Request) {
         ["content-length-range", 1, MAX_FILE_SIZE],
         ["eq", "$Content-Type", contentType],
       ],
-      expiresIn: 600,
+      Expires: 600,
     });
 
     const downloadUrl = await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 7 * 24 * 60 * 60 });
