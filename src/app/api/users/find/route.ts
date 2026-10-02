@@ -57,7 +57,7 @@ export const POST = async (req: Request) => {
     const roomIds = rooms.map((room) => room._id);
     const privateParticipantIds = rooms
       .filter((room) => room.type === "private")
-      .flatMap((room) => room.participants.map((id) => id.toString()))
+      .flatMap((room) => room.participants.map((id: unknown) => String(id)))
       .filter((id) => id !== auth.id);
 
     const [participants, matchingMessages] = await Promise.all([
@@ -76,7 +76,7 @@ export const POST = async (req: Request) => {
         : [],
     ]);
 
-    const roomById = new Map(rooms.map((room) => [room._id.toString(), room]));
+    const roomById = new Map(rooms.map((room) => [String(room._id), room]));
     const results: Record<string, unknown>[] = [];
 
     for (const room of rooms) {
@@ -85,7 +85,7 @@ export const POST = async (req: Request) => {
 
     for (const participant of participants) {
       const room = rooms.find(
-        (candidate) => candidate.type === "private" && candidate.participants.some((id) => id.toString() === participant._id.toString()),
+        (candidate) => candidate.type === "private" && candidate.participants.some((id) => String(id) === String(participant._id)),
       );
       if (!room) continue;
       results.push({ ...room, findBy: "participants", name: participant.name, lastName: participant.lastName, avatar: participant.avatar });
@@ -95,7 +95,7 @@ export const POST = async (req: Request) => {
       const room = roomById.get(message.roomID.toString());
       if (!room) continue;
       const otherParticipant = room.type === "private"
-        ? participants.find((user) => room.participants.some((id) => id.toString() === user._id.toString()))
+        ? participants.find((user) => room.participants.some((id) => String(id) === String(user._id)))
         : null;
       results.push({
         ...room,
