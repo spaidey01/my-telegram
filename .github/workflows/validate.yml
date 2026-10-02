@@ -22,4 +22,6 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --json > npm-audit.json || true
       - run: node --check server/index.js
