@@ -27,10 +27,11 @@ async function signInAction(_prevState: SignInState, formData: FormData): Promis
     if (response.status === 200) {
       return {
         success: true,
-        data: response.data,
+        data: response.data as Record<string, unknown>,
         message: "You logged in successfully.",
       };
     }
+    return { success: false, error: "Login failed" };
   } catch (error: unknown) {
     const message = axios.isAxiosError(error)
       ? error.response?.data?.message || "Login failed"
