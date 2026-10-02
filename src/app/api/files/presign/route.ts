@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
@@ -72,13 +71,10 @@ export async function POST(req: Request) {
       Expires: 600,
     });
 
-    const downloadUrl = await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 7 * 24 * 60 * 60 });
-
     return NextResponse.json({
       uploadUrl: post.url,
       uploadMethod: "POST",
       uploadFields: post.fields,
-      downloadUrl,
       key,
     });
   } catch (error) {
