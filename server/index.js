@@ -66,7 +66,7 @@ io.on("connection", (socket) => {
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
 
   const broadcastOnlineUsers = () => {
-    const ids = [...onlineUsers.keys()];
+    const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
     io.emit("updateOnlineUsers", ids);
   };
   broadcastOnlineUsers();
@@ -181,7 +181,7 @@ io.on("connection", (socket) => {
   socket.on("joinRoom", async ({ roomID }) => {
     try {
       const room = await RoomSchema.findById(roomID);
-      if (!room) return;
+      if (!room || room.type === "private") return;
       if (!room.participants.some((id) => id.toString() === userID)) {
         room.participants.push(userID);
         await room.save();
