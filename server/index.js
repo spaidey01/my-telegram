@@ -183,9 +183,11 @@ io.on("connection", (socket) => {
     try {
       if (!newRoomData || !["private", "group", "channel"].includes(newRoomData.type)) return;
       const requestedParticipants = Array.isArray(newRoomData.participants)
-        ? newRoomData.participants.map((p) => (typeof p === "string" ? p : p?._id)).filter(Boolean)
+        ? newRoomData.participants
+            .map((p) => (typeof p === "string" ? p : p?._id))
+            .filter(isValidId)
         : [];
-      const participants = [...new Set([userID, ...requestedParticipants])];
+      const participants = [...new Set([userID, ...requestedParticipants])].slice(0, 500);
 
       if (newRoomData.type === "private" && participants.length !== 2) return;
 
@@ -196,7 +198,9 @@ io.on("connection", (socket) => {
         creator: userID,
         admins: [userID],
         participants,
-        link: typeof newRoomData.link === "string" ? newRoomData.link.slice(0, 500) : undefined,
+        link: typeof newRoomData.link === "string" && newRoomData.link.trim()
+          ? newRoomData.link.trim().slice(0, 500)
+          : undefined,
         biography: typeof newRoomData.biography === "string" ? newRoomData.biography.slice(0, 1000) : undefined,
       };
 
