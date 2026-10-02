@@ -1,6 +1,7 @@
 type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
+const MAX_BUCKETS = 50_000;
 
 export const rateLimit = (
   key: string,
@@ -11,6 +12,10 @@ export const rateLimit = (
   const current = buckets.get(key);
 
   if (!current || current.resetAt <= now) {
+    if (buckets.size >= MAX_BUCKETS) cleanup();
+    if (buckets.size >= MAX_BUCKETS) {
+      return { allowed: false, retryAfter: Math.max(1, Math.ceil(windowMs / 1000)) };
+    }
     buckets.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, retryAfter: 0 };
   }
