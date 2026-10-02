@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { S3 } from "aws-sdk";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
@@ -15,14 +17,12 @@ const userIdFromCookie = async () => {
   return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" ? { id: String(decoded.sub), sv: decoded.sv } : null;
 };
 
-const s3 = () =>
-  new S3({
-    accessKeyId: process.env.S3_ACCESS_KEY,
-    secretAccessKey: process.env.S3_SECRET_KEY,
-    endpoint: process.env.S3_ENDPOINT,
-    s3ForcePathStyle: true,
-    signatureVersion: "v4",
-  });
+const s3 = () => new S3Client({
+  region: process.env.S3_REGION || "us-east-1",
+  endpoint: process.env.S3_ENDPOINT,
+  forcePathStyle: true,
+  credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! },
+});
 
 export async function POST(req: Request) {
   try {
@@ -61,21 +61,17 @@ export async function POST(req: Request) {
 
     const key = `${contentType.startsWith("image/") ? "images" : "voices"}/${userId}/${randomUUID()}`;
     const client = s3();
-    const post = client.createPresignedPost({
+    const post = await createPresignedPost(client, {
       Bucket: bucket,
       Fields: { "Content-Type": contentType, key },
       Conditions: [
         ["content-length-range", 1, MAX_FILE_SIZE],
         ["eq", "$Content-Type", contentType],
       ],
-      Expires: 600,
+      expiresIn: 600,
     });
 
-    const downloadUrl = await client.getSignedUrlPromise("getObject", {
-      Bucket: bucket,
-      Key: key,
-      Expires: 7 * 24 * 60 * 60,
-    });
+    const downloadUrl = await getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: 7 * 24 * 60 * 60 });
 
     return NextResponse.json({
       uploadUrl: post.url,
