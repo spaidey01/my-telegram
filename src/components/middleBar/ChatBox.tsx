@@ -46,6 +46,7 @@ const ChatBox = ({
 }: ChatBoxProps) => {
   const [isLastMsgInView, setIsLastMsgInView] = useState(false);
   const [floatingDate, setFloatingDate] = useState(null);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const { rooms } = useSockets((state) => state);
   const { selectedRoom, setter } = useGlobalStore((state) => state) || {};
   const { _id: roomID, messages, type } = selectedRoom!;
@@ -61,6 +62,7 @@ const ChatBox = ({
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
   const lastScrollPos = useRef(0);
   const scrollTimeout = useRef<NodeJS.Timeout | null>(null);
+  const loadingOlderRef = useRef(false);
   const ringAudioRef = useRef<HTMLAudioElement>(null);
 
   const { canShow } = useScrollChange(messageContainerRef?.current);
@@ -70,7 +72,12 @@ const ChatBox = ({
       ringAudioRef.current.currentTime = 0;
       ringAudioRef.current.play();
     }
-  }, []);
+  }, [hasMoreMessages, messages, roomID, rooms, setter]);
+
+  useEffect(() => {
+    loadingOlderRef.current = false;
+    setHasMoreMessages(true);
+  }, [_id]);
 
   useLayoutEffect(() => {
     setter({ isChatPageLoaded: true });
@@ -89,6 +96,48 @@ const ChatBox = ({
   const checkIsLastMsgInView = useCallback(
     (e: React.UIEvent<HTMLDivElement>) => {
       lastScrollPos.current = e.currentTarget.scrollTop;
+
+      if (
+        e.currentTarget.scrollTop <= 40 &&
+        hasMoreMessages &&
+        !loadingOlderRef.current &&
+        messages?.length
+      ) {
+        const oldestMessageId = messages[0]?._id;
+        if (oldestMessageId) {
+          loadingOlderRef.current = true;
+          const previousHeight = e.currentTarget.scrollHeight;
+          rooms?.emit(
+            "loadOlderMessages",
+            { roomID, before: oldestMessageId, limit: 50 },
+            (response: {
+              success: boolean;
+              messages?: MessageModel[];
+              hasMore?: boolean;
+            }) => {
+              loadingOlderRef.current = false;
+              if (!response?.success) return;
+              setHasMoreMessages(Boolean(response.hasMore));
+              if (!response.messages?.length) return;
+              setter((prev) => ({
+                selectedRoom: prev.selectedRoom
+                  ? {
+                      ...prev.selectedRoom,
+                      messages: [
+                        ...response.messages!,
+                        ...(prev.selectedRoom.messages ?? []),
+                      ],
+                    }
+                  : null,
+              }));
+              requestAnimationFrame(() => {
+                const container = messageContainerRef.current;
+                if (container) container.scrollTop = container.scrollHeight - previousHeight;
+              });
+            },
+          );
+        }
+      }
       const threshold = 10;
       const isInView =
         e.currentTarget.scrollHeight -
