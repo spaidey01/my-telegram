@@ -77,7 +77,7 @@ export const POST = async (req: Request) => {
     ]);
 
     const roomById = new Map(rooms.map((room) => [room._id.toString(), room]));
-    const results: any[] = [];
+    const results: Record<string, unknown>[] = [];
 
     for (const room of rooms) {
       if (room.type !== "private" && expression.test(room.name)) results.push({ ...room, findBy: "name" });
