@@ -56,13 +56,12 @@ export async function POST(req: Request) {
     const client = s3();
     const post = client.createPresignedPost({
       Bucket: bucket,
-      Fields: { "Content-Type": contentType },
+      Fields: { "Content-Type": contentType, key },
       Conditions: [
         ["content-length-range", 1, MAX_FILE_SIZE],
         ["eq", "$Content-Type", contentType],
       ],
       Expires: 600,
-      Key: key,
     });
 
     const downloadUrl = await client.getSignedUrlPromise("getObject", {
