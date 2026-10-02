@@ -268,7 +268,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getRooms", async () => {
-    const userRooms = await RoomSchema.find({ participants: userID }).lean();
+    const rawRooms = await RoomSchema.find({ participants: userID }).lean();
+    const userRooms = await Promise.all(rawRooms.map(async (room) => {
+      if (room.type !== "private") return room;
+      const participants = await UserSchema.find({ _id: { $in: room.participants } }).select("name username avatar _id").lean();
+      return { ...room, participants };
+    }));
     for (const room of userRooms) socket.join(room._id.toString());
 
     const rooms = await Promise.all(userRooms.map(async (room) => {
