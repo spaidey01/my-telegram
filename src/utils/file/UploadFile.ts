@@ -45,12 +45,22 @@ const uploadFileOnce = async (file: File, onProgress?: (progress: number) => voi
   });
   if (!response.ok) throw new Error((await response.json().catch(() => null))?.message || "Unable to prepare upload");
 
-  const { uploadUrl, uploadFields, downloadUrl } = await response.json();
+  const { uploadUrl, uploadFields, key } = await response.json();
   if (!uploadUrl || !uploadFields) throw new Error("Invalid upload authorization");
 
   await postWithProgress(uploadUrl, uploadFields, upload, onProgress);
+  const verifyResponse = await fetch("/api/files/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, contentType: upload.type }),
+  });
+  if (!verifyResponse.ok) {
+    const error = await verifyResponse.json().catch(() => null);
+    throw new Error(error?.message || "File verification failed");
+  }
+  const verified = await verifyResponse.json();
   onProgress?.(100);
-  return downloadUrl as string;
+  return verified.downloadUrl as string;
 };
 
 const MAX_RETRIES = 3;
