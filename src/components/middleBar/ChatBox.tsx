@@ -146,7 +146,7 @@ const ChatBox = ({
         threshold;
       setIsLastMsgInView(isInView);
     },
-    []
+    [hasMoreMessages, messages, roomID, rooms, setter]
   );
 
   const { lastMsgRef, manageScroll } = useScrollMessage({
