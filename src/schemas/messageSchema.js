@@ -3,29 +3,27 @@ import mongoose, { Schema } from "mongoose";
 export const schema = new Schema(
   {
     sender: { type: mongoose.Types.ObjectId, required: true, ref: "User" },
-    message: { type: String },
-    seen: [{ type: Schema.ObjectId, required: true, default: [] }],
-    readTime: { type: Date },
-    replays: [
-      { type: Schema.ObjectId, ref: "Message", required: true, default: [] },
-    ],
+    message: { type: String, maxlength: 10000, default: "" },
+    seen: [{ type: Schema.ObjectId, ref: "User" }],
+    readTime: { type: Date, default: null },
+    replays: [{ type: Schema.ObjectId, ref: "Message" }],
     roomID: { type: Schema.ObjectId, ref: "Room", required: true },
     replayedTo: {
-      type: { message: String, msgID: String, username: String } || null,
+      type: { message: String, msgID: String, username: String },
       default: null,
     },
     isEdited: { type: Boolean, default: false },
-    hideFor: [{ type: Schema.ObjectId, ref: "User", default: [] }],
-    pinnedAt: { type: String || null, default: null },
+    hideFor: [{ type: Schema.ObjectId, ref: "User" }],
+    pinnedAt: { type: Date, default: null },
     voiceData: {
       type: {
-        src: { type: String, required: true },
-        duration: { type: Number, required: true },
-        playedBy: [{ type: String }],
+        src: { type: String, required: true, maxlength: 2048 },
+        duration: { type: Number, required: true, min: 0, max: 3600 },
+        playedBy: [{ type: String, maxlength: 100 }],
       },
       default: null,
     },
-    tempId: { type: String, unique: true, sparse: true },
+    tempId: { type: String, unique: true, sparse: true, maxlength: 200 },
     status: {
       type: String,
       enum: ["pending", "sent", "failed"],
@@ -37,6 +35,7 @@ export const schema = new Schema(
 
 schema.index({ roomID: 1, createdAt: -1 });
 schema.index({ roomID: 1, sender: 1, createdAt: -1 });
+schema.index({ roomID: 1, message: 1 });
 
 const MessageSchema =
   mongoose.models.Message || mongoose.model("Message", schema);
