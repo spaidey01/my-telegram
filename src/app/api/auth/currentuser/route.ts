@@ -1,6 +1,6 @@
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
-import { tokenDecoder } from "@/utils";
+import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 
 export const POST = async () => {
@@ -10,12 +10,16 @@ export const POST = async () => {
     if (!cookieToken) return Response.json({ message: "You are not logged in" }, { status: 401 });
 
     const verifiedToken = tokenDecoder(cookieToken);
-    if (!verifiedToken || typeof verifiedToken !== "object" || typeof verifiedToken.sub !== "string") {
+    if (!verifiedToken || typeof verifiedToken !== "object" || typeof verifiedToken.sub !== "string" || typeof verifiedToken.sv !== "number") {
       (await cookies()).delete("token");
       return Response.json({ message: "Invalid session" }, { status: 401 });
     }
 
-    const userData = await UserSchema.findById(verifiedToken.sub).select("-password").lean();
+    const userData = await UserSchema.findOne({
+      _id: verifiedToken.sub,
+      sessionVersion: verifiedToken.sv,
+    }).select("-password").lean();
+
     if (!userData) {
       (await cookies()).delete("token");
       return Response.json({ message: "Invalid session" }, { status: 401 });
