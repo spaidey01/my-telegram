@@ -381,7 +381,8 @@ io.on("connection", (socket) => {
         $match: {
           roomID: { $in: rawRooms.map((room) => room._id) },
           sender: { $ne: new mongoose.Types.ObjectId(userID) },
-          seen: { $nin: [new (await import("mongoose")).default.Types.ObjectId(userID)] },
+          seen: { $nin: [new mongoose.Types.ObjectId(userID)] },
+          hideFor: { $nin: [new mongoose.Types.ObjectId(userID)] },
         },
       },
       { $group: { _id: "$roomID", count: { $sum: 1 } } },
