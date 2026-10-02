@@ -1,85 +1,113 @@
-import { RoomModel, UserModel } from "@/@types/data.t";
 import connectToDB from "@/db";
 import MessageSchema from "@/schemas/messageSchema";
 import RoomSchema from "@/schemas/roomSchema";
 import UserSchema from "@/schemas/userSchema";
-import { tokenDecoder } from "@/utils";
+import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
 
-const escapeRegExp = (text: string) => text.replace(/[-[\\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+const escapeRegExp = (text: string) => text.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+const safeUserProjection = "name lastName username avatar biography type status _id";
+
 const getAuthenticatedUserId = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? decoded.sub : null;
+  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number"
+    ? { id: decoded.sub, sv: decoded.sv }
+    : null;
 };
-const safeUserProjection = "name lastName username avatar biography type status _id";
 
 export const POST = async (req: Request) => {
   try {
-    const authenticatedUserID = await getAuthenticatedUserId();
-    if (!authenticatedUserID || !mongoose.isValidObjectId(authenticatedUserID)) {
-      return Response.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    const auth = await getAuthenticatedUserId();
+    if (!auth || !mongoose.isValidObjectId(auth.id)) return Response.json({ message: "Unauthorized" }, { status: 401 });
+
     await connectToDB();
+    const sessionUser = await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean();
+    if (!sessionUser) return Response.json({ message: "Unauthorized" }, { status: 401 });
+
     const body = await req.json();
     const purePayload = typeof body?.query?.payload === "string" ? body.query.payload.trim() : "";
     if (!purePayload || purePayload.length > 100) return Response.json({ message: "Invalid search query" }, { status: 400 });
+
     const payload = purePayload.toLowerCase();
+    const expression = new RegExp(escapeRegExp(payload), "i");
 
     if (payload.startsWith("@")) {
       const searchText = payload.slice(1).trim();
       if (!searchText || searchText.length > 50) return Response.json(null, { status: 404 });
 
-      const result = await RoomSchema.findOne({
+      const room = await RoomSchema.findOne({
         link: { $regex: new RegExp("^" + escapeRegExp(payload) + "$", "i") },
-      }).select("_id name avatar type link biography participants creator admins");
+      }).select("_id name avatar type link biography participants creator admins").lean();
 
-      if (result) return Response.json([result], { status: 200 });
+      if (room) return Response.json([room], { status: 200 });
 
       const users = await UserSchema.find({
-        username: { $regex: new RegExp("^" + escapeRegExp(searchText) + ".*$", "i") },
+        username: { $regex: new RegExp("^" + escapeRegExp(searchText), "i") },
       }).select(safeUserProjection).limit(20).lean();
 
       return users.length ? Response.json(users, { status: 200 }) : Response.json(null, { status: 404 });
     }
 
-    const userRoomsData: any = await RoomSchema.find({ participants: authenticatedUserID })
-      .select("_id name avatar type participants messages")
-      .lean()
-      .then((rooms) => Promise.all(rooms.map((room) => RoomSchema.populate(room, [
-        { path: "messages", model: MessageSchema },
-        { path: "participants", select: safeUserProjection },
-      ]))));
+    const rooms = await RoomSchema.find({ participants: auth.id })
+      .select("_id name avatar type participants admins creator link biography")
+      .lean();
 
-    const searchResult: (RoomModel | (UserModel & { findBy: keyof RoomModel }))[] = [];
-    userRoomsData.forEach((roomData: RoomModel & { findBy: keyof RoomModel }) => {
-      if (roomData.type !== "private" && roomData.name.toLowerCase().includes(payload)) {
-        searchResult.push({ ...roomData, findBy: "name" });
-      }
-      if (roomData.type === "private") {
-        const otherParticipant = roomData.participants.find((data: UserModel) => data._id.toString() !== authenticatedUserID);
-        if (otherParticipant && otherParticipant.name.toLowerCase().includes(payload)) {
-          searchResult.push({ ...roomData, findBy: "participants", name: otherParticipant.name, lastName: otherParticipant.lastName, avatar: otherParticipant.avatar });
-        }
-      }
-      roomData.messages.forEach((msgData) => {
-        const isMsgDeletedForUser = msgData.hideFor.some((id) => id.toString() === authenticatedUserID);
-        if (!isMsgDeletedForUser && typeof msgData.message === "string" && msgData.message.toLowerCase().includes(payload)) {
-          const otherParticipant = roomData.participants.find((data: UserModel) => data._id.toString() !== authenticatedUserID);
-          const isMe = roomData.participants.find((data: UserModel) => data._id.toString() === authenticatedUserID);
-          searchResult.push({
-            ...roomData,
-            findBy: "messages",
-            messages: [msgData],
-            name: roomData.type === "private" ? otherParticipant?.name || (isMe ? "Saved messages" : "") : roomData.name,
-            lastName: roomData.type === "private" ? otherParticipant?.lastName ?? "" : "",
-            avatar: roomData.type === "private" ? otherParticipant?.avatar ?? "" : roomData.avatar,
-          });
-        }
+    const roomIds = rooms.map((room) => room._id);
+    const privateParticipantIds = rooms
+      .filter((room) => room.type === "private")
+      .flatMap((room) => room.participants.map((id) => id.toString()))
+      .filter((id) => id !== auth.id);
+
+    const [participants, matchingMessages] = await Promise.all([
+      privateParticipantIds.length
+        ? UserSchema.find({ _id: { $in: [...new Set(privateParticipantIds)] }, name: { $regex: expression } })
+            .select(safeUserProjection)
+            .limit(50)
+            .lean()
+        : [],
+      roomIds.length
+        ? MessageSchema.find({ roomID: { $in: roomIds }, hideFor: { $nin: [auth.id] }, message: { $regex: expression } })
+            .sort({ createdAt: -1 })
+            .limit(100)
+            .populate("sender", "name username avatar _id")
+            .lean()
+        : [],
+    ]);
+
+    const roomById = new Map(rooms.map((room) => [room._id.toString(), room]));
+    const results: any[] = [];
+
+    for (const room of rooms) {
+      if (room.type !== "private" && expression.test(room.name)) results.push({ ...room, findBy: "name" });
+    }
+
+    for (const participant of participants) {
+      const room = rooms.find(
+        (candidate) => candidate.type === "private" && candidate.participants.some((id) => id.toString() === participant._id.toString()),
+      );
+      if (!room) continue;
+      results.push({ ...room, findBy: "participants", name: participant.name, lastName: participant.lastName, avatar: participant.avatar });
+    }
+
+    for (const message of matchingMessages) {
+      const room = roomById.get(message.roomID.toString());
+      if (!room) continue;
+      const otherParticipant = room.type === "private"
+        ? participants.find((user) => room.participants.some((id) => id.toString() === user._id.toString()))
+        : null;
+      results.push({
+        ...room,
+        findBy: "messages",
+        messages: [message],
+        name: room.type === "private" ? otherParticipant?.name || "Saved messages" : room.name,
+        lastName: room.type === "private" ? otherParticipant?.lastName || "" : "",
+        avatar: room.type === "private" ? otherParticipant?.avatar || "" : room.avatar,
       });
-    });
-    return Response.json(searchResult, { status: 200 });
+    }
+
+    return Response.json(results.slice(0, 100), { status: 200 });
   } catch (err) {
     console.error("users/find:", err);
     return Response.json({ message: "Unknown error, try later." }, { status: 500 });
