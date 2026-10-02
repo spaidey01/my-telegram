@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     if (!object.Body) return NextResponse.json({ message: "Invalid file" }, { status: 415 });
     const bytes = await object.Body.transformToByteArray();
     if (!isMagicValid(bytes, contentType)) {
-      await s3().send(new (await import("@aws-sdk/client-s3")).DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
       return NextResponse.json({ message: "File content does not match its type" }, { status: 415 });
     }
 
