@@ -5,6 +5,7 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_SNIFF_BYTES = 512;
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac"]);
 
 const s3 = () => new S3Client({
   region: process.env.S3_REGION || "us-east-1",
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
     const key = typeof body?.key === "string" ? body.key : "";
     const contentType = typeof body?.contentType === "string" ? body.contentType.toLowerCase() : "";
     const ownerPrefix = key.split("/")[1];
+    if (!ALLOWED_CONTENT_TYPES.has(contentType)) return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
     if (!/^(images|voices)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key) || ownerPrefix !== userId) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
