@@ -251,11 +251,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("joinRoom", async ({ roomID }) => {
+  socket.on("joinRoom", async ({ roomID, link }) => {
     if (!allowEvent(userID, "joinRoom", 20, 60_000)) return;
     try {
-      if (!isValidId(roomID)) return;
-      const room = await RoomSchema.findById(roomID);
+      if (!isValidId(roomID) || typeof link !== "string" || link.length > 500) return;
+      const room = await RoomSchema.findOne({ _id: roomID, link: link.trim() });
       if (!room || room.type === "private" || !room.link) {
         socket.emit("joinRoomError", { message: "This room is not publicly joinable" });
         return;
