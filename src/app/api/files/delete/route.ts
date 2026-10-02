@@ -3,6 +3,8 @@ import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
+import connectToDB from "@/db";
+import UserSchema from "@/schemas/userSchema";
 
 const s3 = () => new S3Client({ region: process.env.S3_REGION || "us-east-1", endpoint: process.env.S3_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! } });
 
@@ -11,14 +13,20 @@ export async function POST(req: Request) {
     const token = (await cookies()).get("token")?.value;
     const decoded = token ? tokenDecoder(token) : false;
     const userId = decoded && typeof decoded === "object" && "sub" in decoded ? String(decoded.sub) : null;
-    if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const sessionVersion = decoded && typeof decoded === "object" && "sv" in decoded && typeof decoded.sv === "number" ? decoded.sv : null;
+    if (!userId || sessionVersion === null) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    await connectToDB();
+    const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
+    if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     const limit = rateLimit("file-delete:" + userId, 30, 60_000);
     if (!limit.allowed) return NextResponse.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
     const { fileUrl } = await req.json();
     if (typeof fileUrl !== "string") return NextResponse.json({ message: "Invalid file" }, { status: 400 });
     const bucket = process.env.S3_BUCKET_NAME;
     const url = new URL(fileUrl);
-    let path = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    let path = url.pathname === "/api/files/access"
+      ? url.searchParams.get("key") || ""
+      : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
     if (!bucket) return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
 
     // Path-style S3 URLs include the bucket in the URL path; virtual-hosted
