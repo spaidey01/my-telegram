@@ -5,7 +5,6 @@ export default interface User {
   name: string;
   lastName: string;
   username: string;
-  password: string;
   phone: string;
   rooms: Room[];
   avatar: string;
