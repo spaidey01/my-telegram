@@ -8,55 +8,35 @@ import tokenGenerator from "@/utils/TokenGenerator";
 export const POST = async (req: Request) => {
   try {
     await connectToDB();
-
-    const { username, phone, password: purePass } = await req.json();
-
-    const password = await hash(purePass, 12);
-
-    const userData = await UserSchema.create({
-      name: username?.replace("@", ""),
-      lastName: "",
-      username: username.toLowerCase(),
-      password,
-      phone: phone.toString(),
-    });
-
-    await RoomSchema.create({
-      name: "Saved Messages",
-      avatar: "",
-      type: "private",
-      creator: userData._id,
-      participants: [userData._id],
-    });
-
-    const token = tokenGenerator(userData.phone, 7);
-
-    (await cookies()).set("token", token, {
-      httpOnly: true,
-      maxAge: 60 * 60 * 24 * 15,
-      sameSite: "none",
-      path: "/",
-      secure: true,
-    });
-    return Response.json(userData, { status: 201 });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    const existedUsernameOrPhone = Object.keys(
-      error.errorResponse?.keyPattern
-    ).join("");
-
-    if (existedUsernameOrPhone) {
-      const duplicatedProp =
-        existedUsernameOrPhone == "phone" ? "phone" : "username";
-      return Response.json(
-        { message: `Already there is an account using this ${duplicatedProp}` },
-        { status: 421 }
-      );
+    const body = await req.json();
+    const usernameRaw = typeof body?.username === "string" ? body.username.trim().replace(/^@/, "") : "";
+    const phone = typeof body?.phone === "string" || typeof body?.phone === "number" ? String(body.phone).trim() : "";
+    const purePass = typeof body?.password === "string" ? body.password : "";
+    if (!/^[a-zA-Z0-9_]{3,20}$/.test(usernameRaw) || !phone || purePass.length < 8 || purePass.length > 128) {
+      return Response.json({ message: "Invalid registration data" }, { status: 400 });
     }
 
-    return Response.json(
-      { message: "Unknown error, try later" },
-      { status: 421 }
-    );
+    const password = await hash(purePass, 12);
+    const userData = await UserSchema.create({ name: usernameRaw, lastName: "", username: usernameRaw.toLowerCase(), password, phone });
+    await RoomSchema.create({ name: "Saved Messages", avatar: "", type: "private", creator: userData._id, participants: [userData._id], admins: [userData._id] });
+
+    const token = tokenGenerator(userData._id.toString(), 7);
+    (await cookies()).set("token", token, {
+      httpOnly: true,
+      maxAge: 60 * 60 * 24 * 7,
+      sameSite: "lax",
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+    });
+    const safeUser = userData.toObject();
+    delete safeUser.password;
+    return Response.json(safeUser, { status: 201 });
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      return Response.json({ message: `Already there is an account using this ${field === "phone" ? "phone" : "username"}` }, { status: 409 });
+    }
+    console.error(error);
+    return Response.json({ message: "Unknown error, try later" }, { status: 500 });
   }
 };

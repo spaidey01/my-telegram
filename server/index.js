@@ -1,37 +1,89 @@
 import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import MediaSchema from "../src/schemas/mediaSchema.js";
 import LocationSchema from "../src/schemas/locationSchema.js";
 import UserSchema from "../src/schemas/userSchema.js";
 import connectToDB from "../src/db/index.js";
+
+const secret = process.env.secretKey;
+if (!secret) throw new Error("secretKey is not configured");
+
+const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
+  .split(",").map((v) => v.trim()).filter(Boolean);
+
 const io = new Server(3001, {
   cors: {
-    origin: "*",
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("Origin not allowed"));
+    },
   },
   pingTimeout: 30000,
   connectionStateRecovery: {
     maxDisconnectionDuration: 2 * 60 * 1000,
-    skipMiddlewares: true,
+    skipMiddlewares: false,
   },
 });
 
 console.log("Socket server is running on port 3001");
 
-let typings = [];
-let onlineUsers = [];
+const onlineUsers = new Map();
+const typingByRoom = new Map();
 
 await connectToDB();
 
+const getUserId = (socket) => socket.userId;
+
+const isMember = async (roomID, userID) => {
+  if (!roomID || !userID) return null;
+  return RoomSchema.findOne({ _id: roomID, participants: userID });
+};
+
+const isAdmin = (room, userID) =>
+  !!room && (room.creator?.toString() === userID || room.admins?.some((id) => id.toString() === userID));
+
+const isMessageInRoom = async (msgID, roomID) =>
+  MessageSchema.findOne({ _id: msgID, roomID });
+
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) return next(new Error("Unauthorized"));
+    const decoded = jwt.verify(token, secret);
+    if (!decoded || decoded.scope !== "socket" || !decoded.sub) return next(new Error("Unauthorized"));
+    socket.userId = decoded.sub.toString();
+    socket.userTokenExp = decoded.exp;
+    return next();
+  } catch {
+    return next(new Error("Unauthorized"));
+  }
+});
+
 io.on("connection", (socket) => {
-  socket.on(
-    "newMessage",
-    async (
-      { roomID, sender, message, replayData, voiceData = null, tempId },
-      callback
-    ) => {
+  const userID = getUserId(socket);
+  onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
+
+  const broadcastOnlineUsers = () => {
+    const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
+    io.emit("updateOnlineUsers", ids);
+  };
+  broadcastOnlineUsers();
+
+  socket.on("newMessage", async ({ roomID, message, replayData, voiceData = null, tempId }, callback = () => {}) => {
+    try {
+      const room = await isMember(roomID, userID);
+      if (!room) return callback({ success: false, error: "Forbidden" });
+      if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
+
+      if (tempId) {
+        const existing = await MessageSchema.findOne({ tempId }).lean();
+        if (existing) return callback({ success: true, _id: existing._id });
+      }
+
       const msgData = {
-        sender,
+        sender: userID,
         message,
         roomID,
         seen: [],
@@ -41,486 +93,320 @@ io.on("connection", (socket) => {
         status: "sent",
       };
 
-      let newMsg = await MessageSchema.findOne({ tempId }).lean();
+      const newMsg = await MessageSchema.create(msgData);
 
-      if (newMsg) {
-        // Already exists, emit updates
-        // Send newMessage to all users EXCEPT the sender
-        socket.to(roomID).emit("newMessage", {
-          ...newMsg,
-          replayedTo: replayData ? replayData.replayedTo : null,
-        });
-
-        // Send newMessageIdUpdate ONLY to the sender
-        socket.emit("newMessageIdUpdate", { tempId, _id: newMsg._id });
-
-        // Broadcast other updates to all users
-        io.to(roomID).emit("lastMsgUpdate", newMsg);
-        io.to(roomID).emit("updateLastMsgData", {
-          msgData: newMsg,
-          roomID,
-        });
-        callback({ success: true, _id: newMsg._id });
-      } else {
-        // Create new
-        newMsg = await MessageSchema.create(msgData);
-
-        // Populate the sender field before sending
-        const populatedMsg = await MessageSchema.findById(newMsg._id)
-          .populate("sender", "name username avatar _id")
-          .lean();
-
-        // Send newMessage to all users EXCEPT the sender (they'll get newMessageIdUpdate)
-        socket.to(roomID).emit("newMessage", {
-          ...populatedMsg,
-          replayedTo: replayData ? replayData.replayedTo : null,
-        });
-
-        // Send newMessageIdUpdate ONLY to the sender to update their pending message
-        socket.emit("newMessageIdUpdate", {
-          tempId,
-          _id: populatedMsg._id,
-        });
-
-        // Broadcast lastMsgUpdate to all users
-        io.to(roomID).emit("lastMsgUpdate", populatedMsg);
-        io.to(roomID).emit("updateLastMsgData", {
-          msgData: populatedMsg,
-          roomID,
-        });
-
-        if (replayData) {
-          await MessageSchema.findOneAndUpdate(
-            { _id: replayData.targetID },
-            { $push: { replays: newMsg._id } }
-          );
-          newMsg.replayedTo = replayData.replayedTo;
+      if (replayData?.targetID) {
+        const target = await isMessageInRoom(replayData.targetID, roomID);
+        if (target) {
+          await MessageSchema.updateOne({ _id: target._id }, { $push: { replays: newMsg._id } });
+          newMsg.replayedTo = {
+            message: typeof replayData.replayedTo?.message === "string" ? replayData.replayedTo.message : "",
+            msgID: newMsg._id.toString(),
+            username: typeof replayData.replayedTo?.username === "string" ? replayData.replayedTo.username : "",
+          };
           await newMsg.save();
         }
-
-        await RoomSchema.findOneAndUpdate(
-          { _id: roomID },
-          { $push: { messages: newMsg._id } }
-        );
-
-        callback({ success: true, _id: newMsg._id });
       }
+
+      await RoomSchema.updateOne({ _id: roomID }, { $push: { messages: newMsg._id } });
+
+      const populatedMsg = await MessageSchema.findById(newMsg._id)
+        .populate("sender", "name username avatar _id")
+        .lean();
+
+      socket.to(roomID).emit("newMessage", populatedMsg);
+      socket.emit("newMessageIdUpdate", { tempId, _id: newMsg._id });
+      io.to(roomID).emit("lastMsgUpdate", populatedMsg);
+      io.to(roomID).emit("updateLastMsgData", { msgData: populatedMsg, roomID });
+      callback({ success: true, _id: newMsg._id });
+    } catch (error) {
+      console.error("newMessage:", error);
+      callback({ success: false, error: "Unable to send message" });
     }
-  );
+  });
 
   socket.on("createRoom", async ({ newRoomData, message = null }) => {
-    let isRoomExist = false;
+    try {
+      if (!newRoomData || !["private", "group", "channel"].includes(newRoomData.type)) return;
+      const requestedParticipants = Array.isArray(newRoomData.participants)
+        ? newRoomData.participants.map((p) => (typeof p === "string" ? p : p?._id)).filter(Boolean)
+        : [];
+      const participants = [...new Set([userID, ...requestedParticipants])];
 
-    if (newRoomData.type === "private") {
-      isRoomExist = await RoomSchema.findOne({ name: newRoomData.name });
-    } else {
-      isRoomExist = await RoomSchema.findOne({ _id: newRoomData._id });
-    }
+      if (newRoomData.type === "private" && participants.length !== 2) return;
 
-    if (!isRoomExist) {
-      let msgData = message;
+      const roomData = {
+        name: typeof newRoomData.name === "string" ? newRoomData.name.trim().slice(0, 100) : "New Room",
+        avatar: typeof newRoomData.avatar === "string" ? newRoomData.avatar : "",
+        type: newRoomData.type,
+        creator: userID,
+        admins: [userID],
+        participants,
+        link: typeof newRoomData.link === "string" ? newRoomData.link.slice(0, 500) : undefined,
+        biography: typeof newRoomData.biography === "string" ? newRoomData.biography.slice(0, 1000) : undefined,
+      };
 
       if (newRoomData.type === "private") {
-        newRoomData.participants = newRoomData.participants.map(
-          (data) => data?._id
-        );
+        const existing = await RoomSchema.findOne({ type: "private", participants: { $all: participants, $size: 2 } });
+        if (existing) {
+          socket.emit("createRoom", existing);
+          return;
+        }
       }
 
-      const newRoom = await RoomSchema.create(newRoomData);
+      const newRoom = await RoomSchema.create(roomData);
 
-      if (msgData) {
+      if (message && typeof message.message === "string") {
         const newMsg = await MessageSchema.create({
-          ...msgData,
+          sender: userID,
+          message: message.message.slice(0, 10000),
           roomID: newRoom._id,
+          seen: [],
+          voiceData: message.voiceData || null,
+          status: "sent",
         });
-        msgData = newMsg;
         newRoom.messages = [newMsg._id];
         await newRoom.save();
       }
 
-      socket.join(newRoom._id);
-
-      const otherRoomMembersSocket = onlineUsers.filter((data) =>
-        newRoom.participants.some((pID) => {
-          if (data.userID === pID.toString()) return true;
-        })
-      );
-
-      otherRoomMembersSocket.forEach(({ socketID: userSocketID }) => {
-        const socketID = io.sockets.sockets.get(userSocketID);
-        if (socketID) socketID.join(newRoom._id);
-      });
-
-      io.to(newRoom._id).emit("createRoom", newRoom);
+      for (const memberID of participants) {
+        for (const socketID of onlineUsers.get(memberID) || []) io.sockets.sockets.get(socketID)?.join(newRoom._id.toString());
+      }
+      io.to(newRoom._id.toString()).emit("createRoom", newRoom);
+    } catch (error) {
+      console.error("createRoom:", error);
     }
   });
 
-  socket.on("joinRoom", async ({ roomID, userID }) => {
-    const roomTarget = await RoomSchema.findOne({ _id: roomID });
-
-    if (roomTarget && !roomTarget?.participants.includes(userID)) {
-      roomTarget.participants = [...roomTarget.participants, userID];
+  socket.on("joinRoom", async ({ roomID }) => {
+    try {
+      const room = await RoomSchema.findById(roomID);
+      if (!room || room.type === "private") return;
+      if (!room.participants.some((id) => id.toString() === userID)) {
+        room.participants.push(userID);
+        await room.save();
+      }
       socket.join(roomID);
-      await roomTarget.save();
-
       io.to(roomID).emit("joinRoom", { userID, roomID });
+    } catch (error) {
+      console.error("joinRoom:", error);
     }
   });
 
   socket.on("deleteRoom", async (roomID) => {
+    const room = await RoomSchema.findById(roomID);
+    if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
     io.to(roomID).emit("deleteRoom", roomID);
     io.to(roomID).emit("updateLastMsgData", { msgData: null, roomID });
-    await RoomSchema.findOneAndDelete({ _id: roomID });
+    await RoomSchema.deleteOne({ _id: roomID });
     await MessageSchema.deleteMany({ roomID });
   });
 
   socket.on("deleteMsg", async ({ forAll, msgID, roomID }) => {
+    const room = await isMember(roomID, userID);
+    const msg = await isMessageInRoom(msgID, roomID);
+    if (!room || !msg) return socket.emit("error", { message: "Forbidden" });
+
     if (forAll) {
+      if (msg.sender.toString() !== userID && !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
+      await MessageSchema.deleteOne({ _id: msgID });
+      await RoomSchema.updateOne({ _id: roomID }, { $pull: { messages: msgID } });
       io.to(roomID).emit("deleteMsg", msgID);
-      const userID = onlineUsers.find((ud) => ud.socketID == socket.id)?.userID;
-
-      await MessageSchema.findOneAndDelete({ _id: msgID });
-
-      const lastMsg = await MessageSchema.findOne({
-        roomID: roomID,
-        hideFor: { $nin: [userID] },
-      }).sort({ createdAt: -1 });
-
-      if (lastMsg) {
-        io.to(roomID).emit("updateLastMsgData", { msgData: lastMsg, roomID });
-      }
-
-      await RoomSchema.findOneAndUpdate(
-        { _id: roomID },
-        { $pull: { messages: msgID } }
-      );
     } else {
+      await MessageSchema.updateOne({ _id: msgID }, { $addToSet: { hideFor: userID } });
       socket.emit("deleteMsg", msgID);
-
-      const userID = onlineUsers.find((ud) => ud.socketID == socket.id)?.userID;
-
-      if (userID) {
-        await MessageSchema.findOneAndUpdate(
-          { _id: msgID },
-          {
-            $push: { hideFor: userID },
-          }
-        );
-      }
-
-      const lastMsg = await MessageSchema.findOne({
-        roomID: roomID,
-        hideFor: { $nin: [userID] },
-      }).sort({ createdAt: -1 });
-
-      if (lastMsg) {
-        socket.emit("updateLastMsgData", { msgData: lastMsg, roomID });
-      }
     }
+
+    const lastMsg = await MessageSchema.findOne({ roomID, hideFor: { $nin: [userID] } }).sort({ createdAt: -1 }).lean();
+    io.to(roomID).emit("updateLastMsgData", { msgData: lastMsg || null, roomID });
   });
 
   socket.on("editMessage", async ({ msgID, editedMsg, roomID }) => {
+    const room = await isMember(roomID, userID);
+    const msg = await isMessageInRoom(msgID, roomID);
+    if (!room || !msg || msg.sender.toString() !== userID || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
+
+    const updated = await MessageSchema.findOneAndUpdate({ _id: msgID, roomID, sender: userID }, { message: editedMsg, isEdited: true }, { new: true }).lean();
+    if (!updated) return;
     io.to(roomID).emit("editMessage", { msgID, editedMsg, roomID });
-    const updatedMsgData = await MessageSchema.findOneAndUpdate(
-      { _id: msgID },
-      { message: editedMsg, isEdited: true }
-    ).lean();
-
-    if (!updatedMsgData) return;
-
-    const lastMsg = await MessageSchema.findOne({ roomID })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    if (lastMsg && lastMsg._id.toString() === msgID) {
-      io.to(roomID).emit("updateLastMsgData", {
-        roomID,
-        msgData: { ...updatedMsgData, message: editedMsg },
-      });
-    }
+    const lastMsg = await MessageSchema.findOne({ roomID }).sort({ createdAt: -1 }).lean();
+    if (lastMsg?._id.toString() === msgID) io.to(roomID).emit("updateLastMsgData", { roomID, msgData: updated });
   });
 
-  socket.on("seenMsg", async (seenData) => {
-    io.to(seenData.roomID).emit("seenMsg", seenData);
-    try {
-      await MessageSchema.findOneAndUpdate(
-        { _id: seenData.msgID },
-        {
-          $push: {
-            seen: seenData.seenBy,
-          },
-          $set: {
-            readTime: new Date(seenData.readTime),
-          },
-        }
-      );
-    } catch (error) {
-      console.log(error);
-    }
+  socket.on("seenMsg", async ({ msgID, roomID, readTime }) => {
+    const room = await isMember(roomID, userID);
+    const msg = await isMessageInRoom(msgID, roomID);
+    if (!room || !msg) return;
+    const safeReadTime = readTime && !Number.isNaN(Date.parse(readTime)) ? new Date(readTime) : new Date();
+    await MessageSchema.updateOne({ _id: msgID }, { $addToSet: { seen: userID }, $set: { readTime: safeReadTime } });
+    io.to(roomID).emit("seenMsg", { msgID, roomID, seenBy: userID, readTime: safeReadTime });
   });
 
-  socket.on("listenToVoice", async ({ userID, voiceID, roomID }) => {
+  socket.on("listenToVoice", async ({ voiceID, roomID }) => {
+    const room = await isMember(roomID, userID);
+    const targetMessage = await isMessageInRoom(voiceID, roomID);
+    if (!room || !targetMessage?.voiceData) return;
+    const playedBy = targetMessage.voiceData.playedBy || [];
+    if (!playedBy.some((v) => v === userID || v.startsWith(userID + "_"))) {
+      await MessageSchema.updateOne({ _id: voiceID }, { $push: { "voiceData.playedBy": userID + "_" + new Date().toISOString() } });
+    }
     io.to(roomID).emit("listenToVoice", { userID, voiceID, roomID });
-
-    const targetMessage = await MessageSchema.findOne({ _id: voiceID }).exec();
-    const voiceMessagePlayedByList = targetMessage?.voiceData?.playedBy;
-
-    if (!voiceMessagePlayedByList?.includes(userID)) {
-      const userIdWithSeenTime = `${userID}_${new Date()}`;
-      targetMessage.voiceData.playedBy = [
-        ...voiceMessagePlayedByList,
-        userIdWithSeenTime,
-      ];
-      targetMessage.save();
-    }
   });
 
   socket.on("getVoiceMessageListeners", async (msgID) => {
-    const {
-      voiceData: { playedBy: playedByIds },
-    } = await MessageSchema.findOne({ _id: msgID });
-
-    const playedByIdsWithoutSeenTime = playedByIds.map((id) =>
-      id?.includes("_") ? id.split("_")[0] : id
-    );
-
-    const playedByUsersData = await UserSchema.find({
-      _id: { $in: playedByIdsWithoutSeenTime },
-    }).lean();
-
-    const findUserSeenTimeWithID = (id) => {
-      let seenTime = null;
-
-      playedByIds.some((str) => {
-        const extractedID = str?.includes("_") ? str.split("_")[0] : str;
-        if (extractedID === id.toString()) {
-          seenTime = str?.includes("_") ? str.split("_")[1] : null;
-          return true;
-        }
-      });
-
-      return seenTime;
-    };
-
-    const userDataWithSeenDate = playedByUsersData.map((data) => ({
+    const targetMessage = await MessageSchema.findById(msgID);
+    if (!targetMessage) return;
+    const room = await isMember(targetMessage.roomID, userID);
+    if (!room) return;
+    const playedBy = targetMessage.voiceData?.playedBy || [];
+    const ids = [...new Set(playedBy.map((v) => v.split("_")[0]))];
+    const users = await UserSchema.find({ _id: { $in: ids } }).select("-password").lean();
+    socket.emit("getVoiceMessageListeners", users.map((data) => ({
       ...data,
-      seenTime: findUserSeenTimeWithID(data._id.toString()),
-    }));
-
-    socket.emit("getVoiceMessageListeners", userDataWithSeenDate);
+      seenTime: playedBy.find((v) => v.startsWith(data._id.toString() + "_"))?.split("_").slice(1).join("_") || null,
+    })));
   });
 
-  socket.on("getRooms", async (userID) => {
-    const userRooms = await RoomSchema.find({
-      participants: { $in: userID },
-    }).lean();
+  socket.on("getRooms", async () => {
+    const rawRooms = await RoomSchema.find({ participants: userID }).lean();
+    const userRooms = await Promise.all(rawRooms.map(async (room) => {
+      if (room.type !== "private") return room;
+      const participants = await UserSchema.find({ _id: { $in: room.participants } }).select("name username avatar _id").lean();
+      return { ...room, participants };
+    }));
+    for (const room of userRooms) socket.join(room._id.toString());
 
-    const userPvs = await RoomSchema.find({
-      $and: [{ participants: { $in: userID } }, { type: "private" }],
-    })
-      .lean()
-      .populate("participants");
-
-    for (const room of userRooms) {
-      room.participants =
-        userPvs.find((data) => data._id.toString() === room._id.toString())
-          ?.participants || room.participants;
-      socket.join(room._id.toString());
-    }
-
-    onlineUsers.push({ socketID: socket.id, userID });
-    io.to([...socket.rooms]).emit("updateOnlineUsers", onlineUsers);
-
-    const getRoomsData = async () => {
-      const promises = userRooms.map(async (room) => {
-        const lastMsgData = room?.messages?.length
-          ? await MessageSchema.findOne({ _id: room.messages.at(-1)?._id })
-          : null;
-
-        const notSeenCount = await MessageSchema.find({
-          $and: [
-            { roomID: room?._id },
-            { sender: { $ne: userID } },
-            { seen: { $nin: [userID] } },
-          ],
-        });
-
-        return {
-          ...room,
-          lastMsgData,
-          notSeenCount: notSeenCount?.length,
-        };
+    const rooms = await Promise.all(userRooms.map(async (room) => {
+      const lastMsgData = room.messages?.length
+        ? await MessageSchema.findById(room.messages.at(-1)).populate("sender", "name username avatar _id").lean()
+        : null;
+      const notSeenCount = await MessageSchema.countDocuments({
+        roomID: room._id, sender: { $ne: userID }, seen: { $nin: [userID] },
       });
-
-      return Promise.all(promises);
-    };
-
-    const rooms = await getRoomsData();
+      return { ...room, lastMsgData, notSeenCount };
+    }));
 
     socket.emit("getRooms", rooms);
   });
 
-  socket.on("joining", async (query, defaultRoomData = null) => {
-    let roomData = await RoomSchema.findOne({
-      $or: [{ _id: query }, { name: query }],
-    })
-      .populate("messages", "", MessageSchema)
-      .populate("medias", "", MediaSchema)
-      .populate("locations", "", LocationSchema)
-      .populate({
-        path: "messages",
-        populate: {
-          path: "sender",
-          model: UserSchema,
-        },
+  socket.on("joining", async (query) => {
+    try {
+      if (!query) return;
+      const roomData = await RoomSchema.findOne({
+        $and: [{ $or: [{ _id: query }, { name: query }] }, { participants: userID }],
       })
-      .populate({
-        path: "messages",
-        populate: {
-          path: "replay",
-          model: MessageSchema,
-        },
-      });
+        .populate("messages", "", MessageSchema)
+        .populate("medias", "", MediaSchema)
+        .populate("locations", "", LocationSchema)
+        .populate({ path: "messages", populate: { path: "sender", model: UserSchema, select: "name username avatar _id" } });
 
-    if (roomData && roomData?.type === "private")
-      await roomData.populate("participants");
-
-    if (!roomData?._id) {
-      roomData = defaultRoomData;
+      if (!roomData) return socket.emit("error", { message: "Room not found" });
+      socket.join(roomData._id.toString());
+      if (roomData.type === "private") await roomData.populate("participants");
+      socket.emit("joining", roomData);
+    } catch (error) {
+      console.error("joining:", error);
+      socket.emit("error", { message: "Unable to open room" });
     }
-
-    socket.emit("joining", roomData);
   });
 
   socket.on("pinMessage", async (id, roomID, isLastMessage) => {
+    const room = await isMember(roomID, userID);
+    const msg = await isMessageInRoom(id, roomID);
+    if (!room || !msg || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
+    msg.pinnedAt = msg.pinnedAt ? null : Date.now();
+    await msg.save();
     io.to(roomID).emit("pinMessage", id);
-
-    const messageToPin = await MessageSchema.findOne({ _id: id });
-
-    messageToPin.pinnedAt = messageToPin?.pinnedAt ? null : Date.now(); // toggle between pin & unpin
-    await messageToPin.save();
-
-    if (isLastMessage) {
-      io.to(roomID).emit("updateLastMsgData", {
-        msgData: messageToPin,
-        roomID,
-      });
-    }
+    if (isLastMessage) io.to(roomID).emit("updateLastMsgData", { msgData: msg, roomID });
   });
 
-  socket.on(
-    "updateLastMsgPos",
-    async ({ roomID, scrollPos, userID, shouldEmitBack = true }) => {
-      try {
-        const userTarget = await UserSchema.findOne({ _id: userID });
-
-        if (!userTarget) {
-          console.log(`User not found: ${userID}`);
-          return;
-        }
-
-        if (!userTarget.roomMessageTrack) {
-          userTarget.roomMessageTrack = [];
-        }
-
-        const isRoomExist = userTarget.roomMessageTrack.some((room) => {
-          if (room.roomId === roomID) {
-            room.scrollPos = scrollPos;
-            return true;
-          }
-        });
-
-        if (!isRoomExist) {
-          userTarget.roomMessageTrack.push({ roomId: roomID, scrollPos });
-        }
-
-        if (shouldEmitBack) {
-          socket.emit("updateLastMsgPos", userTarget.roomMessageTrack);
-        }
-
-        userTarget.save();
-      } catch (error) {
-        console.log("Error updating user data:", error);
-      }
-    }
-  );
-
-  socket.on("typing", (data) => {
-    if (!typings.includes(data.sender.name)) {
-      io.to(data.roomID).emit("typing", data);
-      typings.push(data.sender.name);
-    }
+  socket.on("updateLastMsgPos", async ({ roomID, scrollPos, shouldEmitBack = true }) => {
+    const room = await isMember(roomID, userID);
+    if (!room || !Number.isFinite(Number(scrollPos))) return;
+    const userTarget = await UserSchema.findById(userID);
+    if (!userTarget) return;
+    const track = userTarget.roomMessageTrack || [];
+    const existing = track.find((item) => item.roomId === roomID);
+    if (existing) existing.scrollPos = Number(scrollPos);
+    else track.push({ roomId: roomID, scrollPos: Number(scrollPos) });
+    await userTarget.save();
+    if (shouldEmitBack) socket.emit("updateLastMsgPos", track);
   });
 
-  socket.on("stop-typing", (data) => {
-    typings = typings.filter((tl) => tl !== data.sender.name);
-    io.to(data.roomID).emit("stop-typing", data);
+  socket.on("typing", async (data) => {
+    const room = await isMember(data?.roomID, userID);
+    if (!room) return;
+    const current = typingByRoom.get(data.roomID) || new Set();
+    current.add(userID);
+    typingByRoom.set(data.roomID, current);
+    const user = await UserSchema.findById(userID).select("name username avatar _id").lean();
+    io.to(data.roomID).emit("typing", { roomID: data.roomID, sender: user });
+  });
+
+  socket.on("stop-typing", async (data) => {
+    const room = await isMember(data?.roomID, userID);
+    if (!room) return;
+    const current = typingByRoom.get(data.roomID) || new Set();
+    current.delete(userID);
+    if (!current.size) typingByRoom.delete(data.roomID);
+    const user = await UserSchema.findById(userID).select("name username avatar _id").lean();
+    io.to(data.roomID).emit("stop-typing", { roomID: data.roomID, sender: user });
   });
 
   socket.on("updateUserData", async (updatedFields) => {
-    await UserSchema.findOneAndUpdate(
-      { _id: updatedFields.userID },
-      updatedFields
-    );
+    const allowed = ["name", "lastName", "username", "avatar", "biography"];
+    const $set = {};
+    for (const key of allowed) {
+      if (updatedFields && Object.prototype.hasOwnProperty.call(updatedFields, key)) $set[key] = updatedFields[key];
+    }
+    if (typeof $set.name === "string") $set.name = $set.name.slice(0, 20);
+    if (typeof $set.lastName === "string") $set.lastName = $set.lastName.slice(0, 20);
+    if (typeof $set.username === "string") $set.username = $set.username.replace(/^@/, "").slice(0, 20).toLowerCase();
+    if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 70);
+    await UserSchema.updateOne({ _id: userID }, { $set });
     socket.emit("updateUserData");
   });
 
   socket.on("updateRoomData", async (updatedFields) => {
     try {
-      const { roomID, ...fieldsToUpdate } = updatedFields;
+      const roomID = updatedFields?.roomID;
+      const room = await RoomSchema.findById(roomID);
+      if (!room || !isAdmin(room, userID)) return socket.emit("updateRoomDataError", { message: "Forbidden" });
 
-      const updatedRoom = await RoomSchema.findOneAndUpdate(
-        { _id: roomID },
-        { $set: fieldsToUpdate },
-        { new: true }
-      );
-
-      if (!updatedRoom) {
-        throw new Error("Room not found");
+      const $set = {};
+      for (const key of ["name", "avatar", "biography", "link"]) {
+        if (updatedFields && Object.prototype.hasOwnProperty.call(updatedFields, key)) $set[key] = updatedFields[key];
       }
+      if (typeof $set.name === "string") $set.name = $set.name.trim().slice(0, 100);
+      if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 1000);
+      if (typeof $set.link === "string") $set.link = $set.link.slice(0, 500);
 
-      io.to(updatedFields.roomID).emit("updateRoomData", updatedRoom);
-
-      const otherRoomMembersSocket = onlineUsers.filter((data) =>
-        updatedRoom.participants.some((pID) => {
-          if (data.userID === pID.toString()) return true;
-        })
-      );
-
-      otherRoomMembersSocket.forEach(({ socketID: userSocketID }) => {
-        const socketID = io.sockets.sockets.get(userSocketID);
-        if (socketID) {
-          socketID.emit("updateRoomData", updatedRoom);
-        }
-      });
+      const updatedRoom = await RoomSchema.findOneAndUpdate({ _id: roomID }, { $set }, { new: true });
+      io.to(roomID).emit("updateRoomData", updatedRoom);
     } catch (error) {
-      console.error("Error updating room:", error);
-      socket.emit("updateRoomDataError", { message: error.message });
+      console.error("updateRoomData:", error);
+      socket.emit("updateRoomDataError", { message: "Unable to update room" });
     }
   });
 
   socket.on("getRoomMembers", async ({ roomID }) => {
-    try {
-      const roomMembers = await RoomSchema.findOne({ _id: roomID }).populate(
-        "participants"
-      );
-      socket.emit("getRoomMembers", roomMembers.participants);
-    } catch (err) {
-      console.log(err);
-      socket.emit("error", { message: "Unknown error, try later." });
-    }
+    const room = await isMember(roomID, userID);
+    if (!room) return socket.emit("error", { message: "Forbidden" });
+    const populated = await room.populate("participants");
+    socket.emit("getRoomMembers", populated.participants.map((u) => {
+      const data = u.toObject();
+      delete data.password;
+      return data;
+    }));
   });
 
   socket.on("disconnect", () => {
-    onlineUsers = onlineUsers.filter((data) => data.socketID !== socket.id);
-    io.to([...socket.rooms]).emit("updateOnlineUsers", onlineUsers);
+    const sockets = onlineUsers.get(userID);
+    sockets?.delete(socket.id);
+    if (!sockets?.size) onlineUsers.delete(userID);
+    broadcastOnlineUsers();
   });
 });
 
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught Exception:", err);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("Unhandled Rejection at:", promise, "reason:", reason);
-});
+process.on("uncaughtException", (err) => console.error("Uncaught Exception:", err));
+process.on("unhandledRejection", (reason, promise) => console.error("Unhandled Rejection at:", promise, "reason:", reason));

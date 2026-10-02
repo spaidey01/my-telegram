@@ -397,9 +397,14 @@ const useConnection = ({
     };
   }, [selectedRoom, setter, userDataUpdater, userId]);
 
-  const initializeSocket = useCallback(() => {
-    if (!socketRef.current) {
+  const initializeSocket = useCallback(async () => {
+    if (socketRef.current) return;
+    try {
+      const response = await fetch("/api/auth/socket-token", { cache: "no-store" });
+      if (!response.ok) throw new Error("Unauthorized");
+      const { token } = await response.json();
       const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL, {
+        auth: { token },
         autoConnect: true,
         reconnection: true,
         reconnectionAttempts: Infinity,
@@ -410,6 +415,8 @@ const useConnection = ({
       });
       socketRef.current = newSocket;
       setupSocketListeners();
+    } catch {
+      setStatus(<span>Connecting <Loading loading="dots" size="xs" classNames="text-white mt-1.5" /></span>);
     }
   }, [setupSocketListeners]);
 

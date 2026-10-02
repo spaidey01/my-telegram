@@ -1,156 +1,70 @@
-import { S3 } from "aws-sdk";
 import compressImage from "./CompressImage";
 
 const checkNetworkConnectivity = async (): Promise<boolean> => {
-  if (!navigator.onLine) {
-    return false; // No internet connection detected by browser
-  }
-
-  // First try to check our own server (if it's running)
+  if (typeof navigator !== "undefined" && !navigator.onLine) return false;
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-    await fetch(window.location.origin, {
-      method: "HEAD",
-      cache: "no-store",
-      signal: controller.signal,
-    });
-
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    await fetch(window.location.origin, { method: "HEAD", cache: "no-store", signal: controller.signal });
     clearTimeout(timeoutId);
     return true;
-  } catch (error) {
-    console.error("Local server test Network check failed:", error);
-    // Local server test failed, continue to external endpoints
+  } catch {
+    return true;
   }
-
-  // Array of reliable endpoints to test connectivity
-  const testUrls = [
-    "https://www.google.com/favicon.ico",
-    "https://cloudflare.com/favicon.ico",
-    "https://1.1.1.1/favicon.ico", // Cloudflare DNS (IP-based, less likely to be blocked)
-  ];
-
-  for (const testUrl of testUrls) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, 10000); // 10 seconds timeout per attempt
-
-      await fetch(testUrl, {
-        mode: "no-cors",
-        cache: "no-store",
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-      return true;
-    } catch (error) {
-      continue; // Try next URL
-    }
-  }
-
-  return false;
 };
 
-const uploadFile = async (
-  file: File,
-  onProgress?: (progress: number) => void
-) => {
-  let uploadFile: File = file;
-
-  if (file.type.match("image.*")) {
-    uploadFile = await compressImage(file);
-  }
-
-  try {
-    const s3 = new S3({
-      accessKeyId: process.env.NEXT_PUBLIC_S3_ACCESS_KEY,
-      secretAccessKey: process.env.NEXT_PUBLIC_S3_SECRET_KEY,
-      endpoint: process.env.NEXT_PUBLIC_S3_ENDPOINT,
-      s3ForcePathStyle: true,
-    });
-    const bucketName = process.env.NEXT_PUBLIC_S3_BUCKET_NAME;
-    if (!bucketName) {
-      throw new Error("S3 bucket name is not defined");
-    }
-
-    const uniqueFileName = `${Date.now()}-${uploadFile.name}`;
-    const url = file.type.match("image.*") ? "images/" : "voices/";
-    const key = url + encodeURIComponent(uniqueFileName);
-
-    const params = {
-      Bucket: bucketName,
-      Key: key,
-      Body: uploadFile,
-      ContentType: uploadFile.type,
+const putWithProgress = (url: string, file: File, onProgress?: (progress: number) => void) =>
+  new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
     };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
+    xhr.onerror = () => reject(new Error("Upload failed"));
+    xhr.send(file);
+  });
 
-    if (onProgress) {
-      const upload = s3.upload(params);
-      upload.on("httpUploadProgress", (progress) => {
-        if (progress.total) {
-          const percent = Math.round((progress.loaded / progress.total) * 100);
-          onProgress(percent);
-        }
-      });
-      await upload.promise();
-    } else {
-      await s3.upload(params).promise();
-    }
+const uploadFileOnce = async (file: File, onProgress?: (progress: number) => void) => {
+  let upload = file;
+  if (file.type.match("image.*")) upload = await compressImage(file);
 
-    const permanentSignedUrl = s3.getSignedUrl("getObject", {
-      Bucket: bucketName,
-      Key: key,
-      Expires: 31536000000, // 1 year
-    });
+  const response = await fetch("/api/files/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contentType: upload.type, size: upload.size }),
+  });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.message || "Unable to prepare upload");
 
-    return permanentSignedUrl;
-  } catch (error) {
-    throw error; // Re-throw the error to be caught by retry logic
-  }
+  const { uploadUrl, downloadUrl } = await response.json();
+  await putWithProgress(uploadUrl, upload, onProgress);
+  onProgress?.(100);
+  return downloadUrl as string;
 };
 
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000; // 2 seconds
+const RETRY_DELAY_MS = 2000;
 
 const uploadFileWithRetry = async (
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<{ success: boolean; error?: string; downloadUrl?: string }> => {
   for (let i = 0; i < MAX_RETRIES; i++) {
-    const isConnected = await checkNetworkConnectivity();
-    if (!isConnected) {
-      if (i < MAX_RETRIES - 1) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-        continue;
-      } else {
-        return {
-          success: false,
-          error:
-            "Network connection unavailable. Please check your internet connection.",
-        };
-      }
+    if (!(await checkNetworkConnectivity())) {
+      if (i < MAX_RETRIES - 1) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      continue;
     }
-
     try {
-      const result = await uploadFile(file, onProgress);
-      return { success: true, downloadUrl: result };
-    } catch (error: unknown) {
-      if (i < MAX_RETRIES - 1) {
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-      } else {
-        const errorMessage =
-          error instanceof Error ? error.message : "Upload failed permanently.";
-        return {
-          success: false,
-          error: errorMessage,
-        };
-      }
+      const downloadUrl = await uploadFileOnce(file, onProgress);
+      return { success: true, downloadUrl };
+    } catch (error) {
+      if (i < MAX_RETRIES - 1) await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      else return { success: false, error: error instanceof Error ? error.message : "Upload failed permanently." };
     }
   }
-  return { success: false, error: "Unknown error during upload." };
+  return { success: false, error: "Network connection unavailable." };
 };
 
+export { checkNetworkConnectivity };
 export default uploadFileWithRetry;

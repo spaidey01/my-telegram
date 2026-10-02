@@ -35,6 +35,9 @@ export const schema = new Schema(
   { timestamps: true, strictPopulate: false }
 );
 
+schema.index({ roomID: 1, createdAt: -1 });
+schema.index({ roomID: 1, sender: 1, createdAt: -1 });
+
 const MessageSchema =
   mongoose.models.Message || mongoose.model("Message", schema);
 export default MessageSchema;
