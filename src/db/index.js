@@ -2,43 +2,35 @@ import { config } from "dotenv";
 config();
 import mongoose from "mongoose";
 
-let isConnected = false;
-let isReconnecting = false;
+let connectionPromise = null;
 
 const connectToDB = async () => {
-  if (isConnected) {
-    console.log("✅ Already connected to MongoDB");
-    return;
+  if (mongoose.connection.readyState === 1) return;
+
+  if (!connectionPromise) {
+    const uri = process.env.MONGODB_URI;
+    if (!uri) throw new Error("MONGODB_URI is not configured");
+
+    connectionPromise = mongoose.connect(uri)
+      .then(() => {
+        console.log("✅ Connected to MongoDB successfully");
+      })
+      .catch((err) => {
+        connectionPromise = null;
+        console.error("❌ Failed to connect to MongoDB:", err);
+        throw err;
+      });
   }
 
-  try {
-    console.log("🔗 Connecting to MongoDB...");
-    await mongoose.connect(process.env.MONGODB_URI);
-    isConnected = true;
-    isReconnecting = false;
-    console.log("✅ Connected to MongoDB successfully");
-  } catch (err) {
-    console.error("❌ Failed to connect to MongoDB:", err);
-
-    if (!isReconnecting) {
-      isReconnecting = true;
-      console.log("🔄 Retrying connection in 5 seconds...");
-      setTimeout(connectToDB, 5000);
-    }
-  }
+  await connectionPromise;
 };
 
 mongoose.connection.on("error", (err) => {
   console.error("❌ MongoDB connection error:", err);
-  isConnected = false;
 });
 
 mongoose.connection.on("disconnected", () => {
-  console.log("⚠️ MongoDB disconnected. Attempting to reconnect...");
-  if (!isReconnecting) {
-    isReconnecting = true;
-    connectToDB();
-  }
+  console.warn("⚠️ MongoDB disconnected");
 });
 
 export default connectToDB;
