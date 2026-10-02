@@ -4,8 +4,17 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { socketTokenGenerator } from "@/utils/TokenGenerator";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
+import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const ipLimit = rateLimit("socket-token:ip:" + getRequestIp(req), 30, 60_000);
+  if (!ipLimit.allowed) {
+    return NextResponse.json(
+      { message: "Too many requests. Try again later." },
+      { status: 429, headers: { "Retry-After": String(ipLimit.retryAfter) } },
+    );
+  }
+
   const token = (await cookies()).get("token")?.value;
   if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
