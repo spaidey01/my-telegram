@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { cookies } from "next/headers";
+import connectToDB from "@/db";
+import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 
 const s3 = () => new S3Client({
@@ -22,7 +24,12 @@ export async function GET(req: Request) {
     const token = (await cookies()).get("token")?.value;
     const decoded = token ? tokenDecoder(token) : false;
     const userId = decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? String(decoded.sub) : null;
-    if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const sessionVersion = decoded && typeof decoded === "object" && typeof decoded.sv === "number" ? decoded.sv : null;
+    if (!userId || sessionVersion === null) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    await connectToDB();
+    const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
+    if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const url = new URL(req.url);
     const key = url.searchParams.get("key") || "";
