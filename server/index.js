@@ -31,6 +31,8 @@ const io = new Server(socketPort, {
 
 console.log(`Socket server is running on port ${socketPort}`);
 
+export { io };
+
 const onlineUsers = new Map();
 const typingByRoom = new Map();
 const eventBuckets = new Map();
