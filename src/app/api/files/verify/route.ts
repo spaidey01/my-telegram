@@ -104,7 +104,6 @@ export async function POST(req: Request) {
     const object = await s3().send(new GetObjectCommand({
       Bucket: bucket,
       Key: key,
-      Range: `bytes=0-${MAX_SNIFF_BYTES - 1}`,
     }));
     if (!object.Body) return NextResponse.json({ message: "Invalid file" }, { status: 415 });
     const bytes = await object.Body.transformToByteArray();
