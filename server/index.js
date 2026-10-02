@@ -378,7 +378,7 @@ io.on("connection", (socket) => {
               roomID: { $in: rawRooms.map((room) => room._id) },
               hideFor: { $nin: [new mongoose.Types.ObjectId(userID)] },
             } },
-          { $sort: { createdAt: -1 } },
+          { $sort: { createdAt: -1, _id: -1 } },
           { $group: { _id: "$roomID", message: { $first: "$ROOT" } } },
         ])
       : [];
@@ -436,8 +436,8 @@ io.on("connection", (socket) => {
 
       if (!roomData) return socket.emit("error", { message: "Room not found" });
 
-      const messages = await MessageSchema.find({ roomID: roomData._id })
-        .sort({ createdAt: -1 })
+      const messages = await MessageSchema.find({ roomID: roomData._id, hideFor: { $nin: [userID] } })
+        .sort({ createdAt: -1, _id: -1 })
         .limit(50)
         .populate("sender", "name username avatar _id")
         .lean();
@@ -555,13 +555,21 @@ io.on("connection", (socket) => {
         if (duplicateLink) return socket.emit("updateRoomDataError", { message: "Link already exists" });
       }
 
+      const previousParticipants = new Set(room.participants.map((id) => id.toString()));
       const updatedRoom = await RoomSchema.findOneAndUpdate(
         { _id: roomID },
         { $set },
         { new: true, runValidators: true }
       );
       if (Array.isArray($set.participants)) {
-        for (const memberID of $set.participants) {
+        const nextParticipants = new Set($set.participants.map((id) => id.toString()));
+        for (const memberID of previousParticipants) {
+          if (nextParticipants.has(memberID)) continue;
+          for (const socketID of onlineUsers.get(memberID) || []) {
+            io.sockets.sockets.get(socketID)?.leave(roomID);
+          }
+        }
+        for (const memberID of nextParticipants) {
           for (const socketID of onlineUsers.get(memberID) || []) {
             io.sockets.sockets.get(socketID)?.join(roomID);
           }
