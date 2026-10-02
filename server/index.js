@@ -82,6 +82,10 @@ const isMessageInRoom = async (msgID, roomID) => {
   return MessageSchema.findOne({ _id: msgID, roomID });
 };
 
+const publicUserFields = "name username avatar _id";
+const findLatestVisibleMessage = (roomID) =>
+  MessageSchema.findOne({ roomID }).sort({ createdAt: -1, _id: -1 }).lean();
+
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -189,7 +193,10 @@ io.on("connection", (socket) => {
             .map((p) => (typeof p === "string" ? p : p?._id))
             .filter(isValidId)
         : [];
-      const participants = [...new Set([userID, ...requestedParticipants])].slice(0, 500);
+      const uniqueRequestedParticipants = [...new Set([userID, ...requestedParticipants])].slice(0, 500);
+      const existingUsers = await UserSchema.find({ _id: { $in: uniqueRequestedParticipants } }).select("_id").lean();
+      const existingUserIds = new Set(existingUsers.map((u) => u._id.toString()));
+      const participants = uniqueRequestedParticipants.filter((id) => existingUserIds.has(id));
 
       if (newRoomData.type === "private" && participants.length !== 2) return;
 
@@ -244,7 +251,10 @@ io.on("connection", (socket) => {
     try {
       if (!isValidId(roomID)) return;
       const room = await RoomSchema.findById(roomID);
-      if (!room || room.type === "private") return;
+      if (!room || room.type === "private" || !room.link) {
+        socket.emit("joinRoomError", { message: "This room is not publicly joinable" });
+        return;
+      }
       if (!room.participants.some((id) => id.toString() === userID)) {
         room.participants.push(userID);
         await room.save();
@@ -278,14 +288,18 @@ io.on("connection", (socket) => {
     if (forAll) {
       if (msg.sender.toString() !== userID && !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
       await MessageSchema.deleteOne({ _id: msgID });
-      await RoomSchema.updateOne({ _id: roomID }, { $pull: { messages: msgID } });
+      const replacementLast = await findLatestVisibleMessage(roomID);
+      await RoomSchema.updateOne(
+        { _id: roomID },
+        { $set: { lastMessageId: replacementLast?._id || null, lastMessageAt: replacementLast?.createdAt || null } },
+      );
       io.to(roomID).emit("deleteMsg", msgID);
     } else {
       await MessageSchema.updateOne({ _id: msgID }, { $addToSet: { hideFor: userID } });
       socket.emit("deleteMsg", msgID);
     }
 
-    const lastMsg = await MessageSchema.findOne({ roomID, hideFor: { $nin: [userID] } }).sort({ createdAt: -1 }).lean();
+    const lastMsg = await MessageSchema.findOne({ roomID, hideFor: { $nin: [userID] } }).sort({ createdAt: -1, _id: -1 }).lean();
     io.to(roomID).emit("updateLastMsgData", { msgData: lastMsg || null, roomID });
   });
 
@@ -506,12 +520,27 @@ io.on("connection", (socket) => {
   socket.on("updateRoomData", async (updatedFields) => {
     try {
       const roomID = updatedFields?.roomID;
+      if (!isValidId(roomID)) return socket.emit("updateRoomDataError", { message: "Invalid room" });
       const room = await RoomSchema.findById(roomID);
       if (!room || !isAdmin(room, userID)) return socket.emit("updateRoomDataError", { message: "Forbidden" });
 
       const $set = {};
       for (const key of ["name", "avatar", "biography", "link"]) {
         if (updatedFields && Object.prototype.hasOwnProperty.call(updatedFields, key)) $set[key] = updatedFields[key];
+      }
+
+      if (Array.isArray(updatedFields?.participants)) {
+        const requested = [...new Set(
+          updatedFields.participants
+            .map((id) => typeof id === "string" ? id : id?._id)
+            .filter(isValidId),
+        )];
+        const existingUsers = await UserSchema.find({ _id: { $in: requested } }).select("_id").lean();
+        const validIds = new Set(existingUsers.map((u) => u._id.toString()));
+        const participants = [...new Set([room.creator?.toString(), ...requested])]
+          .filter((id) => id && validIds.has(id) || id === room.creator?.toString())
+          .slice(0, 500);
+        $set.participants = participants;
       }
       if (typeof $set.name === "string") $set.name = $set.name.trim().slice(0, 100);
       if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 1000);
@@ -526,6 +555,13 @@ io.on("connection", (socket) => {
         { $set },
         { new: true, runValidators: true }
       );
+      if (Array.isArray($set.participants)) {
+        for (const memberID of $set.participants) {
+          for (const socketID of onlineUsers.get(memberID) || []) {
+            io.sockets.sockets.get(socketID)?.join(roomID);
+          }
+        }
+      }
       io.to(roomID).emit("updateRoomData", updatedRoom);
     } catch (error) {
       console.error("updateRoomData:", error);
@@ -545,7 +581,42 @@ io.on("connection", (socket) => {
     }));
   });
 
+  const sessionCheckTimer = setInterval(async () => {
+    try {
+      const active = await UserSchema.findOne({ _id: userID, sessionVersion: socket.handshake.auth?.token ? jwt.decode(socket.handshake.auth.token)?.sv : -1 }).select("_id").lean();
+      if (!active) socket.disconnect(true);
+    } catch {
+      socket.disconnect(true);
+    }
+  }, 60_000);
+  sessionCheckTimer.unref();
+
+  socket.on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
+    try {
+      if (!isValidId(roomID) || !isValidId(before)) return callback({ success: false, error: "Invalid cursor" });
+      const room = await isMember(roomID, userID);
+      if (!room) return callback({ success: false, error: "Forbidden" });
+      const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 50);
+      const cursor = await MessageSchema.findOne({ _id: before, roomID }).select("createdAt").lean();
+      if (!cursor) return callback({ success: false, error: "Invalid cursor" });
+      const messages = await MessageSchema.find({
+        roomID,
+        createdAt: { $lt: cursor.createdAt },
+        hideFor: { $nin: [userID] },
+      })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(safeLimit)
+        .populate("sender", publicUserFields)
+        .lean();
+      callback({ success: true, messages: messages.reverse(), hasMore: messages.length === safeLimit });
+    } catch (error) {
+      console.error("loadOlderMessages:", error);
+      callback({ success: false, error: "Unable to load messages" });
+    }
+  });
+
   socket.on("disconnect", () => {
+    clearInterval(sessionCheckTimer);
     const typingRooms = [...typingByRoom.entries()];
     for (const [roomID, members] of typingRooms) {
       if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
