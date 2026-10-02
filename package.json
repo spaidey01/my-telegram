@@ -9,7 +9,8 @@
     "start": "next start",
     "server": "node ./server",
     "lint": "eslint .",
-    "db:cleanup-legacy-room-messages": "node ./scripts/cleanup-legacy-room-messages.mjs"
+    "db:cleanup-legacy-room-messages": "node ./scripts/cleanup-legacy-room-messages.mjs",
+    "test:integration": "node --test tests/socket.integration.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
