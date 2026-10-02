@@ -106,13 +106,15 @@ io.on("connection", (socket) => {
       const newMsg = await MessageSchema.create(msgData);
 
       if (replayData?.targetID) {
-        const target = await isMessageInRoom(replayData.targetID, roomID);
+        const target = await MessageSchema.findOne({ _id: replayData.targetID, roomID })
+          .populate("sender", "username")
+          .exec();
         if (target) {
           await MessageSchema.updateOne({ _id: target._id }, { $push: { replays: newMsg._id } });
           newMsg.replayedTo = {
-            message: typeof replayData.replayedTo?.message === "string" ? replayData.replayedTo.message : "",
-            msgID: newMsg._id.toString(),
-            username: typeof replayData.replayedTo?.username === "string" ? replayData.replayedTo.username : "",
+            message: typeof target.message === "string" ? target.message : "",
+            msgID: target._id.toString(),
+            username: typeof target.sender?.username === "string" ? target.sender.username : "",
           };
           await newMsg.save();
         }
@@ -272,7 +274,9 @@ io.on("connection", (socket) => {
     if (!room) return;
     const playedBy = targetMessage.voiceData?.playedBy || [];
     const ids = [...new Set(playedBy.map((v) => v.split("_")[0]))];
-    const users = await UserSchema.find({ _id: { $in: ids } }).select("-password").lean();
+    const users = await UserSchema.find({ _id: { $in: ids } })
+      .select("name lastName username avatar biography type status _id")
+      .lean();
     socket.emit("getVoiceMessageListeners", users.map((data) => ({
       ...data,
       seenTime: playedBy.find((v) => v.startsWith(data._id.toString() + "_"))?.split("_").slice(1).join("_") || null,
@@ -375,7 +379,7 @@ io.on("connection", (socket) => {
     if (typeof $set.lastName === "string") $set.lastName = $set.lastName.slice(0, 20);
     if (typeof $set.username === "string") $set.username = $set.username.replace(/^@/, "").slice(0, 20).toLowerCase();
     if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 70);
-    await UserSchema.updateOne({ _id: userID }, { $set });
+    await UserSchema.updateOne({ _id: userID }, { $set }, { runValidators: true });
     socket.emit("updateUserData");
   });
 
@@ -391,9 +395,17 @@ io.on("connection", (socket) => {
       }
       if (typeof $set.name === "string") $set.name = $set.name.trim().slice(0, 100);
       if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 1000);
-      if (typeof $set.link === "string") $set.link = $set.link.slice(0, 500);
+      if (typeof $set.link === "string") {
+        $set.link = $set.link.trim().slice(0, 500);
+        const duplicateLink = await RoomSchema.findOne({ link: $set.link, _id: { $ne: roomID } }).select("_id").lean();
+        if (duplicateLink) return socket.emit("updateRoomDataError", { message: "Link already exists" });
+      }
 
-      const updatedRoom = await RoomSchema.findOneAndUpdate({ _id: roomID }, { $set }, { new: true });
+      const updatedRoom = await RoomSchema.findOneAndUpdate(
+        { _id: roomID },
+        { $set },
+        { new: true, runValidators: true }
+      );
       io.to(roomID).emit("updateRoomData", updatedRoom);
     } catch (error) {
       console.error("updateRoomData:", error);
@@ -404,7 +416,7 @@ io.on("connection", (socket) => {
   socket.on("getRoomMembers", async ({ roomID }) => {
     const room = await isMember(roomID, userID);
     if (!room) return socket.emit("error", { message: "Forbidden" });
-    const populated = await room.populate("participants");
+    const populated = await room.populate({ path: "participants", select: "name lastName username avatar biography type status _id" });
     socket.emit("getRoomMembers", populated.participants.map((u) => {
       const data = u.toObject();
       delete data.password;
