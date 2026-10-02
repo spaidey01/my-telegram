@@ -220,7 +220,7 @@ io.on("connection", (socket) => {
           message: message.message.slice(0, 10000),
           roomID: newRoom._id,
           seen: [],
-          voiceData: message.voiceData || null,
+          voiceData: sanitizeVoiceData(message.voiceData),
           status: "sent",
         });
         newRoom.lastMessageId = newMsg._id;
