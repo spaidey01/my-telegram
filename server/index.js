@@ -355,13 +355,26 @@ io.on("connection", (socket) => {
       : [];
     const usersById = new Map(privateUsers.map((user) => [user._id.toString(), user]));
 
-    const lastMessageIds = rawRooms.map((room) => room.lastMessageId).filter(Boolean);
-    const lastMessages = lastMessageIds.length
-      ? await MessageSchema.find({ _id: { $in: lastMessageIds } })
-          .populate("sender", "name username avatar _id")
-          .lean()
+    const latestMessages = rawRooms.length
+      ? await MessageSchema.aggregate([
+          { $match: { roomID: { $in: rawRooms.map((room) => room._id) } } },
+          { $sort: { createdAt: -1 } },
+          { $group: { _id: "$roomID", message: { $first: "$ROOT" } } },
+        ])
       : [];
-    const lastMessagesById = new Map(lastMessages.map((message) => [message._id.toString(), message]));
+
+    const latestMessageDocs = latestMessages.map((item) => item.message);
+    const senderIds = [...new Set(latestMessageDocs.map((message) => message.sender?.toString()).filter(Boolean))];
+    const senderUsers = senderIds.length
+      ? await UserSchema.find({ _id: { $in: senderIds } }).select("name username avatar _id").lean()
+      : [];
+    const senderById = new Map(senderUsers.map((user) => [user._id.toString(), user]));
+    const lastMessagesByRoom = new Map(
+      latestMessageDocs.map((message) => [
+        message.roomID.toString(),
+        { ...message, sender: senderById.get(message.sender?.toString()) || message.sender },
+      ]),
+    );
 
     const unreadCounts = await MessageSchema.aggregate([
       {
@@ -383,7 +396,7 @@ io.on("connection", (socket) => {
       messages: [],
       medias: [],
       locations: [],
-      lastMsgData: room.lastMessageId ? lastMessagesById.get(room.lastMessageId.toString()) || null : null,
+      lastMsgData: lastMessagesByRoom.get(room._id.toString()) || null,
       notSeenCount: unreadByRoom.get(room._id.toString()) || 0,
     }));
 
