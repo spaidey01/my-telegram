@@ -11,10 +11,14 @@ export const schema = new Schema(
     type: { type: String, enum: ["private"], default: "private" },
     status: { type: String, enum: ["online", "offline"], default: "offline" },
     password: { type: String, required: true, select: false },
+    sessionVersion: { type: Number, default: 0, min: 0 },
     roomMessageTrack: { type: [{ roomId: String, scrollPos: Number }], default: [] },
   },
   { timestamps: true }
 );
+
+schema.index({ username: 1 }, { unique: true });
+schema.index({ phone: 1 }, { unique: true });
 
 const UserSchema = mongoose.models.User || mongoose.model("User", schema);
 export default UserSchema;
