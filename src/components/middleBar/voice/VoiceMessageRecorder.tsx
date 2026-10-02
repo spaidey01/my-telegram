@@ -492,7 +492,17 @@ const VoiceMessageRecorder = ({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = [
+        "audio/ogg;codecs=opus",
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg",
+      ].find((type) => MediaRecorder.isTypeSupported(type));
+      if (!mimeType) {
+        stopStream(stream);
+        return toaster("error", "Your browser does not support a compatible voice format!");
+      }
+      const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
       isCancelledRef.current = false;
@@ -506,14 +516,15 @@ const VoiceMessageRecorder = ({
 
         if (audioChunksRef.current.length) {
           const audioBlob = new Blob(audioChunksRef.current, {
-            type: "audio/ogg",
+            type: recorder.mimeType || mimeType,
           });
+          const extension = (recorder.mimeType || mimeType).includes("webm") ? "webm" : "ogg";
           const url = URL.createObjectURL(audioBlob);
           const file = new File(
             [audioBlob],
-            `voice-message-${Date.now()}.ogg`,
+            `voice-message-${Date.now()}.${extension}`,
             {
-              type: "audio/ogg",
+              type: recorder.mimeType || mimeType,
             }
           );
 
