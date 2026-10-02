@@ -371,6 +371,8 @@ io.on("connection", (socket) => {
 
     const rawRooms = await RoomSchema.find({ participants: userID })
       .select("_id name avatar type participants admins creator link biography lastMessageId lastMessageAt createdAt updatedAt")
+      .sort({ lastMessageAt: -1, updatedAt: -1, _id: -1 })
+      .limit(500)
       .lean();
 
     const participantIds = [...new Set(
