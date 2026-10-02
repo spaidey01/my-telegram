@@ -13,10 +13,22 @@ export async function POST(req: Request) {
     if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     const { fileUrl } = await req.json();
     if (typeof fileUrl !== "string") return NextResponse.json({ message: "Invalid file" }, { status: 400 });
-    const path = decodeURIComponent(new URL(fileUrl).pathname.replace(/^\/+/, ""));
-    const parts = path.split("/");
     const bucket = process.env.S3_BUCKET_NAME;
-    if (!bucket || parts.length !== 3 || !["images","voices"].includes(parts[0]) || parts[1] !== userId || !parts[2]) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    const url = new URL(fileUrl);
+    let path = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+    if (!bucket) return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
+
+    // Path-style S3 URLs include the bucket in the URL path; virtual-hosted
+    // URLs do not. Accept both, but never allow a key outside the caller's
+    // own images/voices prefix.
+    if (path === bucket) path = "";
+    else if (path.startsWith(bucket + "/")) path = path.slice(bucket.length + 1);
+
+    const parts = path.split("/");
+    if (parts.length !== 3 || !["images", "voices"].includes(parts[0]) || parts[1] !== userId || !parts[2]) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    }
+
     await s3().deleteObject({ Bucket: bucket, Key: path }).promise();
     return NextResponse.json({ success: true });
   } catch (error) {
