@@ -39,7 +39,7 @@ export const POST = async (req: Request) => {
 
       const room = await RoomSchema.findOne({
         link: { $regex: new RegExp("^" + escapeRegExp(payload) + "$", "i") },
-      }).select("_id name avatar type link biography participants creator admins").lean();
+      }).select("_id name avatar type link biography").lean();
 
       if (room) return Response.json([room], { status: 200 });
 
