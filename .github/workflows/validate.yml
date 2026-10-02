@@ -1,4 +1,5 @@
 name: Validate
+# lockfile synchronized
 
 on:
   pull_request:
