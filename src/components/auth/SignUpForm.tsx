@@ -1,4 +1,3 @@
-import User from "@/models/user";
 import useUserStore from "@/stores/userStore";
 import { toaster } from "@/utils";
 import axios from "axios";
