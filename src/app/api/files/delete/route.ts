@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { S3 } from "aws-sdk";
+import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
 
-const s3 = () => new S3({ accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY, endpoint: process.env.S3_ENDPOINT, s3ForcePathStyle: true, signatureVersion: "v4" });
+const s3 = () => new S3Client({ region: process.env.S3_REGION || "us-east-1", endpoint: process.env.S3_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! } });
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    await s3().deleteObject({ Bucket: bucket, Key: path }).promise();
+    await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: path }));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("delete file:", error);
