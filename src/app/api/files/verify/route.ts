@@ -5,7 +5,7 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_SNIFF_BYTES = 512;
-const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac"]);
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac", "audio/webm"]);
 
 const s3 = () => new S3Client({
   region: process.env.S3_REGION || "us-east-1",
@@ -24,7 +24,8 @@ const isMagicValid = (bytes: Uint8Array, contentType: string) => {
   if (contentType === "audio/wav") return b(0) === 0x52 && b(1) === 0x49 && b(2) === 0x46 && b(3) === 0x46 && b(8) === 0x57 && b(9) === 0x41 && b(10) === 0x56 && b(11) === 0x45;
   if (contentType === "audio/flac") return b(0) === 0x66 && b(1) === 0x4c && b(2) === 0x41 && b(3) === 0x43;
   if (contentType === "audio/mpeg") return (b(0) === 0xff && (b(1) & 0xe0) === 0xe0) || (b(0) === 0x49 && b(1) === 0x44 && b(2) === 0x33);
-  return true;
+  if (contentType === "audio/webm") return b(0) === 0x1a && b(1) === 0x45 && b(2) === 0xdf && b(3) === 0xa3;
+  return false;
 };
 
 export async function POST(req: Request) {
