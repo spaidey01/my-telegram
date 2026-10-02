@@ -13,7 +13,6 @@ const schema = new Schema(
     participants: [{ type: Schema.ObjectId, ref: "User", required: true }],
     creator: { type: Schema.ObjectId, ref: "User" },
     medias: [{ type: Schema.ObjectId, ref: "Media", required: true }],
-    messages: [{ type: Schema.ObjectId, ref: "Message", required: true }],
     locations: [{ type: Schema.ObjectId, ref: "Location", required: true }],
     lastMessageId: { type: Schema.ObjectId, ref: "Message", default: null },
     lastMessageAt: { type: Date, default: null },
