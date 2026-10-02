@@ -310,7 +310,7 @@ io.on("connection", (socket) => {
     if (!room || !targetMessage?.voiceData) return;
     const playedBy = targetMessage.voiceData.playedBy || [];
     if (!playedBy.some((v) => v === userID || v.startsWith(userID + "_"))) {
-      await MessageSchema.updateOne({ _id: voiceID }, { $push: { "voiceData.playedBy": userID + "_" + new Date().toISOString() } });
+      await MessageSchema.updateOne({ _id: voiceID }, { $addToSet: { "voiceData.playedBy": userID } });
     }
     io.to(roomID).emit("listenToVoice", { userID, voiceID, roomID });
   });
