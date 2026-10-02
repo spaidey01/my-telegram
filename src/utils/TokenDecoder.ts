@@ -4,7 +4,9 @@ const tokenDecoder = (token: string) => {
   try {
     const secret = process.env.secretKey;
     if (!secret) return false;
-    return verify(token, secret as Secret);
+    const decoded = verify(token, secret as Secret);
+    if (typeof decoded === "object" && decoded?.scope === "socket") return false;
+    return decoded;
   } catch {
     return false;
   }
