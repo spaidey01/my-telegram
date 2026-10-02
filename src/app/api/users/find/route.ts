@@ -52,6 +52,8 @@ export const POST = async (req: Request) => {
 
     const rooms = await RoomSchema.find({ participants: auth.id })
       .select("_id name avatar type participants admins creator link biography")
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(500)
       .lean();
 
     const roomIds = rooms.map((room) => room._id);
