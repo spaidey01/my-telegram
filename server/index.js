@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import MediaSchema from "../src/schemas/mediaSchema.js";
@@ -357,7 +358,7 @@ io.on("connection", (socket) => {
       {
         $match: {
           roomID: { $in: rawRooms.map((room) => room._id) },
-          sender: { $ne: new (await import("mongoose")).default.Types.ObjectId(userID) },
+          sender: { $ne: new mongoose.Types.ObjectId(userID) },
           seen: { $nin: [new (await import("mongoose")).default.Types.ObjectId(userID)] },
         },
       },
