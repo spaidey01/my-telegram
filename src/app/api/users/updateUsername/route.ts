@@ -1,42 +1,34 @@
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
+import { rateLimit, getRequestIp } from "@/utils/rateLimit";
 
 export const POST = async (req: Request) => {
+  const limit = rateLimit("username-check:" + getRequestIp(req), 30, 60_000);
+  if (!limit.allowed) {
+    return Response.json(
+      { isValid: false, message: "Too many requests." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } },
+    );
+  }
+
   try {
     await connectToDB();
-    const { query } = await req.json();
+    const body = await req.json();
+    const query = typeof body?.query === "string" ? body.query : "";
+    const trimmedQuery = query.replace(/^@/, "").trim().toLowerCase();
 
-    const trimmedQuery = query.toLowerCase().trim();
+    if (trimmedQuery.length < 3 || trimmedQuery.length > 20 || !/^[a-zA-Z0-9_]{3,20}$/.test(trimmedQuery)) {
+      return Response.json({ isValid: false, message: "Username format is invalid." }, { status: 403 });
+    }
 
-    const isQueryValidAndAvailable =
-      trimmedQuery.length >= 5 && trimmedQuery.length <= 20;
-    if (!isQueryValidAndAvailable)
-      return Response.json({ isValid: false }, { status: 403 });
+    const isUsernameExist = await UserSchema.findOne({ username: trimmedQuery }).select("_id").lean();
 
-    const usernamePattern = /^(?!.*[_.-]{2,})[a-zA-Z0-9_]{5,20}$/;
-    const isPatternValid = usernamePattern.test(trimmedQuery);
-    if (!isPatternValid)
-      return Response.json(
-        { isValid: false, message: "Username format is invalid." },
-        { status: 403 }
-      );
-
-    const isUsernameExist = await UserSchema.findOne({
-      username: { $regex: new RegExp(`^${query}$`, "i") },
-    });
-
-    return Response.json(
-      {
-        isValid: !isUsernameExist,
-        message: isUsernameExist ? "This username is already taken." : null,
-      },
-      { status: isUsernameExist ? 403 : 200 }
-    );
+    return Response.json({
+      isValid: !isUsernameExist,
+      message: isUsernameExist ? "This username is already taken." : null,
+    }, { status: isUsernameExist ? 403 : 200 });
   } catch (err) {
-    console.log(err);
-    return Response.json(
-      { message: "Unknown error, try later." },
-      { status: 500 }
-    );
+    console.error("username-check:", err);
+    return Response.json({ message: "Unknown error, try later." }, { status: 500 });
   }
 };
