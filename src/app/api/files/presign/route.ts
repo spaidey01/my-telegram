@@ -63,6 +63,7 @@ export async function POST(req: Request) {
     const client = s3();
     const post = await createPresignedPost(client, {
       Bucket: bucket,
+      Key: key,
       Fields: { "Content-Type": contentType, key },
       Conditions: [
         ["content-length-range", 1, MAX_FILE_SIZE],
