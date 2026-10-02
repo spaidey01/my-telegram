@@ -3,6 +3,8 @@ import { S3 } from "aws-sdk";
 import { randomUUID } from "crypto";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
+import connectToDB from "@/db";
+import UserSchema from "@/schemas/userSchema";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -10,7 +12,7 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024;
 const userIdFromCookie = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? String(decoded.sub) : null;
+  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" ? { id: String(decoded.sub), sv: decoded.sv } : null;
 };
 
 const s3 = () =>
@@ -24,9 +26,14 @@ const s3 = () =>
 
 export async function POST(req: Request) {
   try {
-    const userId = await userIdFromCookie();
-    if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const auth = await userIdFromCookie();
+    if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
+    await connectToDB();
+    const sessionUser = await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean();
+    if (!sessionUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const userId = auth.id;
     const limit = rateLimit("presign:" + userId, 20, 60_000);
     if (!limit.allowed) {
       return NextResponse.json(
