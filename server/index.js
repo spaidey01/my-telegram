@@ -372,7 +372,10 @@ io.on("connection", (socket) => {
 
     const latestMessages = rawRooms.length
       ? await MessageSchema.aggregate([
-          { $match: { roomID: { $in: rawRooms.map((room) => room._id) } } },
+          { $match: {
+              roomID: { $in: rawRooms.map((room) => room._id) },
+              hideFor: { $nin: [new mongoose.Types.ObjectId(userID)] },
+            } },
           { $sort: { createdAt: -1 } },
           { $group: { _id: "$roomID", message: { $first: "$ROOT" } } },
         ])
@@ -601,8 +604,11 @@ io.on("connection", (socket) => {
       if (!cursor) return callback({ success: false, error: "Invalid cursor" });
       const messages = await MessageSchema.find({
         roomID,
-        createdAt: { $lt: cursor.createdAt },
         hideFor: { $nin: [userID] },
+        $or: [
+          { createdAt: { $lt: cursor.createdAt } },
+          { createdAt: cursor.createdAt, _id: { $lt: cursor._id } },
+        ],
       })
         .sort({ createdAt: -1, _id: -1 })
         .limit(safeLimit)
