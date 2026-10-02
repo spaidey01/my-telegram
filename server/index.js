@@ -269,6 +269,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("deleteRoom", async (roomID) => {
+    if (!allowEvent(userID, "deleteRoom", 10, 60_000)) return;
     if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
     const room = await RoomSchema.findById(roomID);
     if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
@@ -283,6 +284,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("deleteMsg", async ({ forAll, msgID, roomID }) => {
+    if (!allowEvent(userID, "deleteMsg", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return socket.emit("error", { message: "Forbidden" });
@@ -310,6 +312,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("editMessage", async ({ msgID, editedMsg, roomID }) => {
+    if (!allowEvent(userID, "editMessage", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg || msg.sender.toString() !== userID || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
@@ -322,6 +325,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("seenMsg", async ({ msgID, roomID, readTime }) => {
+    if (!allowEvent(userID, "seenMsg", 120, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return;
@@ -331,6 +335,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("listenToVoice", async ({ voiceID, roomID }) => {
+    if (!allowEvent(userID, "listenToVoice", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const targetMessage = await isMessageInRoom(voiceID, roomID);
     if (!room || !targetMessage?.voiceData) return;
@@ -506,10 +511,16 @@ io.on("connection", (socket) => {
   });
 
   socket.on("updateUserData", async (updatedFields) => {
+    if (!allowEvent(userID, "updateUserData", 20, 60_000)) return;
     const allowed = ["name", "lastName", "username", "avatar", "biography"];
     const $set = {};
     for (const key of allowed) {
       if (updatedFields && Object.prototype.hasOwnProperty.call(updatedFields, key)) $set[key] = updatedFields[key];
+    }
+    for (const key of ["name", "lastName", "username", "avatar", "biography"]) {
+      if (Object.prototype.hasOwnProperty.call($set, key) && typeof $set[key] !== "string") {
+        return socket.emit("updateUserDataError", { message: "Invalid profile data" });
+      }
     }
     if (typeof $set.name === "string") $set.name = $set.name.slice(0, 20);
     if (typeof $set.lastName === "string") $set.lastName = $set.lastName.slice(0, 20);
@@ -527,6 +538,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("updateRoomData", async (updatedFields) => {
+    if (!allowEvent(userID, "updateRoomData", 30, 60_000)) return;
     try {
       const roomID = updatedFields?.roomID;
       if (!isValidId(roomID)) return socket.emit("updateRoomDataError", { message: "Invalid room" });
