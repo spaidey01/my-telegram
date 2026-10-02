@@ -32,7 +32,14 @@ export async function POST(req: Request) {
     const token = (await cookies()).get("token")?.value;
     const decoded = token ? tokenDecoder(token) : false;
     const userId = decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? String(decoded.sub) : null;
-    if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const sessionVersion = decoded && typeof decoded === "object" && typeof decoded.sv === "number" ? decoded.sv : null;
+    if (!userId || sessionVersion === null) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const { default: UserSchema } = await import("@/schemas/userSchema");
+    const { default: connectToDB } = await import("@/db");
+    await connectToDB();
+    const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
+    if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const limit = rateLimit("file-verify:" + userId, 30, 60_000);
     if (!limit.allowed) return NextResponse.json({ message: "Too many requests." }, { status: 429 });
