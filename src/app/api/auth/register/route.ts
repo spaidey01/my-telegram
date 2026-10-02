@@ -35,9 +35,10 @@ export const POST = async (req: Request) => {
     const safeUser = userData.toObject();
     delete safeUser.password;
     return Response.json(safeUser, { status: 201 });
-  } catch (error: any) {
-    if (error?.code === 11000) {
-      const field = Object.keys(error.keyPattern || {})[0];
+  } catch (error) {
+    const mongoError = error as { code?: number; keyPattern?: Record<string, unknown> };
+    if (mongoError.code === 11000) {
+      const field = Object.keys(mongoError.keyPattern || {})[0];
       return Response.json({ message: `Already there is an account using this ${field === "phone" ? "phone" : "username"}` }, { status: 409 });
     }
     console.error(error);
