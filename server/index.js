@@ -31,6 +31,36 @@ console.log("Socket server is running on port 3001");
 
 const onlineUsers = new Map();
 const typingByRoom = new Map();
+const eventBuckets = new Map();
+
+const allowEvent = (userID, event, limit, windowMs) => {
+  const key = userID + ":" + event;
+  const now = Date.now();
+  const bucket = eventBuckets.get(key);
+  if (!bucket || bucket.resetAt <= now) {
+    eventBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  bucket.count += 1;
+  return bucket.count <= limit;
+};
+
+const cleanupEventBuckets = () => {
+  const now = Date.now();
+  for (const [key, bucket] of eventBuckets) {
+    if (bucket.resetAt <= now) eventBuckets.delete(key);
+  }
+};
+setInterval(cleanupEventBuckets, 60_000).unref();
+
+const sanitizeVoiceData = (voiceData) => {
+  if (voiceData == null) return null;
+  if (typeof voiceData !== "object") return null;
+  const src = typeof voiceData.src === "string" ? voiceData.src.trim() : "";
+  const duration = Number(voiceData.duration);
+  if (!src || src.length > 2048 || !Number.isFinite(duration) || duration < 0 || duration > 3600) return null;
+  return { src, duration, playedBy: [] };
+};
 
 await connectToDB();
 
@@ -50,12 +80,16 @@ const isMessageInRoom = async (msgID, roomID) => {
   if (!isValidId(msgID) || !isValidId(roomID)) return null;
   return MessageSchema.findOne({ _id: msgID, roomID });
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Unauthorized"));
     const decoded = jwt.verify(token, secret);
-    if (!decoded || decoded.scope !== "socket" || !decoded.sub) return next(new Error("Unauthorized"));
+    if (!decoded || typeof decoded !== "object" || decoded.scope !== "socket" || !decoded.sub || typeof decoded.sv !== "number") {
+      return next(new Error("Unauthorized"));
+    }
+    const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean();
+    if (!user) return next(new Error("Unauthorized"));
     socket.userId = decoded.sub.toString();
     socket.userTokenExp = decoded.exp;
     return next();
@@ -74,22 +108,25 @@ io.on("connection", (socket) => {
   };
   broadcastOnlineUsers();
 
+  const tokenExpiryMs = socket.userTokenExp ? socket.userTokenExp * 1000 - Date.now() : 0;
+  if (tokenExpiryMs > 0) {
+    setTimeout(() => socket.disconnect(true), tokenExpiryMs);
+  }
+
   socket.on("newMessage", async ({ roomID, message, replayData, voiceData = null, tempId }, callback = () => {}) => {
+    if (!allowEvent(userID, "newMessage", 30, 60_000)) return callback({ success: false, error: "Rate limit exceeded" });
     try {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
       if (room.type === "channel" && !isAdmin(room, userID)) return callback({ success: false, error: "Forbidden" });
       if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
 
-      if (tempId) {
+      let scopedTempId;
+      if (tempId !== undefined && tempId !== null) {
         if (typeof tempId !== "string" || tempId.length > 200) return callback({ success: false, error: "Invalid tempId" });
-        const existing = await MessageSchema.findOne({ tempId }).lean();
-        if (existing) {
-          if (existing.sender.toString() !== userID || existing.roomID.toString() !== roomID) {
-            return callback({ success: false, error: "Invalid tempId" });
-          }
-          return callback({ success: true, _id: existing._id });
-        }
+        scopedTempId = userID + ":" + tempId;
+        const existing = await MessageSchema.findOne({ tempId: scopedTempId }).lean();
+        if (existing) return callback({ success: true, _id: existing._id });
       }
 
       const msgData = {
@@ -97,9 +134,9 @@ io.on("connection", (socket) => {
         message,
         roomID,
         seen: [],
-        voiceData,
+        voiceData: sanitizeVoiceData(voiceData),
         createdAt: Date.now(),
-        tempId,
+        tempId: scopedTempId,
         status: "sent",
       };
 
@@ -120,7 +157,10 @@ io.on("connection", (socket) => {
         }
       }
 
-      await RoomSchema.updateOne({ _id: roomID }, { $push: { messages: newMsg._id } });
+      await RoomSchema.updateOne(
+        { _id: roomID },
+        { $set: { lastMessageId: newMsg._id, lastMessageAt: newMsg.createdAt } },
+      );
 
       const populatedMsg = await MessageSchema.findById(newMsg._id)
         .populate("sender", "name username avatar _id")
@@ -138,6 +178,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("createRoom", async ({ newRoomData, message = null }) => {
+    if (!allowEvent(userID, "createRoom", 10, 60_000)) return;
     try {
       if (!newRoomData || !["private", "group", "channel"].includes(newRoomData.type)) return;
       const requestedParticipants = Array.isArray(newRoomData.participants)
@@ -177,7 +218,8 @@ io.on("connection", (socket) => {
           voiceData: message.voiceData || null,
           status: "sent",
         });
-        newRoom.messages = [newMsg._id];
+        newRoom.lastMessageId = newMsg._id;
+        newRoom.lastMessageAt = newMsg.createdAt;
         await newRoom.save();
       }
 
@@ -191,6 +233,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joinRoom", async ({ roomID }) => {
+    if (!allowEvent(userID, "joinRoom", 20, 60_000)) return;
     try {
       if (!isValidId(roomID)) return;
       const room = await RoomSchema.findById(roomID);
@@ -268,6 +311,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getVoiceMessageListeners", async (msgID) => {
+    if (!allowEvent(userID, "getVoiceMessageListeners", 30, 60_000) || !isValidId(msgID)) return;
     const targetMessage = await MessageSchema.findById(msgID);
     if (!targetMessage) return;
     const room = await isMember(targetMessage.roomID, userID);
@@ -284,6 +328,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getRooms", async () => {
+    if (!allowEvent(userID, "getRooms", 20, 60_000)) return;
     const rawRooms = await RoomSchema.find({ participants: userID }).lean();
     const userRooms = await Promise.all(rawRooms.map(async (room) => {
       if (room.type !== "private") return room;
@@ -293,8 +338,9 @@ io.on("connection", (socket) => {
     for (const room of userRooms) socket.join(room._id.toString());
 
     const rooms = await Promise.all(userRooms.map(async (room) => {
-      const lastMsgData = room.messages?.length
-        ? await MessageSchema.findById(room.messages.at(-1)).populate("sender", "name username avatar _id").lean()
+      const lastMessageId = room.lastMessageId || room.messages?.at(-1);
+      const lastMsgData = lastMessageId
+        ? await MessageSchema.findById(lastMessageId).populate("sender", "name username avatar _id").lean()
         : null;
       const notSeenCount = await MessageSchema.countDocuments({
         roomID: room._id, sender: { $ne: userID }, seen: { $nin: [userID] },
@@ -306,19 +352,29 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joining", async (query) => {
+    if (!allowEvent(userID, "joining", 20, 60_000)) return;
     try {
-      if (!query) return;
-      const roomData = await RoomSchema.findOne({
-        $and: [{ $or: [{ _id: query }, { name: query }] }, { participants: userID }],
-      })
-        .populate("messages", "", MessageSchema)
+      if (!isValidId(query)) return;
+      const roomData = await RoomSchema.findOne({ _id: query, participants: userID })
         .populate("medias", "", MediaSchema)
         .populate("locations", "", LocationSchema)
-        .populate({ path: "messages", populate: { path: "sender", model: UserSchema, select: "name username avatar _id" } });
+        .lean();
 
       if (!roomData) return socket.emit("error", { message: "Room not found" });
+
+      const messages = await MessageSchema.find({ roomID: roomData._id })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .populate("sender", "name username avatar _id")
+        .lean();
+
+      roomData.messages = messages.reverse();
       socket.join(roomData._id.toString());
-      if (roomData.type === "private") await roomData.populate("participants");
+      if (roomData.type === "private") {
+        roomData.participants = await UserSchema.find({ _id: { $in: roomData.participants } })
+          .select("name lastName username avatar biography type status _id")
+          .lean();
+      }
       socket.emit("joining", roomData);
     } catch (error) {
       console.error("joining:", error);
@@ -350,6 +406,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("typing", async (data) => {
+    if (!allowEvent(userID, "typing", 10, 10_000)) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
     const current = typingByRoom.get(data.roomID) || new Set();
@@ -360,6 +417,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("stop-typing", async (data) => {
+    if (!allowEvent(userID, "stop-typing", 20, 10_000)) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
     const current = typingByRoom.get(data.roomID) || new Set();
@@ -377,7 +435,14 @@ io.on("connection", (socket) => {
     }
     if (typeof $set.name === "string") $set.name = $set.name.slice(0, 20);
     if (typeof $set.lastName === "string") $set.lastName = $set.lastName.slice(0, 20);
-    if (typeof $set.username === "string") $set.username = $set.username.replace(/^@/, "").slice(0, 20).toLowerCase();
+    if (typeof $set.username === "string") {
+      $set.username = $set.username.replace(/^@/, "").trim().slice(0, 20).toLowerCase();
+      if (!/^[a-zA-Z0-9_]{3,20}$/.test($set.username)) {
+        return socket.emit("updateUserDataError", { message: "Invalid username" });
+      }
+      const duplicate = await UserSchema.findOne({ username: $set.username, _id: { $ne: userID } }).select("_id").lean();
+      if (duplicate) return socket.emit("updateUserDataError", { message: "Username already exists" });
+    }
     if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 70);
     await UserSchema.updateOne({ _id: userID }, { $set }, { runValidators: true });
     socket.emit("updateUserData");
@@ -414,6 +479,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getRoomMembers", async ({ roomID }) => {
+    if (!allowEvent(userID, "getRoomMembers", 20, 60_000)) return;
     const room = await isMember(roomID, userID);
     if (!room) return socket.emit("error", { message: "Forbidden" });
     const populated = await room.populate({ path: "participants", select: "name lastName username avatar biography type status _id" });
@@ -425,6 +491,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    const typingRooms = [...typingByRoom.entries()];
+    for (const [roomID, members] of typingRooms) {
+      if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
+    }
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
     if (!sockets?.size) onlineUsers.delete(userID);
