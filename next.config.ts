@@ -8,10 +8,6 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**.vercel.app",
-      },
-      {
-        protocol: "https",
         hostname: "storage.c2.liara.space",
         port: "",
         pathname: "/tlgrm/**",
@@ -19,17 +15,6 @@ const nextConfig: NextConfig = {
     ],
   },
   productionBrowserSourceMaps: false,
-  // Webpack optimizations
-  // webpack: (config, { isServer }) => {
-  //   if (!isServer) {
-  //     config.resolve.fallback = {
-  //       ...config.resolve.fallback,
-  //       fs: false,
-  //       net: false,
-  //       tls: false,
-  //     };
-  //   }
-  //   return config;
-  // },
 };
+
 export default nextConfig;
