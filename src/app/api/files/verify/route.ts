@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import net from "node:net";
 import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_SNIFF_BYTES = 512;
+const MAX_SCAN_BYTES = 25 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac", "audio/webm"]);
 
 const s3 = () => new S3Client({
@@ -12,6 +14,46 @@ const s3 = () => new S3Client({
   endpoint: process.env.S3_ENDPOINT,
   forcePathStyle: true,
   credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! },
+});
+
+const scanWithClamAV = (bytes: Uint8Array) => new Promise<boolean>((resolve, reject) => {
+  const host = process.env.CLAMAV_HOST;
+  const port = Number(process.env.CLAMAV_PORT || 3310);
+  if (!host) return resolve(true);
+
+  const socket = net.createConnection({ host, port });
+  let response = "";
+  let settled = false;
+  const finish = (fn: (value: boolean) => void, value: boolean) => {
+    if (settled) return;
+    settled = true;
+    socket.destroy();
+    fn(value);
+  };
+
+  socket.setTimeout(15_000);
+  socket.on("connect", () => {
+    socket.write("zINSTREAM\\0");
+    const chunkSize = 64 * 1024;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      const chunk = Buffer.from(bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+      const header = Buffer.alloc(4);
+      header.writeUInt32BE(chunk.length, 0);
+      socket.write(header);
+      socket.write(chunk);
+    }
+    socket.write(Buffer.alloc(4));
+  });
+  socket.on("data", (chunk) => {
+    response += chunk.toString("utf8");
+    if (response.includes("FOUND")) finish(resolve, false);
+    else if (response.includes("OK")) finish(resolve, true);
+  });
+  socket.on("timeout", () => finish(reject, new Error("ClamAV timeout")));
+  socket.on("error", (error) => finish(reject, error));
+  socket.on("close", () => {
+    if (!settled) finish(reject, new Error("ClamAV closed connection"));
+  });
 });
 
 const isMagicValid = (bytes: Uint8Array, contentType: string) => {
@@ -66,9 +108,24 @@ export async function POST(req: Request) {
     }));
     if (!object.Body) return NextResponse.json({ message: "Invalid file" }, { status: 415 });
     const bytes = await object.Body.transformToByteArray();
-    if (!isMagicValid(bytes, contentType)) {
+    if (bytes.length > MAX_SCAN_BYTES || !isMagicValid(bytes, contentType)) {
       await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
-      return NextResponse.json({ message: "File content does not match its type" }, { status: 415 });
+      return NextResponse.json({ message: "File content is invalid" }, { status: 415 });
+    }
+
+    const scanRequired = process.env.CLAMAV_REQUIRED === "true";
+    try {
+      const clean = await scanWithClamAV(bytes);
+      if (!clean) {
+        await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+        return NextResponse.json({ message: "File rejected by malware scanner" }, { status: 422 });
+      }
+    } catch (scanError) {
+      console.error("ClamAV scan:", scanError);
+      if (scanRequired) {
+        await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+        return NextResponse.json({ message: "Malware scanner unavailable" }, { status: 503 });
+      }
     }
 
     const accessUrl = `/api/files/access?key=${encodeURIComponent(key)}`;
