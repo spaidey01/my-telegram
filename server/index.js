@@ -97,6 +97,7 @@ io.use(async (socket, next) => {
     const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean();
     if (!user) return next(new Error("Unauthorized"));
     socket.userId = decoded.sub.toString();
+    socket.sessionVersion = decoded.sv;
     socket.userTokenExp = decoded.exp;
     return next();
   } catch {
@@ -586,7 +587,7 @@ io.on("connection", (socket) => {
 
   const sessionCheckTimer = setInterval(async () => {
     try {
-      const active = await UserSchema.findOne({ _id: userID, sessionVersion: socket.handshake.auth?.token ? jwt.decode(socket.handshake.auth.token)?.sv : -1 }).select("_id").lean();
+      const active = await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean();
       if (!active) socket.disconnect(true);
     } catch {
       socket.disconnect(true);
