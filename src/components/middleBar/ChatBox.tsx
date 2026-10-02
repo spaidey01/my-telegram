@@ -72,7 +72,7 @@ const ChatBox = ({
       ringAudioRef.current.currentTime = 0;
       ringAudioRef.current.play();
     }
-  }, [hasMoreMessages, messages, roomID, rooms, setter]);
+  }, []);
 
   useEffect(() => {
     loadingOlderRef.current = false;
