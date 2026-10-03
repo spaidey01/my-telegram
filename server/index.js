@@ -1,4 +1,6 @@
 import { Server } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import RoomSchema from "../src/schemas/roomSchema.js";
@@ -15,7 +17,22 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP
   .split(",").map((v) => v.trim()).filter(Boolean);
 
 const socketPort = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
-const io = new Server(socketPort, {
+const redisUrl = process.env.REDIS_URL;
+let redisAdapter;
+
+if (redisUrl) {
+  const pubClient = createClient({ url: redisUrl });
+  const subClient = pubClient.duplicate();
+  pubClient.on("error", (error) => console.error("Redis pub client error:", error));
+  subClient.on("error", (error) => console.error("Redis sub client error:", error));
+  await Promise.all([pubClient.connect(), subClient.connect()]);
+  redisAdapter = createAdapter(pubClient, subClient);
+} else if (process.env.NODE_ENV === "production") {
+  throw new Error("REDIS_URL is required in production for distributed Socket.IO");
+}
+
+const io = new Server({
+  ...(redisAdapter ? { adapter: redisAdapter } : {}),
   cors: {
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
@@ -23,12 +40,15 @@ const io = new Server(socketPort, {
     },
   },
   pingTimeout: 30000,
-  connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000,
-    skipMiddlewares: false,
-  },
+  ...(redisAdapter ? {} : {
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
+      skipMiddlewares: false,
+    },
+  }),
 });
 
+io.listen(socketPort);
 console.log(`Socket server is running on port ${socketPort}`);
 
 export { io };
@@ -38,7 +58,27 @@ const typingByRoom = new Map();
 const eventBuckets = new Map();
 const MAX_EVENT_BUCKETS = 50_000;
 
-const allowEvent = (userID, event, limit, windowMs) => {
+const allowEvent = async (userID, event, limit, windowMs) => {
+  if (redisUrl) {
+    try {
+      const client = await createClient({ url: redisUrl }).connect();
+      const result = await client.eval(`
+        local count = redis.call("INCR", KEYS[1])
+        if count == 1 then redis.call("PEXPIRE", KEYS[1], ARGV[2]) end
+        return count
+      `, {
+        keys: [`socket-rate-limit:${userID}:${event}`],
+        arguments: [String(limit), String(windowMs)],
+      });
+      client.destroy();
+      return Number(result) <= limit;
+    } catch (error) {
+      console.error("Redis socket rate-limit failure:", error);
+      return false;
+    }
+  }
+
+  if (process.env.NODE_ENV === "production") return false;
   const key = userID + ":" + event;
   const now = Date.now();
   const bucket = eventBuckets.get(key);
@@ -128,7 +168,7 @@ io.on("connection", (socket) => {
   }
 
   socket.on("newMessage", async ({ roomID, message, replayData, voiceData = null, tempId }, callback = () => {}) => {
-    if (!allowEvent(userID, "newMessage", 30, 60_000)) return callback({ success: false, error: "Rate limit exceeded" });
+    if (!(await allowEvent(userID, "newMessage", 30, 60_000)) return callback({ success: false, error: "Rate limit exceeded" });
     try {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
@@ -192,7 +232,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("createRoom", async ({ newRoomData, message = null }) => {
-    if (!allowEvent(userID, "createRoom", 10, 60_000)) return;
+    if (!(await allowEvent(userID, "createRoom", 10, 60_000)) return;
     try {
       if (!newRoomData || !["private", "group", "channel"].includes(newRoomData.type)) return;
       const requestedParticipants = Array.isArray(newRoomData.participants)
@@ -254,7 +294,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joinRoom", async ({ roomID, link }) => {
-    if (!allowEvent(userID, "joinRoom", 20, 60_000)) return;
+    if (!(await allowEvent(userID, "joinRoom", 20, 60_000)) return;
     try {
       if (!isValidId(roomID) || typeof link !== "string" || link.length > 500) return;
       const room = await RoomSchema.findOne({ _id: roomID, link: link.trim() });
@@ -274,7 +314,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("deleteRoom", async (roomID) => {
-    if (!allowEvent(userID, "deleteRoom", 10, 60_000)) return;
+    if (!(await allowEvent(userID, "deleteRoom", 10, 60_000)) return;
     if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
     const room = await RoomSchema.findById(roomID);
     if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
@@ -289,7 +329,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("deleteMsg", async ({ forAll, msgID, roomID }) => {
-    if (!allowEvent(userID, "deleteMsg", 60, 60_000)) return;
+    if (!(await allowEvent(userID, "deleteMsg", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return socket.emit("error", { message: "Forbidden" });
@@ -317,7 +357,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("editMessage", async ({ msgID, editedMsg, roomID }) => {
-    if (!allowEvent(userID, "editMessage", 60, 60_000)) return;
+    if (!(await allowEvent(userID, "editMessage", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg || msg.sender.toString() !== userID || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
@@ -330,7 +370,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("seenMsg", async ({ msgID, roomID, readTime }) => {
-    if (!allowEvent(userID, "seenMsg", 120, 60_000)) return;
+    if (!(await allowEvent(userID, "seenMsg", 120, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return;
@@ -340,7 +380,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("listenToVoice", async ({ voiceID, roomID }) => {
-    if (!allowEvent(userID, "listenToVoice", 60, 60_000)) return;
+    if (!(await allowEvent(userID, "listenToVoice", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const targetMessage = await isMessageInRoom(voiceID, roomID);
     if (!room || !targetMessage?.voiceData) return;
@@ -352,7 +392,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getVoiceMessageListeners", async (msgID) => {
-    if (!allowEvent(userID, "getVoiceMessageListeners", 30, 60_000) || !isValidId(msgID)) return;
+    if (!(await allowEvent(userID, "getVoiceMessageListeners", 30, 60_000) || !isValidId(msgID)) return;
     const targetMessage = await MessageSchema.findById(msgID);
     if (!targetMessage) return;
     const room = await isMember(targetMessage.roomID, userID);
@@ -369,7 +409,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getRooms", async () => {
-    if (!allowEvent(userID, "getRooms", 20, 60_000)) return;
+    if (!(await allowEvent(userID, "getRooms", 20, 60_000)) return;
 
     const rawRooms = await RoomSchema.find({ participants: userID })
       .select("_id name avatar type participants admins creator link biography lastMessageId lastMessageAt createdAt updatedAt")
@@ -442,7 +482,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("joining", async (query) => {
-    if (!allowEvent(userID, "joining", 20, 60_000)) return;
+    if (!(await allowEvent(userID, "joining", 20, 60_000)) return;
     try {
       if (!isValidId(query)) return;
       const roomData = await RoomSchema.findOne({ _id: query, participants: userID })
@@ -473,7 +513,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("pinMessage", async (id, roomID, isLastMessage) => {
-    if (!allowEvent(userID, "pinMessage", 60, 60_000)) return;
+    if (!(await allowEvent(userID, "pinMessage", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
     if (!room || !msg || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
@@ -484,7 +524,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("updateLastMsgPos", async ({ roomID, scrollPos, shouldEmitBack = true }) => {
-    if (!allowEvent(userID, "updateLastMsgPos", 60, 60_000)) return;
+    if (!(await allowEvent(userID, "updateLastMsgPos", 60, 60_000)) return;
     const room = await isMember(roomID, userID);
     if (!room || !Number.isFinite(Number(scrollPos))) return;
     const userTarget = await UserSchema.findById(userID);
@@ -498,7 +538,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("typing", async (data) => {
-    if (!allowEvent(userID, "typing", 10, 10_000)) return;
+    if (!(await allowEvent(userID, "typing", 10, 10_000)) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
     const current = typingByRoom.get(data.roomID) || new Set();
@@ -509,7 +549,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("stop-typing", async (data) => {
-    if (!allowEvent(userID, "stop-typing", 20, 10_000)) return;
+    if (!(await allowEvent(userID, "stop-typing", 20, 10_000)) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
     const current = typingByRoom.get(data.roomID) || new Set();
@@ -520,7 +560,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("updateUserData", async (updatedFields) => {
-    if (!allowEvent(userID, "updateUserData", 20, 60_000)) return;
+    if (!(await allowEvent(userID, "updateUserData", 20, 60_000)) return;
     const allowed = ["name", "lastName", "username", "avatar", "biography"];
     const $set = {};
     for (const key of allowed) {
@@ -552,7 +592,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("updateRoomData", async (updatedFields) => {
-    if (!allowEvent(userID, "updateRoomData", 30, 60_000)) return;
+    if (!(await allowEvent(userID, "updateRoomData", 30, 60_000)) return;
     try {
       const roomID = updatedFields?.roomID;
       if (!isValidId(roomID)) return socket.emit("updateRoomDataError", { message: "Invalid room" });
@@ -613,7 +653,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getRoomMembers", async ({ roomID }) => {
-    if (!allowEvent(userID, "getRoomMembers", 20, 60_000)) return;
+    if (!(await allowEvent(userID, "getRoomMembers", 20, 60_000)) return;
     const room = await isMember(roomID, userID);
     if (!room) return socket.emit("error", { message: "Forbidden" });
     const populated = await room.populate({ path: "participants", select: "name lastName username avatar biography type status _id" });
@@ -635,7 +675,7 @@ io.on("connection", (socket) => {
   sessionCheckTimer.unref();
 
   socket.on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
-    if (!allowEvent(userID, "loadOlderMessages", 60, 60_000)) {
+    if (!(await allowEvent(userID, "loadOlderMessages", 60, 60_000)) {
       return callback({ success: false, error: "Rate limit exceeded" });
     }
     try {
