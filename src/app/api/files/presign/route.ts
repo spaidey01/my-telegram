@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     if (!sessionUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const userId = auth.id;
-    const limit = rateLimit("presign:" + userId, 20, 60_000);
+    const limit = await rateLimit("presign:" + userId, 20, 60_000);
     if (!limit.allowed) {
       return NextResponse.json(
         { message: "Too many uploads. Try again later." },
