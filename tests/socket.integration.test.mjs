@@ -27,6 +27,7 @@ const waitFor = (socket, event, timeout = 5000) =>
 before(async () => {
   const serverModule = await import("../server/index.js");
   server = serverModule.io;
+  globalThis.shutdownSocketServer = serverModule.shutdown;
   user = await UserSchema.create({
     name: "integration",
     username: "integration_" + Date.now(),
@@ -40,7 +41,7 @@ after(async () => {
   if (user) await UserSchema.deleteOne({ _id: user._id });
   await RoomSchema.deleteMany({ creator: user?._id });
   await mongoose.disconnect();
-  await new Promise((resolve) => server?.close(resolve));
+  await globalThis.shutdownSocketServer?.();
 });
 
 test("socket authentication, invite-link authorization and message flow", async () => {
