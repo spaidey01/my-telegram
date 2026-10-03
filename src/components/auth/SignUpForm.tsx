@@ -27,12 +27,12 @@ const SignUpForm = () => {
           ...response.data,
           isLogin: true,
         });
-        toaster("success", "You signed up successfully.");
+        toaster("success", "حساب Stargram با موفقیت ساخته شد.");
       }
     } catch (error: unknown) {
       const message = axios.isAxiosError(error)
-        ? error.response?.data?.message || "Registration failed"
-        : "Registration failed";
+        ? error.response?.data?.message || "ثبت‌نام ناموفق بود"
+         : "ثبت‌نام ناموفق بود";
       toaster("error", message);
     }
   };
@@ -80,7 +80,7 @@ const SignUpForm = () => {
           })}
           dir="auto"
           type="text"
-          placeholder="Username"
+          placeholder="نام کاربری"
           autoComplete="off"
         />
       </label>
@@ -115,12 +115,12 @@ const SignUpForm = () => {
             required: " ",
             pattern: {
               value: /(^9[0-9]{9}$)|(^\u06F0\u06F9[\u06F0-\u06F9]{9})$/,
-              message: "Invalid phone number",
+              message: "شماره تلفن معتبر نیست",
             },
           })}
           dir="auto"
           type="tel"
-          placeholder="Phone number"
+          placeholder="شماره تلفن"
           autoComplete="phone"
         />
       </label>
@@ -154,7 +154,7 @@ const SignUpForm = () => {
             validate: (value) => {
               if (value?.length) {
                 if (value?.length > 20 || value?.length < 8) {
-                  return "Must be more than 8 and less than 20";
+                  return "رمز عبور باید بین ۸ تا ۲۰ کاراکتر باشد";
                 } else {
                   return true;
                 }
@@ -163,7 +163,7 @@ const SignUpForm = () => {
           })}
           dir="auto"
           type="password"
-          placeholder="Password"
+          placeholder="رمز عبور"
           autoComplete="new-password"
         />
       </label>
@@ -179,7 +179,7 @@ const SignUpForm = () => {
         {isSubmitting ? (
           <Loading loading="dots" size="lg" color="info" />
         ) : (
-          "Sign up"
+          "ثبت‌نام"
         )}
       </Button>
     </div>
