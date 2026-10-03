@@ -28,7 +28,7 @@ async function signInAction(_prevState: SignInState, formData: FormData): Promis
       return {
         success: true,
         data: response.data as Record<string, unknown>,
-        message: "You logged in successfully.",
+        message: "با موفقیت وارد Stargram شدی.",
       };
     }
     return { success: false, error: "Login failed" };
@@ -113,12 +113,12 @@ const SignInForm = () => {
             required: " ",
             pattern: {
               value: /(^9[0-9]{9}$)|(^\u06F0\u06F9[\u06F0-\u06F9]{9})$/,
-              message: "Invalid phone number",
+              message: "شماره تلفن معتبر نیست",
             },
           })}
           dir="auto"
           type="tel"
-          placeholder="Phone number"
+          placeholder="شماره تلفن"
           autoComplete="off"
         />
       </label>
@@ -152,7 +152,7 @@ const SignInForm = () => {
             validate: (value) => {
               if (value.length) {
                 if (value.length > 20 || value.length < 8) {
-                  return "Must be more than 8 and less than 20";
+                  return "رمز عبور باید بین ۸ تا ۲۰ کاراکتر باشد";
                 } else {
                   return true;
                 }
@@ -161,7 +161,7 @@ const SignInForm = () => {
           })}
           dir="auto"
           type="password"
-          placeholder="Password"
+          placeholder="رمز عبور"
           autoComplete="new-password"
         />
       </label>
@@ -177,7 +177,7 @@ const SignInForm = () => {
         {isSubmitting || isPending || isTransition ? (
           <Loading loading="dots" size="lg" color="info" />
         ) : (
-          "Sign in"
+          "ورود"
         )}
       </Button>
     </div>
