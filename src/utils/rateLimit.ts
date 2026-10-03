@@ -86,8 +86,8 @@ export const getRequestIp = (req: Request) => {
   const n = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_COUNT ?? "1", 10) || 0);
   const forwarded = req.headers.get("x-forwarded-for");
   if (n > 0 && forwarded) {
-    const v = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
-    if (v.length) return v[Math.max(0, v.length - n)];
+    const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
+    if (values.length) return values[Math.max(0, values.length - n)];
   }
   return "unknown";
 };
