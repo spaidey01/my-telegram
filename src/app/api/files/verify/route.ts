@@ -7,7 +7,7 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_SCAN_BYTES = 25 * 1024 * 1024;
-const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac", "audio/webm"]);
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg","image/png","image/gif","image/webp","audio/ogg","audio/mpeg","audio/wav","audio/flac","audio/webm","audio/mp4","video/mp4","video/webm","video/quicktime","video/ogg","application/pdf","application/zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.openxmlformats-officedocument.presentationml.presentation","text/plain","text/csv","application/json"]);
 
 const s3 = () => new S3Client({
   region: process.env.S3_REGION || "us-east-1",
@@ -72,7 +72,12 @@ const isMagicValid = (bytes: Uint8Array, contentType: string) => {
   if (contentType === "audio/wav") return b(0) === 0x52 && b(1) === 0x49 && b(2) === 0x46 && b(3) === 0x46 && b(8) === 0x57 && b(9) === 0x41 && b(10) === 0x56 && b(11) === 0x45;
   if (contentType === "audio/flac") return b(0) === 0x66 && b(1) === 0x4c && b(2) === 0x41 && b(3) === 0x43;
   if (contentType === "audio/mpeg") return (b(0) === 0xff && (b(1) & 0xe0) === 0xe0) || (b(0) === 0x49 && b(1) === 0x44 && b(2) === 0x33);
-  if (contentType === "audio/webm") return b(0) === 0x1a && b(1) === 0x45 && b(2) === 0xdf && b(3) === 0xa3;
+  if (contentType === "audio/webm" || contentType === "video/webm") return b(0) === 0x1a && b(1) === 0x45 && b(2) === 0xdf && b(3) === 0xa3;
+  if (contentType === "video/ogg") return b(0) === 0x4f && b(1) === 0x67 && b(2) === 0x67 && b(3) === 0x53;
+  if (contentType === "video/mp4" || contentType === "video/quicktime" || contentType === "audio/mp4") return b(4) === 0x66 && b(5) === 0x74 && b(6) === 0x79 && b(7) === 0x70;
+  if (contentType === "application/pdf") return b(0) === 0x25 && b(1) === 0x50 && b(2) === 0x44 && b(3) === 0x46;
+  if (contentType === "application/zip" || contentType.startsWith("application/vnd.openxmlformats-officedocument.")) return b(0) === 0x50 && b(1) === 0x4b && b(2) === 0x03 && b(3) === 0x04;
+  if (contentType === "text/plain" || contentType === "text/csv" || contentType === "application/json") return true;
   return false;
 };
 
@@ -98,7 +103,7 @@ export async function POST(req: Request) {
     const contentType = typeof body?.contentType === "string" ? body.contentType.toLowerCase() : "";
     const ownerPrefix = key.split("/")[1];
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
-    if (!/^(images|voices)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key) || ownerPrefix !== userId) {
+    if (!/^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key) || ownerPrefix !== userId) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
