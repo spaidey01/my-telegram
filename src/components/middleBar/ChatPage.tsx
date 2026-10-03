@@ -17,7 +17,8 @@ import useUserStore from "@/stores/userStore";
 import useGlobalStore from "@/stores/globalStore";
 import useSockets from "@/stores/useSockets";
 import MessageModel from "@/models/message";
-import { FiBookmark } from "react-icons/fi";
+import { FiBookmark, FiPhone, FiVideo } from "react-icons/fi";
+import CallOverlay from "../CallOverlay";
 import Loading from "../modules/ui/Loading";
 import User from "@/models/user";
 import DropDown from "../modules/ui/DropDown";
@@ -275,7 +276,21 @@ const ChatPage = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 justify-end">
+        <div className="flex items-center gap-1 justify-end">
+          {type === "private" && _id && _id !== myID && (
+            <>
+              <button type="button" title="تماس صوتی" className="p-2 rounded-full hover:bg-white/10" onClick={() => {
+                const callId = crypto.randomUUID();
+                roomsSocket?.emit("call:outgoing", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "audio", name, avatar });
+                roomsSocket?.emit("call:invite", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "audio" });
+              }}><FiPhone className="size-5" /></button>
+              <button type="button" title="تماس تصویری" className="p-2 rounded-full hover:bg-white/10" onClick={() => {
+                const callId = crypto.randomUUID();
+                roomsSocket?.emit("call:outgoing", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "video", name, avatar });
+                roomsSocket?.emit("call:invite", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "video" });
+              }}><FiVideo className="size-5" /></button>
+            </>
+          )}
           <DropDown
             button={
               <PiDotsThreeVerticalBold
@@ -331,6 +346,7 @@ const ChatPage = () => {
           className="inset-0 xl:static absolute transition-all duration-200 "
         ></span>
       )}
+      <CallOverlay />
       <Modal />
     </div>
   );
