@@ -294,6 +294,9 @@ io.on("connection", (socket) => {
       const participants = uniqueRequestedParticipants.filter((id) => existingUserIds.has(id));
 
       if (newRoomData.type === "private" && participants.length !== 2) return;
+      if (newRoomData.link !== undefined && newRoomData.link !== null && newRoomData.link !== "" && (
+        typeof newRoomData.link !== "string" || !/^@[a-f0-9]{20}$/.test(newRoomData.link.trim().toLowerCase())
+      )) return;
 
       const roomData = {
         name: typeof newRoomData.name === "string" ? newRoomData.name.trim().slice(0, 100) : "New Room",
@@ -302,8 +305,8 @@ io.on("connection", (socket) => {
         creator: userID,
         admins: [userID],
         participants,
-        link: typeof newRoomData.link === "string" && newRoomData.link.trim()
-          ? newRoomData.link.trim().slice(0, 500)
+        link: typeof newRoomData.link === "string" && /^@[a-f0-9]{20}$/.test(newRoomData.link.trim())
+          ? newRoomData.link.trim().toLowerCase()
           : undefined,
         biography: typeof newRoomData.biography === "string" ? newRoomData.biography.slice(0, 1000) : undefined,
       };
@@ -365,7 +368,7 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "deleteRoom", 10, 60_000))) return;
     if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
     const room = await RoomSchema.findById(roomID);
-    if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
+    if (!room || !isAdmin(room, userID) || room.type === "private") return socket.emit("error", { message: "Forbidden" });
     io.to(roomID).emit("deleteRoom", roomID);
     io.to(roomID).emit("updateLastMsgData", { msgData: null, roomID });
     await Promise.all([
@@ -662,6 +665,10 @@ io.on("connection", (socket) => {
         return socket.emit("updateRoomDataError", { message: "Invalid avatar" });
       }
 
+      if (room.type === "private" && (["name", "link"].some((key) => Object.prototype.hasOwnProperty.call($set, key)) || Array.isArray(updatedFields?.participants))) {
+        return socket.emit("updateRoomDataError", { message: "Private rooms cannot be administratively modified" });
+      }
+
       if (Array.isArray(updatedFields?.participants)) {
         const requested = [...new Set(
           updatedFields.participants
@@ -678,7 +685,10 @@ io.on("connection", (socket) => {
       if (typeof $set.name === "string") $set.name = $set.name.trim().slice(0, 100);
       if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 1000);
       if (typeof $set.link === "string") {
-        $set.link = $set.link.trim().slice(0, 500);
+        $set.link = $set.link.trim().toLowerCase();
+        if ($set.link && !/^@[a-f0-9]{20}$/.test($set.link)) {
+          return socket.emit("updateRoomDataError", { message: "Invalid room link" });
+        }
         const duplicateLink = await RoomSchema.findOne({ link: $set.link, _id: { $ne: roomID } }).select("_id").lean();
         if (duplicateLink) return socket.emit("updateRoomDataError", { message: "Link already exists" });
       }
