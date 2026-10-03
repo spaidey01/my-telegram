@@ -24,11 +24,17 @@ const scanWithClamAV = (bytes: Uint8Array) => new Promise<boolean>((resolve, rej
   const socket = net.createConnection({ host, port });
   let response = "";
   let settled = false;
-  const finish = (fn: (value: boolean) => void, value: boolean) => {
+  const finish = (value: boolean) => {
     if (settled) return;
     settled = true;
     socket.destroy();
-    fn(value);
+    resolve(value);
+  };
+  const fail = (error: Error) => {
+    if (settled) return;
+    settled = true;
+    socket.destroy();
+    reject(error);
   };
 
   socket.setTimeout(15_000);
@@ -46,13 +52,13 @@ const scanWithClamAV = (bytes: Uint8Array) => new Promise<boolean>((resolve, rej
   });
   socket.on("data", (chunk) => {
     response += chunk.toString("utf8");
-    if (response.includes("FOUND")) finish(resolve, false);
-    else if (response.includes("OK")) finish(resolve, true);
+    if (response.includes("FOUND")) finish(false);
+    else if (response.includes("OK")) finish(true);
   });
-  socket.on("timeout", () => finish(reject, new Error("ClamAV timeout")));
-  socket.on("error", (error) => finish(reject, error));
+  socket.on("timeout", () => fail(new Error("ClamAV timeout")));
+  socket.on("error", (error) => fail(error));
   socket.on("close", () => {
-    if (!settled) finish(reject, new Error("ClamAV closed connection"));
+    if (!settled) fail(new Error("ClamAV closed connection"));
   });
 });
 
