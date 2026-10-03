@@ -148,12 +148,12 @@ const sanitizeAttachmentData = async (data, userID) => {
   if (!data || typeof data !== "object") return null;
   const src = typeof data.src === "string" ? data.src.trim() : "";
   const name = typeof data.name === "string" ? data.name.trim().slice(0,255) : "";
-  const type = typeof data.type === "string" ? data.type.trim().slice(0,120).toLowerCase() : "";
+  const mimeType = typeof data.mimeType === "string" ? data.mimeType.trim().slice(0,120).toLowerCase() : "";
   const size = Number(data.size);
-  const prefix = type.startsWith("image/") ? "images" : type.startsWith("audio/") ? "voices" : "files";
-  if (!src || !name || !type || !Number.isFinite(size) || size < 1 || size > 25*1024*1024) return null;
+  const prefix = mimeType.startsWith("image/") ? "images" : mimeType.startsWith("audio/") ? "voices" : "files";
+  if (!src || !name || !mimeType || !Number.isFinite(size) || size < 1 || size > 25*1024*1024) return null;
   if (!(await isOwnVerifiedFile(src, userID, prefix))) return null;
-  return { src, name, type, size };
+  return { src, name, mimeType, size };
 };
 const sanitizeStickerData = (data) => {
   if (!data || typeof data !== "object" || typeof data.emoji !== "string") return null;
