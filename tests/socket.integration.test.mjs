@@ -30,7 +30,7 @@ before(async () => {
   globalThis.shutdownSocketServer = serverModule.shutdown;
   user = await UserSchema.create({
     name: "integration",
-    username: "integration_" + Date.now(),
+    username: "int_" + Date.now().toString().slice(-10),
     phone: "integration_" + Date.now(),
     password: "not-a-real-password",
     sessionVersion: 0,
