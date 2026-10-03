@@ -18,7 +18,6 @@ import useGlobalStore from "@/stores/globalStore";
 import useSockets from "@/stores/useSockets";
 import MessageModel from "@/models/message";
 import { FiBookmark, FiPhone, FiVideo } from "react-icons/fi";
-import CallOverlay from "../CallOverlay";
 import Loading from "../modules/ui/Loading";
 import User from "@/models/user";
 import DropDown from "../modules/ui/DropDown";
@@ -346,7 +345,6 @@ const ChatPage = () => {
           className="inset-0 xl:static absolute transition-all duration-200 "
         ></span>
       )}
-      <CallOverlay />
       <Modal />
     </div>
   );
