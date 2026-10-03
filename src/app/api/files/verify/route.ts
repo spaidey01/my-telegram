@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import net from "node:net";
-import { DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { randomUUID } from "node:crypto";
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
@@ -135,15 +136,37 @@ export async function POST(req: Request) {
       }
     }
 
+    if (!object.ETag) {
+      await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      return NextResponse.json({ message: "File verification failed" }, { status: 503 });
+    }
+
+    const verifiedKey = `${key.split("/")[0]}/${userId}/${randomUUID()}`;
+    try {
+      await s3().send(new CopyObjectCommand({
+        Bucket: bucket,
+        CopySource: `${bucket}/${key}`,
+        CopySourceIfMatch: object.ETag,
+        Key: verifiedKey,
+        ContentType: contentType,
+        MetadataDirective: "REPLACE",
+      }));
+    } catch (copyError) {
+      console.error("Verified upload copy:", copyError);
+      await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+      return NextResponse.json({ message: "File changed during verification" }, { status: 409 });
+    }
+
+    await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+
     const { default: FileSchema } = await import("@/schemas/fileSchema");
     await FileSchema.updateOne(
-      { key },
+      { key: verifiedKey },
       { $set: { owner: userId, contentType } },
       { upsert: true },
     );
 
-    const accessUrl = `/api/files/access?key=${encodeURIComponent(key)}`;
-    return NextResponse.json({ success: true, downloadUrl: accessUrl });
+    const accessUrl = `/api/files/access?key=${encodeURIComponent(verifiedKey)}`;
   } catch (error) {
     console.error("verify file:", error);
     return NextResponse.json({ message: "File verification failed" }, { status: 415 });
