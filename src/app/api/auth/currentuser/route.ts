@@ -2,8 +2,11 @@ import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
+import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 
-export const POST = async () => {
+export const POST = async (req: Request) => {
+  const limit = await rateLimit("currentuser:ip:" + getRequestIp(req), 60, 60_000);
+  if (!limit.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   try {
     await connectToDB();
     const cookieToken = (await cookies()).get("token")?.value;
