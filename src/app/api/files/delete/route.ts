@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     const { fileUrl } = await req.json();
     if (typeof fileUrl !== "string") return NextResponse.json({ message: "Invalid file" }, { status: 400 });
     const bucket = process.env.S3_BUCKET_NAME;
-    const url = new URL(fileUrl);
+    const url = new URL(fileUrl, "http://localhost"); // the client sends relative /api/files/access URLs
     let path = url.pathname === "/api/files/access"
       ? url.searchParams.get("key") || ""
       : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
@@ -41,6 +41,8 @@ export async function POST(req: Request) {
     }
 
     await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: path }));
+    const { default: FileSchema } = await import("@/schemas/fileSchema");
+    await FileSchema.deleteOne({ key: path, owner: userId });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("delete file:", error);
