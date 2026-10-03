@@ -302,8 +302,8 @@ io.on("connection", (socket) => {
         creator: userID,
         admins: [userID],
         participants,
-        link: typeof newRoomData.link === "string" && newRoomData.link.trim()
-          ? newRoomData.link.trim().slice(0, 500)
+        link: typeof newRoomData.link === "string" && /^@[a-f0-9]{20}$/.test(newRoomData.link.trim())
+          ? newRoomData.link.trim().toLowerCase()
           : undefined,
         biography: typeof newRoomData.biography === "string" ? newRoomData.biography.slice(0, 1000) : undefined,
       };
@@ -365,7 +365,7 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "deleteRoom", 10, 60_000))) return;
     if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
     const room = await RoomSchema.findById(roomID);
-    if (!room || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
+    if (!room || !isAdmin(room, userID) || room.type === "private") return socket.emit("error", { message: "Forbidden" });
     io.to(roomID).emit("deleteRoom", roomID);
     io.to(roomID).emit("updateLastMsgData", { msgData: null, roomID });
     await Promise.all([
@@ -660,6 +660,10 @@ io.on("connection", (socket) => {
 
       if (Object.prototype.hasOwnProperty.call($set, "avatar") && !(await isAllowedAvatar($set.avatar, userID, room.avatar))) {
         return socket.emit("updateRoomDataError", { message: "Invalid avatar" });
+      }
+
+      if (room.type === "private" && (["name", "link"].some((key) => Object.prototype.hasOwnProperty.call($set, key)) || Array.isArray(updatedFields?.participants))) {
+        return socket.emit("updateRoomDataError", { message: "Private rooms cannot be administratively modified" });
       }
 
       if (Array.isArray(updatedFields?.participants)) {
