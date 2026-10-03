@@ -10,6 +10,7 @@ process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
 process.env.secretKey ||= "integration-test-secret";
 process.env.SOCKET_PORT ||= "3101";
 process.env.CLIENT_ORIGIN ||= "http://localhost:3000";
+process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
 
 let server;
 let user;
