@@ -18,7 +18,7 @@ import { pendingMessagesService, PendingMessage } from "@/utils/pendingMessages"
 import { isMobile } from "@/utils/isMobile";
 
 interface Props { replayData?: Partial<Message>; editData?: Partial<Message>; closeReplay:()=>void; closeEdit:()=>void; }
-type Attachment={src:string;name:string;type:string;size:number};
+type Attachment={src:string;name:string;mimeType:string;size:number};
 
 export default function MessageInput({replayData,editData,closeReplay,closeEdit}:Props){
  const [text,setText]=useState(""); const [emoji,setEmoji]=useState(false); const [sticker,setSticker]=useState(false); const [uploading,setUploading]=useState(false);
