@@ -5,7 +5,6 @@ import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
 
-const MAX_SNIFF_BYTES = 512;
 const MAX_SCAN_BYTES = 25 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac", "audio/webm"]);
 
