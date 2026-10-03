@@ -19,11 +19,15 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP
 const socketPort = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 const redisUrl = process.env.REDIS_URL;
 let redisAdapter;
+let redisPubClient;
+let redisSubClient;
 let redisRateClient;
 
 if (redisUrl) {
   const pubClient = createClient({ url: redisUrl });
   const subClient = pubClient.duplicate();
+  redisPubClient = pubClient;
+  redisSubClient = subClient;
   redisRateClient = createClient({ url: redisUrl });
   pubClient.on("error", (error) => console.error("Redis pub client error:", error));
   subClient.on("error", (error) => console.error("Redis sub client error:", error));
@@ -53,6 +57,13 @@ const io = new Server({
 
 io.listen(socketPort);
 console.log(`Socket server is running on port ${socketPort}`);
+
+export const shutdown = async () => {
+  await new Promise((resolve) => io.close(resolve));
+  redisPubClient?.destroy();
+  redisSubClient?.destroy();
+  redisRateClient?.destroy();
+};
 
 export { io };
 
