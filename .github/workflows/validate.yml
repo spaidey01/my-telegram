@@ -12,6 +12,15 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
       mongodb:
         image: mongo:7
         ports:
@@ -41,3 +50,4 @@ jobs:
           secretKey: integration-test-secret
           CLIENT_ORIGIN: http://localhost:3000
           SOCKET_PORT: 3101
+          REDIS_URL: redis://127.0.0.1:6379
