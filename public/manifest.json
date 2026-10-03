@@ -1,28 +1,28 @@
 {
-  "name": "Telegram Messenger",
-  "short_name": "Telegram",
+  "name": "Stargram",
+  "short_name": "Stargram",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#17212b",
-  "background_color": "#17212b",
+  "theme_color": "#0b1220",
+  "background_color": "#0b1220",
   "icons": [
     {
-      "src": "/images/telegram-128x128.png",
+      "src": "/images/stargram-logo.png",
       "sizes": "128x128",
       "type": "image/png"
     },
     {
-      "src": "/images/telegram-192x192.png",
+      "src": "/images/stargram-logo.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/images/telegram-256x256.png",
+      "src": "/images/stargram-logo.png",
       "sizes": "256x256",
       "type": "image/png"
     },
     {
-      "src": "/images/telegram-512x512.png",
+      "src": "/images/stargram-logo.png",
       "sizes": "512x512",
       "type": "image/png"
     }
