@@ -19,7 +19,7 @@ const s3 = () => new S3Client({
 });
 
 const validKey = (key: string) =>
-  /^(images|voices)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key);
+  /^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key);
 
 export async function GET(req: Request) {
   try {
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
     let canAccess = ownsFile;
 
     if (!canAccess) {
-      const messageRef = await MessageSchema.findOne({ "voiceData.src": accessUrl }).select("roomID").lean();
+      const messageRef = await MessageSchema.findOne({ $or: [{ "voiceData.src": accessUrl }, { "attachmentData.src": accessUrl }] }).select("roomID").lean();
       const roomRef = await RoomSchema.findOne({ avatar: accessUrl, participants: userId }).select("_id").lean();
       if (messageRef && !Array.isArray(messageRef)) {
         canAccess = Boolean(await RoomSchema.exists({ _id: messageRef.roomID, participants: userId }));
