@@ -7,7 +7,7 @@ import UserSchema from "@/schemas/userSchema";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 
 export async function GET(req: Request) {
-  const ipLimit = rateLimit("socket-token:ip:" + getRequestIp(req), 30, 60_000);
+  const ipLimit = await rateLimit("socket-token:ip:" + getRequestIp(req), 30, 60_000);
   if (!ipLimit.allowed) {
     return NextResponse.json(
       { message: "Too many requests. Try again later." },
