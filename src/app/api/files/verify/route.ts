@@ -167,6 +167,7 @@ export async function POST(req: Request) {
     );
 
     const accessUrl = `/api/files/access?key=${encodeURIComponent(verifiedKey)}`;
+    return NextResponse.json({ success: true, downloadUrl: accessUrl }, { status: 200 });
   } catch (error) {
     console.error("verify file:", error);
     return NextResponse.json({ message: "File verification failed" }, { status: 415 });
