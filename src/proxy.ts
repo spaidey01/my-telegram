@@ -9,9 +9,13 @@ const allowedOrigins = () =>
     .map((value) => value.trim().replace(/\/$/, ""))
     .filter(Boolean);
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   if (!req.nextUrl.pathname.startsWith("/api/") || !isStateChanging(req.method)) {
     return NextResponse.next();
+  }
+
+  if (req.headers.get("sec-fetch-site") === "cross-site") {
+    return NextResponse.json({ message: "Origin not allowed" }, { status: 403 });
   }
 
   const origin = req.headers.get("origin");

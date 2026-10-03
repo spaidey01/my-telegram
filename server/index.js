@@ -8,6 +8,7 @@ import MessageSchema from "../src/schemas/messageSchema.js";
 import MediaSchema from "../src/schemas/mediaSchema.js";
 import LocationSchema from "../src/schemas/locationSchema.js";
 import UserSchema from "../src/schemas/userSchema.js";
+import FileSchema from "../src/schemas/fileSchema.js";
 import connectToDB from "../src/db/index.js";
 
 const secret = process.env.secretKey;
@@ -114,12 +115,32 @@ const cleanupEventBuckets = () => {
 };
 setInterval(cleanupEventBuckets, 60_000).unref();
 
-const sanitizeVoiceData = (voiceData) => {
+const FILE_URL_RE = /^\/api\/files\/access\?key=(images|voices)%2F([a-fA-F0-9]{24})%2F([0-9a-f-]{36})$/;
+
+// Returns true only if `url` is an access URL for a file that (a) belongs to `userID`,
+// (b) has the expected prefix and (c) passed /api/files/verify.
+const isOwnVerifiedFile = async (url, userID, prefix) => {
+  if (typeof url !== "string" || url.length > 300) return false;
+  const match = FILE_URL_RE.exec(url);
+  if (!match || match[1] !== prefix || match[2] !== userID) return false;
+  const key = `${match[1]}/${match[2]}/${match[3]}`;
+  return Boolean(await FileSchema.exists({ key, owner: userID }));
+};
+
+// Avatars: empty, unchanged legacy value, or an own verified image.
+const isAllowedAvatar = async (value, userID, currentValue) => {
+  if (typeof value !== "string") return false;
+  if (value === "" || value === currentValue) return true;
+  return isOwnVerifiedFile(value, userID, "images");
+};
+
+const sanitizeVoiceData = async (voiceData, userID) => {
   if (voiceData == null) return null;
   if (typeof voiceData !== "object") return null;
   const src = typeof voiceData.src === "string" ? voiceData.src.trim() : "";
   const duration = Number(voiceData.duration);
-  if (!src || src.length > 2048 || !Number.isFinite(duration) || duration < 0 || duration > 3600) return null;
+  if (!src || !Number.isFinite(duration) || duration < 0 || duration > 3600) return null;
+  if (!(await isOwnVerifiedFile(src, userID, "voices"))) return null;
   return { src, duration, playedBy: [] };
 };
 
@@ -150,7 +171,7 @@ io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Unauthorized"));
-    const decoded = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] });
     if (!decoded || typeof decoded !== "object" || decoded.scope !== "socket" || !decoded.sub || typeof decoded.sv !== "number") {
       return next(new Error("Unauthorized"));
     }
@@ -181,7 +202,20 @@ io.on("connection", (socket) => {
     setTimeout(() => socket.disconnect(true), tokenExpiryMs);
   }
 
-  socket.on("newMessage", async ({ roomID, message, replayData, voiceData = null, tempId }, callback = () => {}) => {
+  // Wrap every handler so a thrown error never becomes an unhandled rejection
+  // and the client always gets an answer.
+  const on = (event, handler) => socket.on(event, async (...args) => {
+    try {
+      await handler(...args);
+    } catch (error) {
+      console.error(event + ":", error);
+      const cb = args[args.length - 1];
+      if (typeof cb === "function") cb({ success: false, error: "Internal error" });
+      else socket.emit("error", { message: "Internal error" });
+    }
+  });
+
+  on("newMessage", async ({ roomID, message, replayData, voiceData = null, tempId }, callback = () => {}) => {
     if (!(await allowEvent(userID, "newMessage", 30, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     try {
       const room = await isMember(roomID, userID);
@@ -202,7 +236,7 @@ io.on("connection", (socket) => {
         message,
         roomID,
         seen: [],
-        voiceData: sanitizeVoiceData(voiceData),
+        voiceData: await sanitizeVoiceData(voiceData, userID),
         createdAt: Date.now(),
         tempId: scopedTempId,
         status: "sent",
@@ -210,7 +244,7 @@ io.on("connection", (socket) => {
 
       const newMsg = await MessageSchema.create(msgData);
 
-      if (replayData?.targetID) {
+      if (isValidId(replayData?.targetID)) {
         const target = await MessageSchema.findOne({ _id: replayData.targetID, roomID })
           .populate("sender", "username")
           .exec();
@@ -245,7 +279,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("createRoom", async ({ newRoomData, message = null }) => {
+  on("createRoom", async ({ newRoomData, message = null }) => {
     if (!(await allowEvent(userID, "createRoom", 10, 60_000))) return;
     try {
       if (!newRoomData || !["private", "group", "channel"].includes(newRoomData.type)) return;
@@ -263,7 +297,7 @@ io.on("connection", (socket) => {
 
       const roomData = {
         name: typeof newRoomData.name === "string" ? newRoomData.name.trim().slice(0, 100) : "New Room",
-        avatar: typeof newRoomData.avatar === "string" ? newRoomData.avatar : "",
+        avatar: (await isAllowedAvatar(newRoomData.avatar ?? "", userID, "")) ? (newRoomData.avatar ?? "") : "",
         type: newRoomData.type,
         creator: userID,
         admins: [userID],
@@ -290,7 +324,7 @@ io.on("connection", (socket) => {
           message: message.message.slice(0, 10000),
           roomID: newRoom._id,
           seen: [],
-          voiceData: sanitizeVoiceData(message.voiceData),
+          voiceData: await sanitizeVoiceData(message.voiceData, userID),
           status: "sent",
         });
         newRoom.lastMessageId = newMsg._id;
@@ -307,7 +341,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("joinRoom", async ({ roomID, link }) => {
+  on("joinRoom", async ({ roomID, link }) => {
     if (!(await allowEvent(userID, "joinRoom", 20, 60_000))) return;
     try {
       if (!isValidId(roomID) || typeof link !== "string" || link.length > 500) return;
@@ -327,7 +361,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("deleteRoom", async (roomID) => {
+  on("deleteRoom", async (roomID) => {
     if (!(await allowEvent(userID, "deleteRoom", 10, 60_000))) return;
     if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
     const room = await RoomSchema.findById(roomID);
@@ -342,14 +376,14 @@ io.on("connection", (socket) => {
     ]);
   });
 
-  socket.on("deleteMsg", async ({ forAll, msgID, roomID }) => {
+  on("deleteMsg", async ({ forAll, msgID, roomID }) => {
     if (!(await allowEvent(userID, "deleteMsg", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return socket.emit("error", { message: "Forbidden" });
 
     if (forAll) {
-      if (msg.sender.toString() !== userID && !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
+      if (msg.sender.toString() !== userID && (room.type === "private" || !isAdmin(room, userID))) return socket.emit("error", { message: "Forbidden" });
       await MessageSchema.deleteOne({ _id: msgID });
       const replacementLast = await findLatestVisibleMessage(roomID);
       await RoomSchema.updateOne(
@@ -370,7 +404,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("editMessage", async ({ msgID, editedMsg, roomID }) => {
+  on("editMessage", async ({ msgID, editedMsg, roomID }) => {
     if (!(await allowEvent(userID, "editMessage", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
@@ -383,17 +417,17 @@ io.on("connection", (socket) => {
     if (lastMsg?._id.toString() === msgID) io.to(roomID).emit("updateLastMsgData", { roomID, msgData: updated });
   });
 
-  socket.on("seenMsg", async ({ msgID, roomID, readTime }) => {
+  on("seenMsg", async ({ msgID, roomID, readTime }) => {
     if (!(await allowEvent(userID, "seenMsg", 120, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return;
-    const safeReadTime = readTime && !Number.isNaN(Date.parse(readTime)) ? new Date(readTime) : new Date();
+    const safeReadTime = new Date();
     await MessageSchema.updateOne({ _id: msgID }, { $addToSet: { seen: userID }, $set: { readTime: safeReadTime } });
     io.to(roomID).emit("seenMsg", { msgID, roomID, seenBy: userID, readTime: safeReadTime });
   });
 
-  socket.on("listenToVoice", async ({ voiceID, roomID }) => {
+  on("listenToVoice", async ({ voiceID, roomID }) => {
     if (!(await allowEvent(userID, "listenToVoice", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const targetMessage = await isMessageInRoom(voiceID, roomID);
@@ -405,7 +439,7 @@ io.on("connection", (socket) => {
     io.to(roomID).emit("listenToVoice", { userID, voiceID, roomID });
   });
 
-  socket.on("getVoiceMessageListeners", async (msgID) => {
+  on("getVoiceMessageListeners", async (msgID) => {
     if (!(await allowEvent(userID, "getVoiceMessageListeners", 30, 60_000)) || !isValidId(msgID)) return;
     const targetMessage = await MessageSchema.findById(msgID);
     if (!targetMessage) return;
@@ -422,7 +456,7 @@ io.on("connection", (socket) => {
     })));
   });
 
-  socket.on("getRooms", async () => {
+  on("getRooms", async () => {
     if (!(await allowEvent(userID, "getRooms", 20, 60_000))) return;
 
     const rawRooms = await RoomSchema.find({ participants: userID })
@@ -495,7 +529,7 @@ io.on("connection", (socket) => {
     socket.emit("getRooms", rooms);
   });
 
-  socket.on("joining", async (query) => {
+  on("joining", async (query) => {
     if (!(await allowEvent(userID, "joining", 20, 60_000))) return;
     try {
       if (!isValidId(query)) return;
@@ -526,7 +560,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("pinMessage", async (id, roomID, isLastMessage) => {
+  on("pinMessage", async (id, roomID, isLastMessage) => {
     if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
@@ -537,7 +571,7 @@ io.on("connection", (socket) => {
     if (isLastMessage) io.to(roomID).emit("updateLastMsgData", { msgData: msg, roomID });
   });
 
-  socket.on("updateLastMsgPos", async ({ roomID, scrollPos, shouldEmitBack = true }) => {
+  on("updateLastMsgPos", async ({ roomID, scrollPos, shouldEmitBack = true }) => {
     if (!(await allowEvent(userID, "updateLastMsgPos", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     if (!room || !Number.isFinite(Number(scrollPos))) return;
@@ -551,7 +585,7 @@ io.on("connection", (socket) => {
     if (shouldEmitBack) socket.emit("updateLastMsgPos", track);
   });
 
-  socket.on("typing", async (data) => {
+  on("typing", async (data) => {
     if (!(await allowEvent(userID, "typing", 10, 10_000))) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
@@ -562,7 +596,7 @@ io.on("connection", (socket) => {
     io.to(data.roomID).emit("typing", { roomID: data.roomID, sender: user });
   });
 
-  socket.on("stop-typing", async (data) => {
+  on("stop-typing", async (data) => {
     if (!(await allowEvent(userID, "stop-typing", 20, 10_000))) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
@@ -573,7 +607,7 @@ io.on("connection", (socket) => {
     io.to(data.roomID).emit("stop-typing", { roomID: data.roomID, sender: user });
   });
 
-  socket.on("updateUserData", async (updatedFields) => {
+  on("updateUserData", async (updatedFields) => {
     if (!(await allowEvent(userID, "updateUserData", 20, 60_000))) return;
     const allowed = ["name", "lastName", "username", "avatar", "biography"];
     const $set = {};
@@ -583,6 +617,12 @@ io.on("connection", (socket) => {
     for (const key of ["name", "lastName", "username", "avatar", "biography"]) {
       if (Object.prototype.hasOwnProperty.call($set, key) && typeof $set[key] !== "string") {
         return socket.emit("updateUserDataError", { message: "Invalid profile data" });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call($set, "avatar")) {
+      const current = await UserSchema.findById(userID).select("avatar").lean();
+      if (!(await isAllowedAvatar($set.avatar, userID, current?.avatar))) {
+        return socket.emit("updateUserDataError", { message: "Invalid avatar" });
       }
     }
     if (typeof $set.name === "string") $set.name = $set.name.slice(0, 20);
@@ -605,7 +645,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("updateRoomData", async (updatedFields) => {
+  on("updateRoomData", async (updatedFields) => {
     if (!(await allowEvent(userID, "updateRoomData", 30, 60_000))) return;
     try {
       const roomID = updatedFields?.roomID;
@@ -616,6 +656,10 @@ io.on("connection", (socket) => {
       const $set = {};
       for (const key of ["name", "avatar", "biography", "link"]) {
         if (updatedFields && Object.prototype.hasOwnProperty.call(updatedFields, key)) $set[key] = updatedFields[key];
+      }
+
+      if (Object.prototype.hasOwnProperty.call($set, "avatar") && !(await isAllowedAvatar($set.avatar, userID, room.avatar))) {
+        return socket.emit("updateRoomDataError", { message: "Invalid avatar" });
       }
 
       if (Array.isArray(updatedFields?.participants)) {
@@ -666,7 +710,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("getRoomMembers", async ({ roomID }) => {
+  on("getRoomMembers", async ({ roomID }) => {
     if (!(await allowEvent(userID, "getRoomMembers", 20, 60_000))) return;
     const room = await isMember(roomID, userID);
     if (!room) return socket.emit("error", { message: "Forbidden" });
@@ -688,7 +732,7 @@ io.on("connection", (socket) => {
   }, 60_000);
   sessionCheckTimer.unref();
 
-  socket.on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
+  on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
     if (!(await allowEvent(userID, "loadOlderMessages", 60, 60_000))) {
       return callback({ success: false, error: "Rate limit exceeded" });
     }

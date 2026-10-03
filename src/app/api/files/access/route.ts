@@ -53,6 +53,10 @@ export async function GET(req: Request) {
         canAccess = Boolean(await RoomSchema.exists({ _id: messageRef.roomID, participants: userId }));
       }
       if (roomRef && !Array.isArray(roomRef)) canAccess = true;
+      // Profile pictures are visible to every signed-in user.
+      if (!canAccess && key.startsWith("images/")) {
+        canAccess = Boolean(await UserSchema.exists({ avatar: accessUrl }));
+      }
     }
 
     if (!canAccess) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
@@ -60,7 +64,9 @@ export async function GET(req: Request) {
     const signedUrl = await getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), {
       expiresIn: 5 * 60,
     });
-    return NextResponse.redirect(signedUrl, 302);
+    const response = NextResponse.redirect(signedUrl, 302);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
   } catch (error) {
     console.error("file access:", error);
     return NextResponse.json({ message: "Unable to access file" }, { status: 404 });
