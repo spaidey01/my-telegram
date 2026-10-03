@@ -14,7 +14,7 @@ import { RiSendPlaneFill } from "react-icons/ri";
 import { scrollToMessage, toaster, uploadFile } from "@/utils";
 import EmojiPicker from "../modules/EmojiPicker";
 import { v4 as uuidv4 } from "uuid";
-import { pendingMessagesService } from "@/utils/pendingMessages";
+import { pendingMessagesService, PendingMessage } from "@/utils/pendingMessages";
 import { isMobile } from "@/utils/isMobile";
 
 interface Props { replayData?: Partial<Message>; editData?: Partial<Message>; closeReplay:()=>void; closeEdit:()=>void; }
@@ -28,7 +28,7 @@ export default function MessageInput({replayData,editData,closeReplay,closeEdit}
  const cleanup=useCallback(()=>{closeReplay();closeEdit();setText("");if(roomId)localStorage.removeItem(roomId);resize();input.current?.focus();},[closeReplay,closeEdit,roomId,resize]);
  const send=useCallback((payload:{roomID:string;message:string;sender:{_id:string;name:string};replayData?:{targetID:string;replayedTo:{message:string;msgID:string;username:string}}|null;attachmentData?:Attachment|null;stickerData?:{emoji:string}|null;tempId:string})=>{
    const local={_id:payload.tempId,message:payload.message,sender:me,roomID:payload.roomID,status:"pending" as const,replayedTo:payload.replayData?.replayedTo||null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),isEdited:false,seen:[],readTime:null,pinnedAt:null,hideFor:[],replays:[],voiceData:null,attachmentData:payload.attachmentData||null,stickerData:payload.stickerData||null,tempId:payload.tempId} as Message;
-   pendingMessagesService.addPendingMessage(payload.roomID,local);
+   pendingMessagesService.addPendingMessage(payload.roomID,local as Omit<PendingMessage,"retryCount"|"lastAttempt">);
    setter((prev:GlobalStoreProps)=>({selectedRoom:prev.selectedRoom?{...prev.selectedRoom,messages:[...prev.selectedRoom.messages,local]}:null}));
    rooms?.emit("newMessage",payload,(res:{success:boolean;_id:string})=>{setter((prev:GlobalStoreProps)=>({selectedRoom:prev.selectedRoom?{...prev.selectedRoom,messages:prev.selectedRoom.messages.map(m=>m.tempId===payload.tempId?{...m,_id:res?.success?res._id:m._id,status:res?.success?"sent":"failed"}:m)}:null}));if(res?.success)pendingMessagesService.removePendingMessage(payload.roomID,payload.tempId);});
  },[rooms,me,setter]);
