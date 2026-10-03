@@ -676,7 +676,7 @@ io.on("connection", (socket) => {
   sessionCheckTimer.unref();
 
   socket.on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
-    if (!(await allowEvent(userID, "loadOlderMessages", 60, 60_000)) {
+    if (!(await allowEvent(userID, "loadOlderMessages", 60, 60_000))) {
       return callback({ success: false, error: "Rate limit exceeded" });
     }
     try {
