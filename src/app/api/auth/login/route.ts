@@ -6,7 +6,7 @@ import tokenGenerator from "@/utils/TokenGenerator";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 
 export const POST = async (req: Request) => {
-  const ipLimit = rateLimit("login:ip:" + getRequestIp(req), 10, 60_000);
+  const ipLimit = await rateLimit("login:ip:" + getRequestIp(req), 10, 60_000);
   if (!ipLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(ipLimit.retryAfter) } });
 
   try {
@@ -16,7 +16,7 @@ export const POST = async (req: Request) => {
     const password = typeof body?.password === "string" ? body.password : "";
     if (!phone || !password) return Response.json({ message: "Invalid credentials" }, { status: 400 });
 
-    const accountLimit = rateLimit("login:account:" + phone, 10, 60_000);
+    const accountLimit = await rateLimit("login:account:" + phone, 10, 60_000);
     if (!accountLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(accountLimit.retryAfter) } });
 
     const userData = await UserSchema.findOne({ phone }).select("+password");
