@@ -38,7 +38,7 @@ const scanWithClamAV = (bytes: Uint8Array) => new Promise<boolean>((resolve, rej
 
   socket.setTimeout(15_000);
   socket.on("connect", () => {
-    socket.write("zINSTREAM\\0");
+    socket.write(Buffer.from("zINSTREAM\0", "latin1"));
     const chunkSize = 64 * 1024;
     for (let offset = 0; offset < bytes.length; offset += chunkSize) {
       const chunk = Buffer.from(bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
@@ -117,7 +117,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "File content is invalid" }, { status: 415 });
     }
 
-    const scanRequired = process.env.CLAMAV_REQUIRED === "true";
+    // If a scanner is configured, it is mandatory unless explicitly disabled.
+    const scanRequired = process.env.CLAMAV_REQUIRED
+      ? process.env.CLAMAV_REQUIRED === "true"
+      : Boolean(process.env.CLAMAV_HOST);
     try {
       const clean = await scanWithClamAV(bytes);
       if (!clean) {
@@ -131,6 +134,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ message: "Malware scanner unavailable" }, { status: 503 });
       }
     }
+
+    const { default: FileSchema } = await import("@/schemas/fileSchema");
+    await FileSchema.updateOne(
+      { key },
+      { $set: { owner: userId, contentType } },
+      { upsert: true },
+    );
 
     const accessUrl = `/api/files/access?key=${encodeURIComponent(key)}`;
     return NextResponse.json({ success: true, downloadUrl: accessUrl });
