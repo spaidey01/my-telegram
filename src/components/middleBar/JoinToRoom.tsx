@@ -7,10 +7,9 @@ import Loading from "../modules/ui/Loading";
 interface Props {
   roomData: Room;
   roomSocket: Socket | null;
-  userID: string;
 }
 
-const JoinToRoom = ({ roomData, roomSocket, userID }: Props) => {
+const JoinToRoom = ({ roomData, roomSocket }: Props) => {
   const [isLoading, setIsLoading] = useState(false);
   const timer = useRef<NodeJS.Timeout | null>(null);
 
