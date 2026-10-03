@@ -482,6 +482,7 @@ const VoiceMessageRecorder = ({
       voiceBlob,
       stopRecording,
       pendingMessageId,
+      stopStream,
     ]
   );
 
