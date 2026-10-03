@@ -95,7 +95,7 @@ const SearchResultCard = (
       );
     } else {
       setter({ isRoomDetailsShown: false, selectedRoom: userRoom as Room });
-      roomSocket?.emit("createRoom", { newRoomData: { ...userRoom, link: "" } });
+      roomSocket?.emit("createRoom", { newRoomData: userRoom });
     }
   };
 
