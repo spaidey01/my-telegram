@@ -15,6 +15,8 @@ process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
 
 let serverProcess;
 let user;
+let otherUser;
+let thirdUser;
 
 const waitFor = (socket, event, timeout = 5000) =>
   new Promise((resolve, reject) => {
@@ -44,10 +46,25 @@ const waitForServer = () =>
 
 before(async () => {
   await mongoose.connect(process.env.MONGODB_URI);
+  const suffix = Date.now().toString().slice(-10);
   user = await UserSchema.create({
     name: "integration",
-    username: "int_" + Date.now().toString().slice(-10),
-    phone: "int_" + Date.now().toString().slice(-10),
+    username: "int_" + suffix,
+    phone: "int_" + suffix,
+    password: "not-a-real-password",
+    sessionVersion: 0,
+  });
+  otherUser = await UserSchema.create({
+    name: "other",
+    username: "other_" + suffix,
+    phone: "other_" + suffix,
+    password: "not-a-real-password",
+    sessionVersion: 0,
+  });
+  thirdUser = await UserSchema.create({
+    name: "third",
+    username: "third_" + suffix,
+    phone: "third_" + suffix,
     password: "not-a-real-password",
     sessionVersion: 0,
   });
@@ -63,7 +80,7 @@ before(async () => {
 after(async () => {
   if (user) {
     await RoomSchema.deleteMany({ creator: user._id });
-    await UserSchema.deleteOne({ _id: user._id });
+    await UserSchema.deleteMany({ _id: { $in: [user._id, otherUser?._id, thirdUser?._id].filter(Boolean) } });
   }
   await mongoose.disconnect();
 
@@ -118,5 +135,86 @@ test("socket authentication, invite-link authorization and message flow", async 
   } finally {
     socket.disconnect();
     await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+test("private rooms cannot be administratively modified or deleted", async () => {
+  const room = await RoomSchema.create({
+    name: "Private Integration",
+    type: "private",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+
+    const updateErrorPromise = waitFor(socket, "updateRoomDataError");
+    socket.emit("updateRoomData", {
+      roomID: room._id.toString(),
+      name: "Hijacked name",
+      participants: [user._id.toString(), thirdUser._id.toString()],
+    });
+    const updateError = await updateErrorPromise;
+    assert.equal(updateError.message, "Private rooms cannot be administratively modified");
+
+    const deleteErrorPromise = waitFor(socket, "error");
+    socket.emit("deleteRoom", room._id.toString());
+    const deleteError = await deleteErrorPromise;
+    assert.equal(deleteError.message, "Forbidden");
+
+    const unchanged = await RoomSchema.findById(room._id).lean();
+    assert.deepEqual(
+      unchanged.participants.map(String).sort(),
+      [user._id.toString(), otherUser._id.toString()].sort(),
+    );
+  } finally {
+    socket.disconnect();
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("server rejects non-hex public room links", async () => {
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  const roomName = "Invalid Link " + Date.now();
+
+  try {
+    await waitFor(socket, "connect");
+    socket.emit("createRoom", {
+      newRoomData: {
+        name: roomName,
+        type: "group",
+        participants: [user._id.toString()],
+        link: "@victim_username",
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const room = await RoomSchema.findOne({ name: roomName }).lean();
+    assert.equal(room, null);
+  } finally {
+    socket.disconnect();
+    await RoomSchema.deleteMany({ name: roomName });
   }
 });
