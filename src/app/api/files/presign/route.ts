@@ -69,7 +69,7 @@ export async function POST(req: Request) {
         ["content-length-range", 1, MAX_FILE_SIZE],
         ["eq", "$Content-Type", contentType],
       ],
-      Expires: 600,
+      Expires: 60,
     });
 
     return NextResponse.json({
