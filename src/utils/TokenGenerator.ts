@@ -7,9 +7,9 @@ const getSecret = () => {
 };
 
 const tokenGenerator = (userId: string, days: number = 7, sessionVersion = 0) =>
-  sign({ sub: userId, sv: sessionVersion }, getSecret(), { expiresIn: 60 * 60 * 24 * days });
+  sign({ sub: userId, sv: sessionVersion }, getSecret(), { expiresIn: 60 * 60 * 24 * days, algorithm: "HS256" });
 
 export const socketTokenGenerator = (userId: string, sessionVersion = 0) =>
-  sign({ sub: userId, sv: sessionVersion, scope: "socket" }, getSecret(), { expiresIn: "5m" });
+  sign({ sub: userId, sv: sessionVersion, scope: "socket" }, getSecret(), { expiresIn: "5m", algorithm: "HS256" });
 
 export default tokenGenerator;
