@@ -83,16 +83,11 @@ export const rateLimit = async (
 setInterval(cleanup, 60_000).unref();
 
 export const getRequestIp = (req: Request) => {
-  // Prefer a proxy-provided single client IP. Do not trust a client-supplied
-  // first X-Forwarded-For value; it can be spoofed unless the reverse proxy
-  // strips/replaces the header before forwarding.
-  const trustedProxyCount = Number.parseInt(process.env.TRUSTED_PROXY_COUNT || "0", 10);
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (trustedProxyCount > 0 && realIp) return realIp;
+  const n = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_COUNT ?? "1", 10) || 0);
   const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded && Number.isInteger(trustedProxyCount) && trustedProxyCount > 0) {
-    const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
-    if (values.length > trustedProxyCount) return values[values.length - trustedProxyCount - 1];
+  if (n > 0 && forwarded) {
+    const v = forwarded.split(",").map((s) => s.trim()).filter(Boolean);
+    if (v.length) return v[Math.max(0, v.length - n)];
   }
   return "unknown";
 };
