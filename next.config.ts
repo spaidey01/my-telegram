@@ -8,10 +8,6 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**.vercel.app",
-      },
-      {
-        protocol: "https",
         hostname: "storage.c2.liara.space",
         port: "",
         pathname: "/tlgrm/**",
@@ -19,17 +15,20 @@ const nextConfig: NextConfig = {
     ],
   },
   productionBrowserSourceMaps: false,
-  // Webpack optimizations
-  // webpack: (config, { isServer }) => {
-  //   if (!isServer) {
-  //     config.resolve.fallback = {
-  //       ...config.resolve.fallback,
-  //       fs: false,
-  //       net: false,
-  //       tls: false,
-  //     };
-  //   }
-  //   return config;
-  // },
+  async headers() {
+    return [{
+      source: "/(.*)",
+      headers: [
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
+        ...(process.env.NODE_ENV === "production"
+          ? [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]
+          : []),
+      ],
+    }];
+  },
 };
+
 export default nextConfig;

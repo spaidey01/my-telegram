@@ -1,0 +1,53 @@
+name: Validate
+# lockfile synchronized
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - production-fixes
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+      - run: node --check server/index.js
+      - run: npm run test:integration
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_test
+          secretKey: integration-test-secret
+          CLIENT_ORIGIN: http://localhost:3000
+          SOCKET_PORT: 3101
+          REDIS_URL: redis://127.0.0.1:6379

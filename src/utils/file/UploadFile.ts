@@ -9,21 +9,29 @@ const checkNetworkConnectivity = async (): Promise<boolean> => {
     clearTimeout(timeoutId);
     return true;
   } catch {
-    return true;
+    return false;
   }
 };
 
-const putWithProgress = (url: string, file: File, onProgress?: (progress: number) => void) =>
+const postWithProgress = (
+  url: string,
+  fields: Record<string, string>,
+  file: File,
+  onProgress?: (progress: number) => void,
+) =>
   new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.open("POST", url);
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
     };
     xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)));
     xhr.onerror = () => reject(new Error("Upload failed"));
-    xhr.send(file);
+
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) form.append(key, value);
+    form.append("file", file);
+    xhr.send(form);
   });
 
 const uploadFileOnce = async (file: File, onProgress?: (progress: number) => void) => {
@@ -37,10 +45,22 @@ const uploadFileOnce = async (file: File, onProgress?: (progress: number) => voi
   });
   if (!response.ok) throw new Error((await response.json().catch(() => null))?.message || "Unable to prepare upload");
 
-  const { uploadUrl, downloadUrl } = await response.json();
-  await putWithProgress(uploadUrl, upload, onProgress);
+  const { uploadUrl, uploadFields, key } = await response.json();
+  if (!uploadUrl || !uploadFields) throw new Error("Invalid upload authorization");
+
+  await postWithProgress(uploadUrl, uploadFields, upload, onProgress);
+  const verifyResponse = await fetch("/api/files/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, contentType: upload.type }),
+  });
+  if (!verifyResponse.ok) {
+    const error = await verifyResponse.json().catch(() => null);
+    throw new Error(error?.message || "File verification failed");
+  }
+  const verified = await verifyResponse.json();
   onProgress?.(100);
-  return downloadUrl as string;
+  return verified.downloadUrl as string;
 };
 
 const MAX_RETRIES = 3;
@@ -48,7 +68,7 @@ const RETRY_DELAY_MS = 2000;
 
 const uploadFileWithRetry = async (
   file: File,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
 ): Promise<{ success: boolean; error?: string; downloadUrl?: string }> => {
   for (let i = 0; i < MAX_RETRIES; i++) {
     if (!(await checkNetworkConnectivity())) {

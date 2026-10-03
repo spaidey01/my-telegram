@@ -1,0 +1,122 @@
+import test, { after, before } from "node:test";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { io as createClient } from "socket.io-client";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import UserSchema from "../src/schemas/userSchema.js";
+import RoomSchema from "../src/schemas/roomSchema.js";
+
+process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
+process.env.secretKey ||= "integration-test-secret";
+process.env.SOCKET_PORT ||= "3101";
+process.env.CLIENT_ORIGIN ||= "http://localhost:3000";
+process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
+
+let serverProcess;
+let user;
+
+const waitFor = (socket, event, timeout = 5000) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Timed out waiting for " + event)), timeout);
+    socket.once(event, (payload) => {
+      clearTimeout(timer);
+      resolve(payload);
+    });
+  });
+
+const waitForServer = () =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Socket server did not start")), 10000);
+    const onData = (chunk) => {
+      if (chunk.toString().includes("Socket server is running")) {
+        clearTimeout(timer);
+        serverProcess.stdout.off("data", onData);
+        resolve();
+      }
+    };
+    serverProcess.stdout.on("data", onData);
+    serverProcess.once("error", reject);
+    serverProcess.once("exit", (code) => {
+      if (code !== null && code !== 0) reject(new Error("Socket server exited with code " + code));
+    });
+  });
+
+before(async () => {
+  await mongoose.connect(process.env.MONGODB_URI);
+  user = await UserSchema.create({
+    name: "integration",
+    username: "int_" + Date.now().toString().slice(-10),
+    phone: "int_" + Date.now().toString().slice(-10),
+    password: "not-a-real-password",
+    sessionVersion: 0,
+  });
+
+  serverProcess = spawn(process.execPath, ["server/index.js"], {
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  serverProcess.stderr.on("data", (chunk) => process.stderr.write(chunk));
+  await waitForServer();
+});
+
+after(async () => {
+  if (user) {
+    await RoomSchema.deleteMany({ creator: user._id });
+    await UserSchema.deleteOne({ _id: user._id });
+  }
+  await mongoose.disconnect();
+
+  if (serverProcess && !serverProcess.killed) {
+    serverProcess.kill("SIGTERM");
+    await new Promise((resolve) => serverProcess.once("exit", resolve));
+  }
+});
+
+test("socket authentication, invite-link authorization and message flow", async () => {
+  const room = await RoomSchema.create({
+    name: "Integration Room",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+    link: "@integration_" + Date.now(),
+  });
+
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+
+    const joinErrorPromise = waitFor(socket, "joinRoomError");
+    socket.emit("joinRoom", { roomID: room._id.toString(), link: "@wrong" });
+    const joinError = await joinErrorPromise;
+    assert.equal(joinError.message, "This room is not publicly joinable");
+
+    const joinPromise = waitFor(socket, "joinRoom");
+    socket.emit("joinRoom", { roomID: room._id.toString(), link: room.link });
+    const joined = await joinPromise;
+    assert.equal(joined.roomID, room._id.toString());
+
+    const messagePromise = waitFor(socket, "newMessageIdUpdate");
+    socket.emit("newMessage", {
+      roomID: room._id.toString(),
+      message: "integration message",
+      tempId: "integration-temp-" + Date.now(),
+    });
+    const message = await messagePromise;
+    assert.ok(message._id);
+  } finally {
+    socket.disconnect();
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});

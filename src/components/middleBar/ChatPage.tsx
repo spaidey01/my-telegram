@@ -323,7 +323,6 @@ const ChatPage = () => {
         <JoinToRoom
           roomData={selectedRoom!}
           roomSocket={roomsSocket}
-          userID={myID}
         />
       )}
       {isRoomDetailsShown && (
