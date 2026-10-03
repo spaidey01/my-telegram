@@ -4,44 +4,58 @@ import { useState } from "react";
 import SignInForm from "./SignInForm";
 import SignUpForm from "./SignUpForm";
 import Button from "../modules/ui/Button";
-import Lottie from "react-lottie-player";
-import animationData from "../../../public/animations/telegram.json";
 
 const AuthenticationForm = () => {
   const [isLogging, setIsLogging] = useState(true);
 
   return (
-    <section className="bg-leftBarBg flex-center size-full h-dvh">
-      <div className="flex-center transition-all duration-300  flex-col max-w-[360px] w-full text-white">
-        <Lottie
-          loop
-          play
-          animationData={animationData}
-          className="player size-80"
-        />
+    <section className="bg-leftBarBg flex-center size-full h-dvh overflow-hidden px-4">
+      <div className="flex-center transition-all duration-300 flex-col max-w-[380px] w-full text-white">
+        <div className="stargram-logo-wrap" aria-label="Stargram">
+          <div className="stargram-logo-orbit stargram-logo-orbit-one" />
+          <div className="stargram-logo-orbit stargram-logo-orbit-two" />
+          <div className="stargram-logo-glow" />
+          <img
+            src="/images/stargram-logo.png"
+            alt="Stargram"
+            className="stargram-logo"
+            onError={(event) => {
+              event.currentTarget.src = "/images/favicon-96x96.png";
+            }}
+          />
+        </div>
 
-        <h1 className="font-bold font-vazirBold text-4xl">
-          Sign {isLogging ? "in" : "up"} to Telegram
-        </h1>
+        <div className="text-center mt-1 animate-[fadeIn_.7s_ease-out]">
+          <h1 className="font-bold font-vazirBold text-3xl sm:text-4xl">
+            به Stargram خوش اومدی ❤️
+          </h1>
+          <p className="text-gray-400 text-center px-4 text-sm font-vazirLight mt-3 leading-7">
+            جایی که با عشق ساخته شده، برای آدم‌هایی که دوستشون داری.
+          </p>
+        </div>
 
-        <p className="text-gray-400 text-center px-10 text-sm  font-vazirLight mt-3">
+        <h2 className="font-vazirBold text-xl mt-7">
+          {isLogging ? "ورود به Stargram" : "ساخت حساب Stargram"}
+        </h2>
+
+        <p className="text-gray-400 text-center px-4 text-sm font-vazirLight mt-2">
           {isLogging
-            ? "Please confirm your phone number and password to sign in."
-            : "Please fill the fields to sign up."}
+            ? "لطفاً شماره تلفن و رمز عبورت رو وارد کن."
+            : "اطلاعاتت رو وارد کن تا حسابت ساخته بشه."}
         </p>
 
         {isLogging ? <SignInForm /> : <SignUpForm />}
 
-        <div className="text-left w-full ml-1 mt-5 text-sm">
-          {isLogging ? "Don't have an account? " : "Already have an account?"}
+        <div className="text-center w-full mt-4 text-sm text-white/80">
+          {isLogging ? "حساب نداری؟ " : "قبلاً حساب ساختی؟"}
           <Button
             variant="ghost"
             color="info"
             size="xs"
-            classNames="ml-1 "
+            classNames="ml-1"
             onClick={() => setIsLogging((prev) => !prev)}
           >
-            {isLogging ? " Sign up" : " Sign in"}
+            {isLogging ? "ثبت‌نام" : "ورود"}
           </Button>
         </div>
       </div>
