@@ -50,7 +50,7 @@ export const POST = async (req: Request) => {
         }).select("_id name avatar type link biography").lean(),
       ]);
 
-      const results = [...users];
+      const results: any[] = [...users];
       if (room) results.push(room);
       return results.length ? Response.json(results, { status: 200 }) : Response.json(null, { status: 404 });
     }
