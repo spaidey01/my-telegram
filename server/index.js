@@ -72,6 +72,7 @@ export { io };
 
 const onlineUsers = new Map();
 const typingByRoom = new Map();
+const activeCalls = new Map();
 const eventBuckets = new Map();
 const MAX_EVENT_BUCKETS = 50_000;
 
@@ -115,7 +116,7 @@ const cleanupEventBuckets = () => {
 };
 setInterval(cleanupEventBuckets, 60_000).unref();
 
-const FILE_URL_RE = /^\/api\/files\/access\?key=(images|voices)%2F([a-fA-F0-9]{24})%2F([0-9a-f-]{36})$/;
+const FILE_URL_RE = /^\/api\/files\/access\?key=(images|voices|files)%2F([a-fA-F0-9]{24})%2F([0-9a-f-]{36})$/;
 
 // Returns true only if `url` is an access URL for a file that (a) belongs to `userID`,
 // (b) has the expected prefix and (c) passed /api/files/verify.
@@ -142,6 +143,22 @@ const sanitizeVoiceData = async (voiceData, userID) => {
   if (!src || !Number.isFinite(duration) || duration < 0 || duration > 3600) return null;
   if (!(await isOwnVerifiedFile(src, userID, "voices"))) return null;
   return { src, duration, playedBy: [] };
+};
+const sanitizeAttachmentData = async (data, userID) => {
+  if (!data || typeof data !== "object") return null;
+  const src = typeof data.src === "string" ? data.src.trim() : "";
+  const name = typeof data.name === "string" ? data.name.trim().slice(0,255) : "";
+  const type = typeof data.type === "string" ? data.type.trim().slice(0,120).toLowerCase() : "";
+  const size = Number(data.size);
+  const prefix = type.startsWith("image/") ? "images" : type.startsWith("audio/") ? "voices" : "files";
+  if (!src || !name || !type || !Number.isFinite(size) || size < 1 || size > 25*1024*1024) return null;
+  if (!(await isOwnVerifiedFile(src, userID, prefix))) return null;
+  return { src, name, type, size };
+};
+const sanitizeStickerData = (data) => {
+  if (!data || typeof data !== "object" || typeof data.emoji !== "string") return null;
+  const emoji = data.emoji.trim();
+  return emoji && emoji.length <= 16 ? { emoji } : null;
 };
 
 await connectToDB();
@@ -215,7 +232,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  on("newMessage", async ({ roomID, message, replayData, voiceData = null, tempId }, callback = () => {}) => {
+  on("newMessage", async ({ roomID, message, replayData, voiceData = null, attachmentData = null, stickerData = null, tempId }, callback = () => {}) => {
     if (!(await allowEvent(userID, "newMessage", 30, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     try {
       const room = await isMember(roomID, userID);
@@ -237,6 +254,8 @@ io.on("connection", (socket) => {
         roomID,
         seen: [],
         voiceData: await sanitizeVoiceData(voiceData, userID),
+        attachmentData: await sanitizeAttachmentData(attachmentData, userID),
+        stickerData: sanitizeStickerData(stickerData),
         createdAt: Date.now(),
         tempId: scopedTempId,
         status: "sent",
@@ -328,6 +347,8 @@ io.on("connection", (socket) => {
           roomID: newRoom._id,
           seen: [],
           voiceData: await sanitizeVoiceData(message.voiceData, userID),
+          attachmentData: await sanitizeAttachmentData(message.attachmentData, userID),
+          stickerData: sanitizeStickerData(message.stickerData),
           status: "sent",
         });
         newRoom.lastMessageId = newMsg._id;
@@ -459,6 +480,23 @@ io.on("connection", (socket) => {
     })));
   });
 
+  on("call:invite", async ({ callId, roomID, targetUserID, type }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "call:invite", 10, 60000))) return callback({ success:false, error:"Rate limit exceeded" });
+    if (!isValidId(roomID) || !isValidId(targetUserID) || !["audio","video"].includes(type) || typeof callId !== "string") return callback({success:false,error:"Invalid call"});
+    const room=await isMember(roomID,userID);
+    if(!room || room.type!=="private" || !(await isMember(roomID,targetUserID))) return callback({success:false,error:"Forbidden"});
+    if([...activeCalls.values()].some(c=>c.caller===targetUserID||c.callee===targetUserID)) return callback({success:false,error:"User is busy"});
+    const caller=await UserSchema.findById(userID).select("name username avatar _id").lean();
+    activeCalls.set(callId,{caller:userID,callee:targetUserID,roomID,type,createdAt:Date.now()});
+    for(const sid of onlineUsers.get(targetUserID)||[]) io.sockets.sockets.get(sid)?.emit("call:incoming",{callId,roomID,type,from:caller});
+    callback({success:true});
+  });
+  on("call:accept",async({callId})=>{const c=activeCalls.get(callId);if(!c||c.callee!==userID)return;for(const sid of onlineUsers.get(c.caller)||[])io.sockets.sockets.get(sid)?.emit("call:accepted",{callId,roomID:c.roomID,type:c.type});});
+  on("call:reject",async({callId,reason="rejected"})=>{const c=activeCalls.get(callId);if(!c||(c.caller!==userID&&c.callee!==userID))return;const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:rejected",{callId,reason});activeCalls.delete(callId);});
+  on("call:offer",async({callId,description})=>{const c=activeCalls.get(callId);if(!c||c.caller!==userID||!description?.sdp)return;for(const sid of onlineUsers.get(c.callee)||[])io.sockets.sockets.get(sid)?.emit("call:offer",{callId,description});});
+  on("call:answer",async({callId,description})=>{const c=activeCalls.get(callId);if(!c||c.callee!==userID||!description?.sdp)return;for(const sid of onlineUsers.get(c.caller)||[])io.sockets.sockets.get(sid)?.emit("call:answer",{callId,description});});
+  on("call:ice",async({callId,candidate})=>{const c=activeCalls.get(callId);if(!c||(c.caller!==userID&&c.callee!==userID)||!candidate)return;const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ice",{callId,candidate});});
+  on("call:end",async({callId})=>{const c=activeCalls.get(callId);if(!c||(c.caller!==userID&&c.callee!==userID))return;const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ended",{callId});activeCalls.delete(callId);});
   on("getRooms", async () => {
     if (!(await allowEvent(userID, "getRooms", 20, 60_000))) return;
 
@@ -778,6 +816,7 @@ io.on("connection", (socket) => {
     for (const [roomID, members] of typingRooms) {
       if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
     }
+    for(const [callId,c] of activeCalls){if(c.caller===userID||c.callee===userID){const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ended",{callId});activeCalls.delete(callId);}}
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
     if (!sockets?.size) onlineUsers.delete(userID);
