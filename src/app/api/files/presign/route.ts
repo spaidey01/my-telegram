@@ -9,7 +9,7 @@ import UserSchema from "@/schemas/userSchema";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
-const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp", "audio/ogg", "audio/mpeg", "audio/wav", "audio/flac", "audio/webm"]);
+const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg","image/png","image/gif","image/webp","audio/ogg","audio/mpeg","audio/wav","audio/flac","audio/webm","audio/mp4","video/mp4","video/webm","video/quicktime","video/ogg","application/pdf","application/zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.openxmlformats-officedocument.presentationml.presentation","text/plain","text/csv","application/json"]);
 
 const userIdFromCookie = async () => {
   const token = (await cookies()).get("token")?.value;
@@ -59,7 +59,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
     }
 
-    const key = `${contentType.startsWith("image/") ? "images" : "voices"}/${userId}/${randomUUID()}`;
+    const prefix = contentType.startsWith("image/") ? "images" : contentType.startsWith("audio/") ? "voices" : "files";
+    const key = `${prefix}/${userId}/${randomUUID()}`;
     const client = s3();
     const post = await createPresignedPost(client, {
       Bucket: bucket,
