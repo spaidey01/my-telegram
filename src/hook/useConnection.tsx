@@ -277,7 +277,11 @@ const useConnection = ({
 
     socket.on("createRoom", (roomData) => {
       socket.emit("getRooms", userId);
-      if (roomData.creator === userId) socket.emit("joining", roomData._id);
+      const participants = Array.isArray(roomData?.participants) ? roomData.participants : [];
+      const isParticipant = participants.some((participant: unknown) =>
+        String(typeof participant === "string" ? participant : (participant as { _id?: string })?._id) === userId
+      );
+      if (roomData?.creator === userId || isParticipant) socket.emit("joining", roomData._id);
     });
 
     socket.on("updateRoomData", (roomData) => {
