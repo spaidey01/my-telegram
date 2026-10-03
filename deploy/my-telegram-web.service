@@ -1,0 +1,17 @@
+[Unit]
+Description=My Telegram Next.js web application
+After=network.target
+
+[Service]
+Type=simple
+User=telegram
+Group=telegram
+WorkingDirectory=/opt/my-telegram
+EnvironmentFile=/etc/my-telegram.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
