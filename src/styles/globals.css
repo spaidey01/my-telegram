@@ -16,14 +16,6 @@
   --font-vazirLight: vazirLight;
 }
 
-/*
-  The default border color has changed to `currentColor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
 @layer base {
   *,
   ::after,
@@ -57,6 +49,7 @@ body {
   font-family: "vazirLight";
   src: url("../../public/fonts/Vazirmatn-Light.woff2");
 }
+
 .chatBackground {
   background-color: #0e1621;
   background-image: url("/shapes/space.svg");
@@ -109,4 +102,73 @@ body {
 
 .chat {
   --mask-chat: url("data:image/svg+xml,%3csvg width='13' height='13' xmlns='http://www.w3.org/2000/svg'%3e%3cpath fill='black' d='M0 11.5004C0 13.0004 2 13.0004 2 13.0004H12H13V0.00036329L12.5 0C12.5 0 11.977 2.09572 11.8581 2.50033C11.6075 3.35237 10.9149 4.22374 9 5.50036C6 7.50036 0 10.0004 0 11.5004Z'/%3e%3c/svg%3e");
+}
+
+/* Stargram authentication branding */
+@keyframes stargramFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-8px) scale(1.025); }
+}
+@keyframes stargramPulse {
+  0%, 100% { transform: scale(.94); opacity: .34; }
+  50% { transform: scale(1.08); opacity: .68; }
+}
+@keyframes stargramOrbitOne {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+@keyframes stargramOrbitTwo {
+  from { transform: translate(-50%, -50%) rotate(360deg); }
+  to { transform: translate(-50%, -50%) rotate(0deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stargram-logo-wrap {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: stargramFloat 4s ease-in-out infinite;
+}
+.stargram-logo {
+  position: relative;
+  z-index: 3;
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 22px rgba(23,156,222,.42));
+  animation: stargramPulse 3.2s ease-in-out infinite;
+}
+.stargram-logo-glow {
+  position: absolute;
+  inset: 22px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(23,156,222,.35), transparent 68%);
+  filter: blur(8px);
+  animation: stargramPulse 3.2s ease-in-out infinite;
+}
+.stargram-logo-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 182px;
+  height: 72px;
+  border: 2px solid rgba(23,156,222,.28);
+  border-left-color: transparent;
+  border-right-color: transparent;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.stargram-logo-orbit-one { animation: stargramOrbitOne 7s linear infinite; }
+.stargram-logo-orbit-two {
+  width: 145px;
+  height: 182px;
+  border-color: rgba(0,220,255,.18);
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  animation: stargramOrbitTwo 9s linear infinite;
 }
