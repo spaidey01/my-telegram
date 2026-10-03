@@ -5,6 +5,7 @@ import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
+import { rateLimit } from "@/utils/rateLimit";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
 const safeUserProjection = "name lastName username avatar biography type status _id";
@@ -21,6 +22,9 @@ export const POST = async (req: Request) => {
   try {
     const auth = await getAuthenticatedUserId();
     if (!auth || !mongoose.isValidObjectId(auth.id)) return Response.json({ message: "Unauthorized" }, { status: 401 });
+
+    const limit = await rateLimit("users-find:" + auth.id, 30, 60_000);
+    if (!limit.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
     await connectToDB();
     const sessionUser = await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean();
