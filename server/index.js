@@ -294,6 +294,9 @@ io.on("connection", (socket) => {
       const participants = uniqueRequestedParticipants.filter((id) => existingUserIds.has(id));
 
       if (newRoomData.type === "private" && participants.length !== 2) return;
+      if (newRoomData.link !== undefined && newRoomData.link !== null && newRoomData.link !== "" && (
+        typeof newRoomData.link !== "string" || !/^@[a-f0-9]{20}$/.test(newRoomData.link.trim().toLowerCase())
+      )) return;
 
       const roomData = {
         name: typeof newRoomData.name === "string" ? newRoomData.name.trim().slice(0, 100) : "New Room",
@@ -682,7 +685,10 @@ io.on("connection", (socket) => {
       if (typeof $set.name === "string") $set.name = $set.name.trim().slice(0, 100);
       if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 1000);
       if (typeof $set.link === "string") {
-        $set.link = $set.link.trim().slice(0, 500);
+        $set.link = $set.link.trim().toLowerCase();
+        if ($set.link && !/^@[a-f0-9]{20}$/.test($set.link)) {
+          return socket.emit("updateRoomDataError", { message: "Invalid room link" });
+        }
         const duplicateLink = await RoomSchema.findOne({ link: $set.link, _id: { $ne: roomID } }).select("_id").lean();
         if (duplicateLink) return socket.emit("updateRoomDataError", { message: "Link already exists" });
       }
