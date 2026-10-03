@@ -41,17 +41,18 @@ export const POST = async (req: Request) => {
       const searchText = payload.slice(1).trim();
       if (!searchText || searchText.length > 50) return Response.json(null, { status: 404 });
 
-      const room = await RoomSchema.findOne({
-        link: { $regex: new RegExp("^" + escapeRegExp(payload) + "$", "i") },
-      }).select("_id name avatar type link biography").lean();
+      const [users, room] = await Promise.all([
+        UserSchema.find({
+          username: { $regex: new RegExp("^" + escapeRegExp(searchText), "i") },
+        }).select(safeUserProjection).limit(20).lean(),
+        RoomSchema.findOne({
+          link: { $regex: new RegExp("^" + escapeRegExp(payload) + "$", "i") },
+        }).select("_id name avatar type link biography").lean(),
+      ]);
 
-      if (room) return Response.json([room], { status: 200 });
-
-      const users = await UserSchema.find({
-        username: { $regex: new RegExp("^" + escapeRegExp(searchText), "i") },
-      }).select(safeUserProjection).limit(20).lean();
-
-      return users.length ? Response.json(users, { status: 200 }) : Response.json(null, { status: 404 });
+      const results = [...users];
+      if (room) results.push(room);
+      return results.length ? Response.json(results, { status: 200 }) : Response.json(null, { status: 404 });
     }
 
     const rooms = await RoomSchema.find({ participants: auth.id })
