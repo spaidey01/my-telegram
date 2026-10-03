@@ -1,5 +1,5 @@
-const STATIC_CACHE = "telegram-static-v5";
-const DYNAMIC_CACHE = "telegram-dynamic-v5";
+const STATIC_CACHE = "telegram-static-v6";
+const DYNAMIC_CACHE = "telegram-dynamic-v6";
 const MAX_DYNAMIC_CACHE_SIZE = 50;
 
 const ASSETS = [self.origin + "/"];
@@ -60,6 +60,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Never intercept API calls (auth, file access redirects, ...)
+  if (url.pathname.startsWith("/api/")) return;
+
   // Skip caching for PUT, POST, DELETE requests
   if (event.request.method !== "GET") {
     return;
@@ -74,7 +77,7 @@ self.addEventListener("fetch", (event) => {
 
         try {
           const response = await fetch(event.request);
-          cache.put(event.request, response.clone());
+          if (response.ok) cache.put(event.request, response.clone());
           limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
           return response;
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -95,7 +98,7 @@ self.addEventListener("fetch", (event) => {
 
         try {
           const response = await fetch(event.request);
-          cache.put(event.request, response.clone());
+          if (response.ok) cache.put(event.request, response.clone());
           return response;
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
@@ -108,11 +111,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname === "/") {
-    event.respondWith(
-      caches.match(self.origin + "/").then((cachedResponse) => {
-        return cachedResponse || fetch(event.request);
-      })
-    );
+    event.respondWith(networkFirst(event.request));
     return;
   }
 
@@ -136,8 +135,7 @@ const cacheFirst = async (request) => {
 const networkFirst = async (request) => {
   try {
     const response = await fetch(request);
-    // Only cache GET requests
-    if (request.method === "GET") {
+    if (request.method === "GET" && response.ok) {
       const cache = await caches.open(DYNAMIC_CACHE);
       cache.put(request, response.clone());
       limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
@@ -146,8 +144,10 @@ const networkFirst = async (request) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     console.warn("⚠ Network request failed, serving from cache:", request.url);
-    const cache = await caches.open(STATIC_CACHE);
-    return cache.match(request) || cache.match(self.origin + "/");
+    const cached =
+      (await caches.match(request)) ||
+      (await caches.match(self.origin + "/"));
+    return cached || new Response("Offline", { status: 503 });
   }
 };
 
