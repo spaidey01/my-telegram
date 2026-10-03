@@ -19,13 +19,16 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP
 const socketPort = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 const redisUrl = process.env.REDIS_URL;
 let redisAdapter;
+let redisRateClient;
 
 if (redisUrl) {
   const pubClient = createClient({ url: redisUrl });
   const subClient = pubClient.duplicate();
+  redisRateClient = createClient({ url: redisUrl });
   pubClient.on("error", (error) => console.error("Redis pub client error:", error));
   subClient.on("error", (error) => console.error("Redis sub client error:", error));
-  await Promise.all([pubClient.connect(), subClient.connect()]);
+  redisRateClient.on("error", (error) => console.error("Redis rate-limit client error:", error));
+  await Promise.all([pubClient.connect(), subClient.connect(), redisRateClient.connect()]);
   redisAdapter = createAdapter(pubClient, subClient);
 } else if (process.env.NODE_ENV === "production") {
   throw new Error("REDIS_URL is required in production for distributed Socket.IO");
@@ -61,8 +64,7 @@ const MAX_EVENT_BUCKETS = 50_000;
 const allowEvent = async (userID, event, limit, windowMs) => {
   if (redisUrl) {
     try {
-      const client = await createClient({ url: redisUrl }).connect();
-      const result = await client.eval(`
+      const result = await redisRateClient.eval(`
         local count = redis.call("INCR", KEYS[1])
         if count == 1 then redis.call("PEXPIRE", KEYS[1], ARGV[2]) end
         return count
@@ -70,7 +72,6 @@ const allowEvent = async (userID, event, limit, windowMs) => {
         keys: [`socket-rate-limit:${userID}:${event}`],
         arguments: [String(limit), String(windowMs)],
       });
-      client.destroy();
       return Number(result) <= limit;
     } catch (error) {
       console.error("Redis socket rate-limit failure:", error);
