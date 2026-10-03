@@ -393,7 +393,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("getVoiceMessageListeners", async (msgID) => {
-    if (!(await allowEvent(userID, "getVoiceMessageListeners", 30, 60_000) || !isValidId(msgID))) return;
+    if (!(await allowEvent(userID, "getVoiceMessageListeners", 30, 60_000)) || !isValidId(msgID)) return;
     const targetMessage = await MessageSchema.findById(msgID);
     if (!targetMessage) return;
     const room = await isMember(targetMessage.roomID, userID);
