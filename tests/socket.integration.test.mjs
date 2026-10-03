@@ -2,7 +2,7 @@ import test, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { io as createClient } from "socket.io-client";
 import mongoose from "mongoose";
-import { socketTokenGenerator } from "../src/utils/TokenGenerator.js";
+import jwt from "jsonwebtoken";
 import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 
@@ -54,7 +54,7 @@ test("socket authentication, invite-link authorization and message flow", async 
   });
 
   const socket = createClient("http://127.0.0.1:3101", {
-    auth: { token: socketTokenGenerator(user._id.toString(), 0) },
+    auth: { token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
     transports: ["websocket"],
   });
 
