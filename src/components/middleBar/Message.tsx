@@ -248,8 +248,8 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
             {msgData.stickerData?.emoji && <div className="text-6xl leading-none py-2 text-center">{msgData.stickerData.emoji}</div>}
             {msgData.attachmentData && <div className="w-full mt-2" onClick={(e)=>e.stopPropagation()}>
               {msgData.attachmentData.mimeType.startsWith("image/") ? <a href={msgData.attachmentData.src} target="_blank" rel="noreferrer"><img src={msgData.attachmentData.src} alt={msgData.attachmentData.name} className="max-h-80 max-w-full rounded-xl object-contain"/></a>
-              : msgData.attachmentData.type.startsWith("video/") ? <video controls preload="metadata" src={msgData.attachmentData.src} className="max-h-80 max-w-full rounded-xl"/>
-              : msgData.attachmentData.type.startsWith("audio/") ? <audio controls preload="metadata" src={msgData.attachmentData.src} className="max-w-full"/>
+              : msgData.attachmentData.mimeType.startsWith("video/") ? <video controls preload="metadata" src={msgData.attachmentData.src} className="max-h-80 max-w-full rounded-xl"/>
+              : msgData.attachmentData.mimeType.startsWith("audio/") ? <audio controls preload="metadata" src={msgData.attachmentData.src} className="max-w-full"/>
               : <a href={msgData.attachmentData.src} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl bg-black/20 px-4 py-3"><span className="text-2xl">📎</span><span className="min-w-0"><span className="block truncate font-vazirBold">{msgData.attachmentData.name}</span><span className="text-xs text-white/60">{Math.ceil(msgData.attachmentData.size/1024)} KB</span></span></a>}
             </div>}
             {voiceDataProp && (
