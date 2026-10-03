@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     await connectToDB();
     const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
     if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    const limit = rateLimit("file-delete:" + userId, 30, 60_000);
+    const limit = await rateLimit("file-delete:" + userId, 30, 60_000);
     if (!limit.allowed) return NextResponse.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
     const { fileUrl } = await req.json();
     if (typeof fileUrl !== "string") return NextResponse.json({ message: "Invalid file" }, { status: 400 });
