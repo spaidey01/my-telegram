@@ -3,7 +3,7 @@ import UserSchema from "@/schemas/userSchema";
 import { rateLimit, getRequestIp } from "@/utils/rateLimit";
 
 export const POST = async (req: Request) => {
-  const limit = rateLimit("username-check:" + getRequestIp(req), 30, 60_000);
+  const limit = await rateLimit("username-check:" + getRequestIp(req), 30, 60_000);
   if (!limit.allowed) {
     return Response.json(
       { isValid: false, message: "Too many requests." },
