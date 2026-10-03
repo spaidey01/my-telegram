@@ -60,9 +60,9 @@ console.log(`Socket server is running on port ${socketPort}`);
 
 export const shutdown = async () => {
   await new Promise((resolve) => io.close(resolve));
-  redisPubClient?.destroy();
-  redisSubClient?.destroy();
-  redisRateClient?.destroy();
+  if (redisPubClient?.isOpen) redisPubClient.destroy();
+  if (redisSubClient?.isOpen) redisSubClient.destroy();
+  if (redisRateClient?.isOpen) redisRateClient.destroy();
 };
 
 export { io };
