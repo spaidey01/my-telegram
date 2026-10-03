@@ -7,7 +7,7 @@ import tokenGenerator from "@/utils/TokenGenerator";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 
 export const POST = async (req: Request) => {
-  const ipLimit = rateLimit("register:ip:" + getRequestIp(req), 5, 60_000);
+  const ipLimit = await rateLimit("register:ip:" + getRequestIp(req), 5, 60_000);
   if (!ipLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(ipLimit.retryAfter) } });
 
   try {
