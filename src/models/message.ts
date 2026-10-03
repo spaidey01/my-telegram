@@ -11,8 +11,8 @@ export default interface Message {
   replays: string[];
   pinnedAt: string | null;
   voiceData: { src: string; duration: number; playedBy: string[] } | null;
-  attachmentData: { src: string; name: string; type: string; size: number } | null;
-  stickerData: { emoji: string } | null;
+  attachmentData?: { src: string; name: string; type: string; size: number } | null;
+  stickerData?: { emoji: string } | null;
   replayedTo: { message: string; msgID: string; username: string } | null;
   roomID: string;
   hideFor: string[];
