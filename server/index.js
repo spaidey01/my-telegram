@@ -13,6 +13,7 @@ import connectToDB from "../src/db/index.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
+if (secret.length < 32) throw new Error("secretKey must be at least 32 characters");
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
   .split(",").map((v) => v.trim()).filter(Boolean);
