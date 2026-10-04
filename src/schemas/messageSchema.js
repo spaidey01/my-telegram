@@ -25,6 +25,13 @@ export const schema = new Schema(
     },
     attachmentData: { type: { src:{type:String,required:true,maxlength:2048}, name:{type:String,required:true,maxlength:255}, mimeType:{type:String,required:true,maxlength:120}, size:{type:Number,required:true,min:1,max:25*1024*1024} }, default:null },
     stickerData: { type: { emoji:{type:String,required:true,maxlength:16} }, default:null },
+    forwardedFrom: {
+      type: {
+        messageId: { type: String, required: true, maxlength: 24 },
+        senderName: { type: String, required: true, maxlength: 120 },
+      },
+      default: null,
+    },
     reactions: {
       type: [{
         emoji: { type: String, required: true, maxlength: 16 },
