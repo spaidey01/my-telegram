@@ -46,7 +46,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
   } = useUserStore((state) => state);
 
   const { setter: modalSetter } = useModalStore((state) => state);
-  const { setter: globalSetter } = useGlobalStore((state) => state);
+  const { setter: globalSetter, onlineUsers } = useGlobalStore((state) => state);
   const [isDropDownOpen, setIsDropDownOpen] = useState(false);
 
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
@@ -99,7 +99,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             setUploadedImageFile(null);
             setUploadedImageUrl(null);
-            toaster("success", "Profile photo updated successfully!");
+            toaster("success", "عکس پروفایل با موفقیت تغییر کرد!");
           });
 
           socket?.emit("updateUserData", {
@@ -110,7 +110,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
       }
     } catch (error) {
       console.log(error);
-      toaster("error", "Failed to upload, check your network.");
+      toaster("error", "آپلود ناموفق بود؛ اتصال اینترنت را بررسی کن.");
     } finally {
       setIsLoading(false);
     }
@@ -123,7 +123,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
   const dropDownItems = [
     {
-      title: "Edit info",
+      title: "ویرایش اطلاعات",
       onClick: () => {
         updateRoute("edit-info");
         setIsDropDownOpen(false);
@@ -131,7 +131,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
       icon: <GoPencil className="size-5  text-gray-400" />,
     },
     {
-      title: "Update Profile Photo",
+      title: "تغییر عکس پروفایل",
       onClick: () => {
         avatarElem();
         setIsDropDownOpen(false);
@@ -139,12 +139,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
       icon: <TbCameraPlus className="size-5  text-gray-400" />,
     },
     avatar && {
-      title: "Remove Profile Photo",
+      title: "حذف عکس پروفایل",
       onClick: () => {
         modalSetter({
           isOpen: true,
-          title: "Delete Photo",
-          bodyText: "Are you sure you want to delete your profile photo?",
+          title: "حذف عکس",
+          bodyText: "از حذف عکس پروفایل مطمئنی؟",
           okText: "Delete",
           onSubmit: async () => {
             const socket = useSockets.getState().rooms;
@@ -154,7 +154,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
                 ...prev,
                 avatar: "",
               }));
-              toaster("success", "Profile photo removed successfully!");
+              toaster("success", "عکس پروفایل حذف شد!");
             });
             socket?.emit("updateUserData", { userID: _id, avatar: "" });
             await deleteFile(avatar);
@@ -273,7 +273,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
                   })}
               </p>
               <p className="text-darkGray text-[13px]">
-                Tap to change phone number
+                شماره تلفن
               </p>
             </div>
 
