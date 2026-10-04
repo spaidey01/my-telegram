@@ -836,56 +836,63 @@ io.on("connection", (socket) => {
     io.to(data.roomID).emit("stop-typing", { roomID: data.roomID, sender: user });
   });
 
-  on("updateUserData", async (updatedFields) => {
-    if (!(await allowEvent(userID, "updateUserData", 20, 60_000))) return;
+  on("updateUserData", async (updatedFields, callback = () => {}) => {
+    if (!(await allowEvent(userID, "updateUserData", 20, 60_000))) {
+      return callback({ success: false, error: "Rate limit exceeded" });
+    }
+
     const allowed = ["name", "lastName", "username", "avatar", "biography"];
     const $set = {};
     for (const key of allowed) {
       if (updatedFields && Object.prototype.hasOwnProperty.call(updatedFields, key)) $set[key] = updatedFields[key];
     }
-    for (const key of ["name", "lastName", "username", "avatar", "biography"]) {
+
+    for (const key of allowed) {
       if (Object.prototype.hasOwnProperty.call($set, key) && typeof $set[key] !== "string") {
-        return socket.emit("updateUserDataError", { message: "Invalid profile data" });
+        return callback({ success: false, error: "اطلاعات پروفایل نامعتبر است" });
       }
     }
+
+    if (typeof $set.name === "string") {
+      $set.name = $set.name.trim();
+      if ($set.name.length < 3 || $set.name.length > 20) {
+        return callback({ success: false, error: "نام باید بین ۳ تا ۲۰ کاراکتر باشد" });
+      }
+    }
+    if (typeof $set.lastName === "string") $set.lastName = $set.lastName.trim().slice(0, 20);
+    if (typeof $set.biography === "string") $set.biography = $set.biography.trim().slice(0, 70);
+
     if (Object.prototype.hasOwnProperty.call($set, "avatar")) {
       const current = await UserSchema.findById(userID).select("avatar").lean();
       if (!(await isAllowedAvatar($set.avatar, userID, current?.avatar))) {
-        return socket.emit("updateUserDataError", { message: "Invalid avatar" });
+        return callback({ success: false, error: "عکس پروفایل نامعتبر است" });
       }
     }
-    if (typeof $set.name === "string") $set.name = $set.name.slice(0, 20);
-    if (typeof $set.lastName === "string") $set.lastName = $set.lastName.slice(0, 20);
+
     if (typeof $set.username === "string") {
       $set.username = $set.username.replace(/^@/, "").trim().slice(0, 20).toLowerCase();
       if (!/^[a-zA-Z0-9_]{3,20}$/.test($set.username)) {
-        return socket.emit("updateUserDataError", { message: "Invalid username" });
+        return callback({ success: false, error: "نام کاربری باید ۳ تا ۲۰ کاراکتر و فقط شامل حروف، عدد و _ باشد" });
       }
       const duplicate = await UserSchema.findOne({ username: $set.username, _id: { $ne: userID } }).select("_id").lean();
-      if (duplicate) return socket.emit("updateUserDataError", { message: "Username already exists" });
+      if (duplicate) return callback({ success: false, error: "این نام کاربری قبلاً گرفته شده است" });
     }
-    if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 70);
+
     try {
-      await UserSchema.updateOne({ _id: userID }, { $set }, { runValidators: true });
-      const updatedUser = await UserSchema.findById(userID)
-        .select("name lastName username avatar biography phone status _id createdAt updatedAt")
-        .lean();
+      const updated = await UserSchema.findOneAndUpdate(
+        { _id: userID },
+        { $set },
+        { new: true, runValidators: true }
+      ).select("name lastName username avatar biography status _id").lean();
 
-      if (!updatedUser) {
-        return socket.emit("updateUserDataError", { message: "User not found" });
-      }
+      if (!updated) return callback({ success: false, error: "کاربر پیدا نشد" });
 
-      socket.emit("updateUserData", updatedUser);
-
-      const memberRooms = await RoomSchema.find({ participants: userID })
-        .select("_id")
-        .lean();
-      for (const room of memberRooms) {
-        io.to(room._id.toString()).emit("userProfileUpdated", updatedUser);
-      }
+      socket.emit("updateUserData", updated);
+      io.emit("profileUpdated", updated);
+      callback({ success: true, user: updated });
     } catch (error) {
       console.error("updateUserData:", error);
-      socket.emit("updateUserDataError", { message: "Unable to update profile" });
+      callback({ success: false, error: "ذخیره پروفایل انجام نشد" });
     }
   });
 
