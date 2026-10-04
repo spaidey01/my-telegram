@@ -121,12 +121,12 @@ const RoomDetails = ({
     };
     if (roomHistory) {
       roomSocket?.emit("joining", roomHistory._id);
+    } else if (type === "private") {
+      roomSocket?.emit("createRoom", { newRoomData: roomSelected });
+      setter({ selectedRoom: roomSelected as Room, RoomDetailsData: null });
     } else {
       setter({
-        selectedRoom:
-          type === "private"
-            ? (roomSelected as Room)
-            : (RoomDetailsData as Room),
+        selectedRoom: RoomDetailsData as Room,
         RoomDetailsData: null,
       });
     }
