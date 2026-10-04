@@ -201,6 +201,8 @@ const useConnection = ({
               replayData: msg.replayedTo
                 ? { targetID: msg.replayedTo.msgID, replayedTo: msg.replayedTo }
                 : null,
+              attachmentData: msg.attachmentData || null,
+              stickerData: msg.stickerData || null,
               tempId: msg._id,
             };
             if (preparedVoiceData) {
