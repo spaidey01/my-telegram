@@ -3,6 +3,7 @@ import { Secret, sign } from "jsonwebtoken";
 const getSecret = () => {
   const secret = process.env.secretKey;
   if (!secret) throw new Error("secretKey is not configured");
+  if (secret.length < 32) throw new Error("secretKey must be at least 32 characters");
   return secret as Secret;
 };
 
