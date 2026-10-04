@@ -888,8 +888,12 @@ io.on("connection", (socket) => {
       if (!updated) return callback({ success: false, error: "کاربر پیدا نشد" });
 
       socket.emit("updateUserData", updated);
-      io.emit("profileUpdated", updated);
       callback({ success: true, user: updated });
+
+      const memberRooms = await RoomSchema.find({ participants: userID }).select("_id").lean();
+      for (const room of memberRooms) {
+        io.to(room._id.toString()).emit("userProfileUpdated", updated);
+      }
     } catch (error) {
       console.error("updateUserData:", error);
       callback({ success: false, error: "ذخیره پروفایل انجام نشد" });
