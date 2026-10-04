@@ -5,13 +5,13 @@ import { GoBell, GoPencil } from "react-icons/go";
 import {
   IoChatbubbleEllipsesOutline,
   IoLogOutOutline,
-  IoتنظیماتOutline,
+  IoSettingsOutline,
 } from "react-icons/io5";
 
 import { TbCameraPlus } from "react-icons/tb";
 import { GoShieldCheck } from "react-icons/go";
 import { AiOutlineQuestionCircle } from "react-icons/ai";
-import { Mdزبان } from "react-icons/md";
+import { MdLanguage } from "react-icons/md";
 import Image from "next/image";
 import MenuItem from "@/components/leftBar/menu/MenuItem";
 import { ChangeEvent, useCallback, useEffect, useState } from "react";
@@ -33,7 +33,7 @@ interface Props {
   updateRoute: (route: string) => void;
 }
 
-const تنظیمات = ({ getBack, updateRoute }: Props) => {
+const Settings = ({ getBack, updateRoute }: Props) => {
   const {
     avatar,
     name,
@@ -41,7 +41,6 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
     username,
     biography,
     phone,
-    status,
     setter: userStateUpdater,
   } = useUserStore((state) => state);
 
@@ -272,19 +271,7 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
             </p>
 
             <div className="cursor-pointer px-4 py-2 hover:bg-white/5 transition-all duration-200">
-              <p className="text-sm">
-                {phone
-                  .toString()
-                  .split("")
-                  .map((str, index) => {
-                    if (index < 7) {
-                      return str + ((index + 1) % 3 === 0 ? " " : "");
-                    } else {
-                      return str;
-                    }
-                  })}
-              </p>
-              <p className="text-darkGray text-[13px]">
+              <p className="text-sm">{displayPhone}</p>             <p className="text-darkGray text-[13px]">
                 شماره تلفن
               </p>
             </div>
@@ -322,7 +309,7 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
             <div className="flex item-center relative">
               <MenuItem
                 icon={<IoتنظیماتOutline />}
-                title="General تنظیمات"
+                title="تنظیمات عمومی"
                 onClick={() => {}}
               />
               <span className="flex items-center gap-1 text-xs text-gray-400 absolute right-3 top-4">
@@ -447,4 +434,4 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
   );
 };
 
-export default تنظیمات;
+export default Settings;
