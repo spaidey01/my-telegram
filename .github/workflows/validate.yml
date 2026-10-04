@@ -50,7 +50,7 @@ jobs:
       - run: npm run test:integration
         env:
           MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_test
-          secretKey: integration-test-secret
+          secretKey: integration-test-secret-key-32-bytes-minimum
           CLIENT_ORIGIN: http://localhost:3000
           SOCKET_PORT: 3101
           REDIS_URL: redis://127.0.0.1:6379
