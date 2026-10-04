@@ -13,6 +13,7 @@ import connectToDB from "../src/db/index.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
+if (secret.length < 32) throw new Error("secretKey must be at least 32 characters");
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
   .split(",").map((v) => v.trim()).filter(Boolean);
@@ -73,6 +74,8 @@ export { io };
 const onlineUsers = new Map();
 const typingByRoom = new Map();
 const activeCalls = new Map();
+const CALL_RING_TIMEOUT_MS = 30_000;
+const CALL_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const eventBuckets = new Map();
 const MAX_EVENT_BUCKETS = 50_000;
 
@@ -166,6 +169,7 @@ await connectToDB();
 const getUserId = (socket) => socket.userId;
 
 const isValidId = (value) => typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
+const isValidCallId = (value) => typeof value === "string" && CALL_ID_RE.test(value);
 
 const isMember = async (roomID, userID) => {
   if (!isValidId(roomID) || !isValidId(userID)) return null;
@@ -213,11 +217,6 @@ io.on("connection", (socket) => {
     io.emit("updateOnlineUsers", ids);
   };
   broadcastOnlineUsers();
-
-  const tokenExpiryMs = socket.userTokenExp ? socket.userTokenExp * 1000 - Date.now() : 0;
-  if (tokenExpiryMs > 0) {
-    setTimeout(() => socket.disconnect(true), tokenExpiryMs);
-  }
 
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
@@ -481,22 +480,122 @@ io.on("connection", (socket) => {
   });
 
   on("call:invite", async ({ callId, roomID, targetUserID, type }, callback = () => {}) => {
-    if (!(await allowEvent(userID, "call:invite", 10, 60000))) return callback({ success:false, error:"Rate limit exceeded" });
-    if (!isValidId(roomID) || !isValidId(targetUserID) || !["audio","video"].includes(type) || typeof callId !== "string") return callback({success:false,error:"Invalid call"});
-    const room=await isMember(roomID,userID);
-    if(!room || room.type!=="private" || !(await isMember(roomID,targetUserID))) return callback({success:false,error:"Forbidden"});
-    if([...activeCalls.values()].some(c=>c.caller===targetUserID||c.callee===targetUserID)) return callback({success:false,error:"User is busy"});
-    const caller=await UserSchema.findById(userID).select("name username avatar _id").lean();
-    activeCalls.set(callId,{caller:userID,callee:targetUserID,roomID,type,createdAt:Date.now()});
-    for(const sid of onlineUsers.get(targetUserID)||[]) io.sockets.sockets.get(sid)?.emit("call:incoming",{callId,roomID,type,from:caller});
-    callback({success:true});
+    if (!(await allowEvent(userID, "call:invite", 10, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
+    if (!isValidCallId(callId) || !isValidId(roomID) || !isValidId(targetUserID) || !["audio", "video"].includes(type)) {
+      return callback({ success: false, error: "Invalid call" });
+    }
+
+    const room = await isMember(roomID, userID);
+    if (!room || room.type !== "private" || !(await isMember(roomID, targetUserID))) {
+      return callback({ success: false, error: "Forbidden" });
+    }
+    if (targetUserID === userID) return callback({ success: false, error: "Invalid target" });
+    if ([...activeCalls.values()].some((c) => c.caller === targetUserID || c.callee === targetUserID)) {
+      return callback({ success: false, error: "User is busy" });
+    }
+
+    const [caller, target] = await Promise.all([
+      UserSchema.findById(userID).select("name username avatar _id").lean(),
+      UserSchema.findById(targetUserID).select("name username avatar _id").lean(),
+    ]);
+    if (!caller || !target) return callback({ success: false, error: "User not found" });
+
+    const targetSockets = [...(onlineUsers.get(targetUserID) || [])];
+    if (!targetSockets.length) return callback({ success: false, error: "User is offline" });
+
+    const call = {
+      caller: userID,
+      callee: targetUserID,
+      roomID,
+      type,
+      callerSocketId: socket.id,
+      calleeSocketId: null,
+      createdAt: Date.now(),
+      timer: null,
+    };
+
+    call.timer = setTimeout(() => {
+      const active = activeCalls.get(callId);
+      if (!active) return;
+      const ids = new Set([active.callerSocketId, ...(onlineUsers.get(active.callee) || [])]);
+      for (const socketID of ids) {
+        io.sockets.sockets.get(socketID)?.emit("call:ended", { callId, reason: "timeout" });
+      }
+      activeCalls.delete(callId);
+    }, CALL_RING_TIMEOUT_MS);
+    call.timer.unref?.();
+    activeCalls.set(callId, call);
+
+    for (const sid of targetSockets) {
+      io.sockets.sockets.get(sid)?.emit("call:incoming", { callId, roomID, type, from: caller });
+    }
+    socket.emit("call:outgoing", {
+      callId,
+      roomID,
+      type,
+      name: target.name || "User",
+      avatar: target.avatar || "",
+    });
+    callback({ success: true });
   });
-  on("call:accept",async({callId})=>{const c=activeCalls.get(callId);if(!c||c.callee!==userID)return;for(const sid of onlineUsers.get(c.caller)||[])io.sockets.sockets.get(sid)?.emit("call:accepted",{callId,roomID:c.roomID,type:c.type});});
-  on("call:reject",async({callId,reason="rejected"})=>{const c=activeCalls.get(callId);if(!c||(c.caller!==userID&&c.callee!==userID))return;const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:rejected",{callId,reason});activeCalls.delete(callId);});
-  on("call:offer",async({callId,description})=>{const c=activeCalls.get(callId);if(!c||c.caller!==userID||!description?.sdp)return;for(const sid of onlineUsers.get(c.callee)||[])io.sockets.sockets.get(sid)?.emit("call:offer",{callId,description});});
-  on("call:answer",async({callId,description})=>{const c=activeCalls.get(callId);if(!c||c.callee!==userID||!description?.sdp)return;for(const sid of onlineUsers.get(c.caller)||[])io.sockets.sockets.get(sid)?.emit("call:answer",{callId,description});});
-  on("call:ice",async({callId,candidate})=>{const c=activeCalls.get(callId);if(!c||(c.caller!==userID&&c.callee!==userID)||!candidate)return;const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ice",{callId,candidate});});
-  on("call:end",async({callId})=>{const c=activeCalls.get(callId);if(!c||(c.caller!==userID&&c.callee!==userID))return;const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ended",{callId});activeCalls.delete(callId);});
+
+  on("call:accept", async ({ callId }, callback = () => {}) => {
+    const c = activeCalls.get(callId);
+    if (!c || c.callee !== userID) return callback({ success: false, error: "Call not found" });
+    c.calleeSocketId = socket.id;
+    if (c.timer) clearTimeout(c.timer);
+
+    const callerSocket = io.sockets.sockets.get(c.callerSocketId);
+    if (!callerSocket) {
+      activeCalls.delete(callId);
+      return callback({ success: false, error: "Caller disconnected" });
+    }
+    callerSocket.emit("call:accepted", { callId, roomID: c.roomID, type: c.type });
+    callback({ success: true });
+  });
+
+  on("call:reject", async ({ callId, reason = "rejected" }, callback = () => {}) => {
+    const c = activeCalls.get(callId);
+    if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
+    const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
+    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:rejected", { callId, reason });
+    if (c.timer) clearTimeout(c.timer);
+    activeCalls.delete(callId);
+    callback({ success: true });
+  });
+
+  on("call:offer", async ({ callId, description }) => {
+    const c = activeCalls.get(callId);
+    if (!c || c.caller !== userID || socket.id !== c.callerSocketId || !description?.sdp || !c.calleeSocketId) return;
+    io.sockets.sockets.get(c.calleeSocketId)?.emit("call:offer", { callId, description });
+  });
+
+  on("call:answer", async ({ callId, description }) => {
+    const c = activeCalls.get(callId);
+    if (!c || c.callee !== userID || socket.id !== c.calleeSocketId || !description?.sdp) return;
+    io.sockets.sockets.get(c.callerSocketId)?.emit("call:answer", { callId, description });
+  });
+
+  on("call:ice", async ({ callId, candidate }) => {
+    const c = activeCalls.get(callId);
+    if (!c || !candidate) return;
+    const isCaller = c.caller === userID && socket.id === c.callerSocketId;
+    const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
+    if (!isCaller && !isCallee) return;
+    const targetSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
+    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:ice", { callId, candidate });
+  });
+
+  on("call:end", async ({ callId }, callback = () => {}) => {
+    const c = activeCalls.get(callId);
+    if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
+    const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
+    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:ended", { callId, reason: "ended" });
+    if (c.timer) clearTimeout(c.timer);
+    activeCalls.delete(callId);
+    callback({ success: true });
+  });
+
   on("getRooms", async () => {
     if (!(await allowEvent(userID, "getRooms", 20, 60_000))) return;
 
@@ -605,7 +704,7 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
-    if (!room || !msg || !isAdmin(room, userID)) return socket.emit("error", { message: "Forbidden" });
+    if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return socket.emit("error", { message: "Forbidden" });
     msg.pinnedAt = msg.pinnedAt ? null : Date.now();
     await msg.save();
     io.to(roomID).emit("pinMessage", id);
@@ -816,7 +915,16 @@ io.on("connection", (socket) => {
     for (const [roomID, members] of typingRooms) {
       if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
     }
-    for(const [callId,c] of activeCalls){if(c.caller===userID||c.callee===userID){const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ended",{callId});activeCalls.delete(callId);}}
+    for (const [callId, c] of activeCalls) {
+      if (c.caller === userID || c.callee === userID) {
+        const target = c.caller === userID ? c.callee : c.caller;
+        for (const sid of onlineUsers.get(target) || []) {
+          io.sockets.sockets.get(sid)?.emit("call:ended", { callId, reason: "disconnected" });
+        }
+        if (c.timer) clearTimeout(c.timer);
+        activeCalls.delete(callId);
+      }
+    }
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
     if (!sockets?.size) onlineUsers.delete(userID);

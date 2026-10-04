@@ -16,7 +16,7 @@ export default interface Room {
   locations: Location[];
   medias: Media[];
   notSeenCount: number;
-  link: string;
+  link?: string;
   createdAt: string;
   updatedAt: string;
 }

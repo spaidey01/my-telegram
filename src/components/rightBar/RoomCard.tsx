@@ -57,7 +57,7 @@ const RoomCard = (roomData: Partial<User | Room> & Props) => {
       avatar: avatar!,
       createdAt: Date.now().toString(),
       creator: myData._id,
-      link: (Math.random() * 9999999).toString(),
+      link: "",
       locations: [],
       medias: [],
       messages: [],
@@ -67,11 +67,11 @@ const RoomCard = (roomData: Partial<User | Room> & Props) => {
       updatedAt: Date.now().toString(),
     };
 
-    roomSocket?.emit(
-      "joining",
-      roomHistory?._id || roomData?._id,
-      selectedRoom
-    );
+    if (roomHistory) {
+      roomSocket?.emit("joining", roomHistory._id);
+    } else {
+      roomSocket?.emit("createRoom", { newRoomData: selectedRoom });
+    }
 
     setter({ isRoomDetailsShown: false, selectedRoom: selectedRoom as Room });
   };

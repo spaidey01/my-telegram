@@ -16,7 +16,7 @@ const AuthenticationForm = () => {
           <div className="stargram-logo-orbit stargram-logo-orbit-two" />
           <div className="stargram-logo-glow" />
           <img
-            src="/images/stargram-logo.png"
+            src="/images/stargram-logo.svg"
             alt="Stargram"
             className="stargram-logo"
             onError={(event) => {

@@ -64,7 +64,7 @@ interface RoomModel {
   locations: LocationModel[];
   medias: MediaModel[];
   notSeenCount?: number;
-  link: string;
+  link?: string;
   createdAt: string;
   updatedAt: string;
 }
