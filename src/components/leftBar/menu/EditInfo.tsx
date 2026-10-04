@@ -22,28 +22,36 @@ const EditInfo = ({ getBack }: { getBack: () => void }) => {
 
   const submitChanges = () => {
     const socket = useSockets.getState().rooms;
-    if (!socket) return;
-    if (updatedName.trim().length < 3) {
-      toaster("error", "نام باید حداقل ۳ کاراکتر باشد");
+    const cleanName = updatedName.trim();
+    const cleanLastName = updatedLastName.trim();
+    const cleanBiography = updatedBiography.trim();
+
+    if (cleanName.length < 3 || cleanName.length > 20) {
+      toaster("error", "نام باید بین ۳ تا ۲۰ کاراکتر باشد.");
+      return;
+    }
+
+    if (!socket) {
+      toaster("error", "اتصال به سرور برقرار نیست.");
       return;
     }
 
     setIsLoading(true);
     socket.emit(
       "updateUserData",
-      {
-        name: updatedName,
-        lastName: updatedLastName,
-        biography: updatedBiography,
-      },
-      (response: { success: boolean; error?: string; user?: { name: string; lastName: string; biography: string } }) => {
+      { name: cleanName, lastName: cleanLastName, biography: cleanBiography },
+      (response: {
+        success: boolean;
+        error?: string;
+        user?: { name: string; lastName: string; biography: string };
+      }) => {
         setIsLoading(false);
         if (!response?.success || !response.user) {
-          toaster("error", response?.error || "ذخیره پروفایل انجام نشد");
+          toaster("error", response?.error || "ذخیره اطلاعات ناموفق بود.");
           return;
         }
         useUserStore.getState().setter(response.user);
-        toaster("success", "پروفایل با موفقیت ذخیره شد");
+        toaster("success", "اطلاعات پروفایل ذخیره شد.");
         getBack();
       },
     );
