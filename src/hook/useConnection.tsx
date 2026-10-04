@@ -352,7 +352,7 @@ const useConnection = ({
 
 
 
-    socket.on("userProfileUpdated", (updatedUser: Partial<User> & { _id: string }) => {
+    socket.on("profileUpdated", (updatedUser: Partial<User> & { _id: string }) => {
       userDataUpdater((prev) => ({ ...prev, ...updatedUser }));
       setRooms((prevRooms) =>
         prevRooms.map((room) => {
