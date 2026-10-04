@@ -84,50 +84,43 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
   };
 
   const uploadAvatar = useCallback(async () => {
+    if (!uploadedImageFile) return;
+
     try {
       const socket = useSockets.getState().rooms;
-
-      if (uploadedImageFile) {
-        let imageUrl;
-        setIsLoading(true);
-        const uploadResult = await uploadFile(uploadedImageFile);
-        if (uploadResult.success && uploadResult.downloadUrl) {
-          imageUrl = uploadResult.downloadUrl;
-
-          socket?.emit(
-            "updateUserData",
-            { avatar: imageUrl },
-            (response: { success: boolean; error?: string; user?: { avatar: string } }) => {
-              if (!response?.success || !response.user) {
-                toaster("error", response?.error || "تغییر عکس پروفایل ناموفق بود.");
-                return;
-              }
-              userStateUpdater((prev) => ({ ...prev, avatar: response.user!.avatar }));
-              setUploadedImageFile(null);
-              setUploadedImageUrl(null);
-              toaster("success", "عکس پروفایل با موفقیت تغییر کرد.");
-            },
-          );
-        }));
-
-            setUploadedImageFile(null);
-            setUploadedImageUrl(null);
-            toaster("success", "عکس پروفایل با موفقیت تغییر کرد!");
-          });
-
-          socket?.emit("updateUserData", {
-            userID: _id,
-            avatar: imageUrl,
-          });
-        }
+      if (!socket) {
+        toaster("error", "اتصال به سرور برقرار نیست.");
+        return;
       }
+
+      setIsLoading(true);
+      const uploadResult = await uploadFile(uploadedImageFile);
+      if (!uploadResult.success || !uploadResult.downloadUrl) {
+        toaster("error", uploadResult.error || "آپلود عکس ناموفق بود.");
+        return;
+      }
+
+      socket.emit(
+        "updateUserData",
+        { avatar: uploadResult.downloadUrl },
+        (response: { success: boolean; error?: string; user?: { avatar: string } }) => {
+          if (!response?.success || !response.user) {
+            toaster("error", response?.error || "تغییر عکس پروفایل ناموفق بود.");
+            return;
+          }
+          userStateUpdater((prev) => ({ ...prev, avatar: response.user!.avatar }));
+          setUploadedImageFile(null);
+          setUploadedImageUrl(null);
+          toaster("success", "عکس پروفایل با موفقیت تغییر کرد.");
+        },
+      );
     } catch (error) {
-      console.log(error);
-      toaster("error", "آپلود ناموفق بود؛ اتصال اینترنت را بررسی کن.");
+      console.error("uploadAvatar:", error);
+      toaster("error", "آپلود عکس ناموفق بود؛ اتصال اینترنت را بررسی کن.");
     } finally {
       setIsLoading(false);
     }
-  }, [_id, uploadedImageFile, userStateUpdater]);
+  }, [uploadedImageFile, userStateUpdater]);
 
   useEffect(() => {
     if (!uploadedImageUrl) return;
