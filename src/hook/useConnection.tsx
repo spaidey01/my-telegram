@@ -305,6 +305,52 @@ const useConnection = ({
     });
 
     socket.on("updateOnlineUsers", (onlineUsers) => setter({ onlineUsers }));
+    socket.on("profileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
+      if (updatedUser._id === userId) userDataUpdater(updatedUser);
+
+      setRooms((prevRooms) =>
+        prevRooms.map((room) => ({
+          ...room,
+          participants: room.participants.map((participant) =>
+            typeof participant === "object" && participant._id === updatedUser._id
+              ? { ...participant, ...updatedUser }
+              : participant
+          ),
+          lastMsgData: room.lastMsgData
+            ? {
+                ...room.lastMsgData,
+                sender:
+                  typeof room.lastMsgData.sender === "object" &&
+                  room.lastMsgData.sender._id === updatedUser._id
+                    ? { ...room.lastMsgData.sender, ...updatedUser }
+                    : room.lastMsgData.sender,
+              }
+            : room.lastMsgData,
+        }))
+      );
+
+      setter((prev) => ({
+        ...prev,
+        selectedRoom:
+          prev.selectedRoom
+            ? {
+                ...prev.selectedRoom,
+                participants: prev.selectedRoom.participants.map((participant) =>
+                  typeof participant === "object" && participant._id === updatedUser._id
+                    ? { ...participant, ...updatedUser }
+                    : participant
+                ),
+                messages: prev.selectedRoom.messages.map((message) =>
+                  typeof message.sender === "object" && message.sender._id === updatedUser._id
+                    ? { ...message, sender: { ...message.sender, ...updatedUser } }
+                    : message
+                ),
+              }
+            : prev.selectedRoom,
+      }));
+    });
+
+
 
     socket.on("userProfileUpdated", (updatedUser: Partial<User> & { _id: string }) => {
       userDataUpdater((prev) => ({ ...prev, ...updatedUser }));
