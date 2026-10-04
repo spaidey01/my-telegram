@@ -308,7 +308,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             <div className="flex item-center relative">
               <MenuItem
-                icon={<IoتنظیماتOutline />}
+                icon={<IoSettingsOutline />}
                 title="تنظیمات عمومی"
                 onClick={() => {}}
               />
@@ -364,7 +364,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             <span className="relative flex items-center">
               <MenuItem
-                icon={<Mdزبان />}
+                icon={<MdLanguage />}
                 title="زبان"
                 onClick={() => {}}
               />
