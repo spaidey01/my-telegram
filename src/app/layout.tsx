@@ -8,8 +8,8 @@ export const metadata: Metadata = {
   description: "Stargram — پیام‌رسانی که با عشق ساخته شده.",
   applicationName: "Stargram",
   icons: {
-    icon: "/images/stargram-logo.png",
-    apple: "/images/stargram-logo.png",
+    icon: "/images/stargram-logo.svg",
+    apple: "/images/stargram-logo.svg",
   },
 };
 
