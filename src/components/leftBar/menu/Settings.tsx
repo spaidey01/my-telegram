@@ -35,7 +35,6 @@ interface Props {
 
 const تنظیمات = ({ getBack, updateRoute }: Props) => {
   const {
-    _id,
     avatar,
     name,
     lastName,
@@ -186,7 +185,7 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
           isOpen: true,
           title: "خروج از حساب",
           bodyText: "مطمئنی می‌خواهی از حساب خارج شوی؟",
-          okText: "Yes",
+          okText: "بله",
           onSubmit: logout,
         });
         setIsDropDownOpen(false);
