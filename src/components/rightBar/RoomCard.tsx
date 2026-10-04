@@ -67,11 +67,11 @@ const RoomCard = (roomData: Partial<User | Room> & Props) => {
       updatedAt: Date.now().toString(),
     };
 
-    roomSocket?.emit(
-      "joining",
-      roomHistory?._id || roomData?._id,
-      selectedRoom
-    );
+    if (roomHistory) {
+      roomSocket?.emit("joining", roomHistory._id);
+    } else {
+      roomSocket?.emit("createRoom", { newRoomData: selectedRoom });
+    }
 
     setter({ isRoomDetailsShown: false, selectedRoom: selectedRoom as Room });
   };
