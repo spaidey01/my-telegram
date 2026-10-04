@@ -94,12 +94,21 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
         if (uploadResult.success && uploadResult.downloadUrl) {
           imageUrl = uploadResult.downloadUrl;
 
-          // Listen for the response once before emitting
-          socket?.once("updateUserData", () => {
-            userStateUpdater((prev) => ({
-              ...prev,
-              avatar: imageUrl!,
-            }));
+          socket?.emit(
+            "updateUserData",
+            { avatar: imageUrl },
+            (response: { success: boolean; error?: string; user?: { avatar: string } }) => {
+              if (!response?.success || !response.user) {
+                toaster("error", response?.error || "تغییر عکس پروفایل ناموفق بود.");
+                return;
+              }
+              userStateUpdater((prev) => ({ ...prev, avatar: response.user!.avatar }));
+              setUploadedImageFile(null);
+              setUploadedImageUrl(null);
+              toaster("success", "عکس پروفایل با موفقیت تغییر کرد.");
+            },
+          );
+        }));
 
             setUploadedImageFile(null);
             setUploadedImageUrl(null);
@@ -149,19 +158,27 @@ const تنظیمات = ({ getBack, updateRoute }: Props) => {
           isOpen: true,
           title: "حذف عکس",
           bodyText: "از حذف عکس پروفایل مطمئنی؟",
-          okText: "Delete",
+          okText: "حذف",
           onSubmit: async () => {
             const socket = useSockets.getState().rooms;
-            // Listen for response first
-            socket?.once("updateUserData", () => {
-              userStateUpdater((prev) => ({
-                ...prev,
-                avatar: "",
-              }));
-              toaster("success", "عکس پروفایل حذف شد!");
-            });
-            socket?.emit("updateUserData", { userID: _id, avatar: "" });
-            await deleteFile(avatar);
+            if (!socket) return;
+            socket.emit(
+              "updateUserData",
+              { avatar: "" },
+              async (response: { success: boolean; error?: string }) => {
+                if (!response?.success) {
+                  toaster("error", response?.error || "حذف عکس پروفایل ناموفق بود.");
+                  return;
+                }
+                userStateUpdater((prev) => ({ ...prev, avatar: "" }));
+                try {
+                  await deleteFile(avatar);
+                } catch {
+                  // Profile update succeeded; remote cleanup can be retried later.
+                }
+                toaster("success", "عکس پروفایل حذف شد.");
+              },
+            );
           },
         });
         setIsDropDownOpen(false);
