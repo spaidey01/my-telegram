@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Stargram">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="248" fill="url(#g)"/>
+  <path fill="#fff" d="M120 250 388 132c13-6 24 6 18 19L287 399c-5 12-22 13-30 2l-47-67-62-22c-14-5-17-24-4-32l42-26-48 1c-16 0-22-20-8-27Zm92 52 27 39 91-159-139 111 21 1Z"/>
+  <path fill="#dff7ff" d="m350 164 9 22 22 9-22 9-9 22-9-22-22-9 22-9 9-22Z"/>
+</svg>
