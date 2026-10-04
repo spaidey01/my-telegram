@@ -196,6 +196,8 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
           ? { targetID: msg.replayedTo.msgID, replayedTo: msg.replayedTo }
           : null,
         voiceData: preparedVoiceData,
+        attachmentData: msg.attachmentData || null,
+        stickerData: msg.stickerData || null,
         tempId: msg._id,
       };
 
