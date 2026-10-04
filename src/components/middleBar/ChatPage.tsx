@@ -280,12 +280,10 @@ const ChatPage = () => {
             <>
               <button type="button" title="تماس صوتی" className="p-2 rounded-full hover:bg-white/10" onClick={() => {
                 const callId = crypto.randomUUID();
-                roomsSocket?.emit("call:outgoing", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "audio", name, avatar });
                 roomsSocket?.emit("call:invite", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "audio" });
               }}><FiPhone className="size-5" /></button>
               <button type="button" title="تماس تصویری" className="p-2 rounded-full hover:bg-white/10" onClick={() => {
                 const callId = crypto.randomUUID();
-                roomsSocket?.emit("call:outgoing", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "video", name, avatar });
                 roomsSocket?.emit("call:invite", { callId, roomID: selectedRoom?._id, targetUserID: _id, type: "video" });
               }}><FiVideo className="size-5" /></button>
             </>
