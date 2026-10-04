@@ -5,13 +5,13 @@ import { GoBell, GoPencil } from "react-icons/go";
 import {
   IoChatbubbleEllipsesOutline,
   IoLogOutOutline,
-  IoSettingsOutline,
+  IoتنظیماتOutline,
 } from "react-icons/io5";
 
 import { TbCameraPlus } from "react-icons/tb";
 import { GoShieldCheck } from "react-icons/go";
 import { AiOutlineQuestionCircle } from "react-icons/ai";
-import { MdLanguage } from "react-icons/md";
+import { Mdزبان } from "react-icons/md";
 import Image from "next/image";
 import MenuItem from "@/components/leftBar/menu/MenuItem";
 import { ChangeEvent, useCallback, useEffect, useState } from "react";
@@ -33,7 +33,7 @@ interface Props {
   updateRoute: (route: string) => void;
 }
 
-const Settings = ({ getBack, updateRoute }: Props) => {
+const تنظیمات = ({ getBack, updateRoute }: Props) => {
   const {
     _id,
     avatar,
@@ -42,6 +42,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
     username,
     biography,
     phone,
+    status,
     setter: userStateUpdater,
   } = useUserStore((state) => state);
 
@@ -53,6 +54,9 @@ const Settings = ({ getBack, updateRoute }: Props) => {
   const [uploadedImageFile, setUploadedImageFile] = useState<File | null>(null);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  const displayPhone = phone ? String(phone).replace(/(\d{3})(?=\d)/g, "$1 ") : "شماره ثبت نشده";
+  const displayName = `${name || ""} ${lastName || ""}`.trim() || "کاربر Stargram";
 
   const avatarElem = () => {
     const inputElem = document.createElement("input");
@@ -166,12 +170,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
     },
 
     {
-      title: "Log out",
+      title: "خروج از حساب",
       onClick: () => {
         modalSetter({
           isOpen: true,
-          title: "Log out",
-          bodyText: "Do you really want to log out?",
+          title: "خروج از حساب",
+          bodyText: "مطمئنی می‌خواهی از حساب خارج شوی؟",
           okText: "Yes",
           onSubmit: logout,
         });
@@ -237,7 +241,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
               <div className="flex justify-center flex-col gap-1">
                 <h3 className="font-bold text-lg font-vazirBold line-clamp-1 text-ellipsis">
-                  {name + " " + lastName}
+                  {displayName}
                 </h3>
 
                 <div className="font-bold text-[14px] text-darkGray font-vazirBold line-clamp-1 whitespace-normal text-nowrap">
@@ -255,7 +259,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
           <div className="flex flex-col mt-4">
             <p className="text-darkBlue font-vazirBold py-2 px-4 font-bold text-sm">
-              Account
+              حساب
             </p>
 
             <div className="cursor-pointer px-4 py-2 hover:bg-white/5 transition-all duration-200">
@@ -283,7 +287,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
               className="cursor-pointer px-4 py-2 hover:bg-white/5 transition-all duration-200"
             >
               <p className="text-sm">@{username}</p>
-              <p className="text-darkGray text-[13px]">Username</p>
+              <p className="text-darkGray text-[13px]">نام کاربری</p>
             </div>
 
             <LineSeparator />
@@ -292,9 +296,9 @@ const Settings = ({ getBack, updateRoute }: Props) => {
               onClick={() => updateRoute("edit-info")}
               className="cursor-pointer px-4 py-2 hover:bg-white/5 transition-all duration-200"
             >
-              <p className="text-sm">{biography ? biography : "Bio"}</p>
+              <p className="text-sm">{biography ? biography : "بیوگرافی"}</p>
               <p className="text-darkGray text-[13px]">
-                {biography ? "Bio" : "Add a few words about yourself"}
+                {biography ? "بیوگرافی" : "چند کلمه درباره خودت بنویس"}
               </p>
             </div>
           </div>
@@ -303,18 +307,18 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
           <div className="flex flex-col pt-1">
             <p className="text-darkBlue font-vazirBold px-4 py-2 mt-2 text-sm">
-              Settings
+              تنظیمات
             </p>
 
             <div className="flex item-center relative">
               <MenuItem
-                icon={<IoSettingsOutline />}
-                title="General Settings"
+                icon={<IoتنظیماتOutline />}
+                title="General تنظیمات"
                 onClick={() => {}}
               />
               <span className="flex items-center gap-1 text-xs text-gray-400 absolute right-3 top-4">
                 <MdOutlineLockClock fill="teal" size={15} />
-                <span>Coming Soon!</span>
+                <span>به‌زودی</span>
               </span>
             </div>
 
@@ -323,12 +327,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
             <div className="flex item-center relative">
               <MenuItem
                 icon={<GoBell />}
-                title="Notifications"
+                title="اعلان‌ها"
                 onClick={() => {}}
               />
               <span className="flex items-center gap-1 text-xs text-gray-400 absolute right-3 top-4">
                 <MdOutlineLockClock fill="teal" size={15} />
-                <span>Coming Soon!</span>
+                <span>به‌زودی</span>
               </span>
             </div>
 
@@ -337,12 +341,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
             <div className="flex item-center relative">
               <MenuItem
                 icon={<CgLock />}
-                title="Privacy and Security"
+                title="حریم خصوصی و امنیت"
                 onClick={() => {}}
               />
               <span className="flex items-center gap-1 text-xs text-gray-400 absolute right-3 top-4">
                 <MdOutlineLockClock fill="teal" size={15} />
-                <span>Coming Soon!</span>
+                <span>به‌زودی</span>
               </span>
             </div>
 
@@ -351,12 +355,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
             <div className="flex item-center relative">
               <MenuItem
                 icon={<FaRegFolderClosed />}
-                title="Chat Folders"
+                title="پوشه‌های چت"
                 onClick={() => {}}
               />
               <span className="flex items-center gap-1 text-xs text-gray-400 absolute right-3 top-4">
                 <MdOutlineLockClock fill="teal" size={15} />
-                <span>Coming Soon!</span>
+                <span>به‌زودی</span>
               </span>
             </div>
 
@@ -364,12 +368,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             <span className="relative flex items-center">
               <MenuItem
-                icon={<MdLanguage />}
-                title="Language"
+                icon={<Mdزبان />}
+                title="زبان"
                 onClick={() => {}}
               />
               <span className="text-darkBlue absolute right-4 text-sm">
-                English
+                فارسی
               </span>
             </span>
           </div>
@@ -378,12 +382,12 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
           <div className="flex flex-col pt-1">
             <p className="text-darkBlue font-vazirBold px-4 py-2 mt-2 text-sm">
-              Help
+              راهنما
             </p>
 
             <MenuItem
               icon={<IoChatbubbleEllipsesOutline />}
-              title="Ask a Question"
+              title="پرسش و پشتیبانی"
               onClick={() => {}}
             />
 
@@ -391,7 +395,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             <MenuItem
               icon={<AiOutlineQuestionCircle />}
-              title="Telegram FAQ"
+              title="سؤالات متداول"
               onClick={() =>
                 window.open("https://telegram.org/faq?setln=en", "_blank")
               }
@@ -401,7 +405,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             <MenuItem
               icon={<GoShieldCheck />}
-              title="Privacy Policy"
+              title="حریم خصوصی"
               onClick={() =>
                 window.open(
                   "https://telegram.org/privacy/de?setln=en",
@@ -412,7 +416,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
           </div>
 
           <div className="w-full  py-5 px-4 text-center bg-black/70">
-            Created with 💙 by{" "}
+            ساخته شده با 💙 توسط{" "}
             <a
               target="_blank"
               href="https://github.com/SaeedNix"
@@ -434,4 +438,4 @@ const Settings = ({ getBack, updateRoute }: Props) => {
   );
 };
 
-export default Settings;
+export default تنظیمات;
