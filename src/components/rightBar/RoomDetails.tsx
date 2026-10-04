@@ -110,7 +110,7 @@ const RoomDetails = ({
       avatar,
       createdAt: Date.now().toString(),
       creator: myData._id,
-      link: (Math.random() * 9999999).toString(),
+      link: "",
       locations: [],
       medias: [],
       messages: [],
