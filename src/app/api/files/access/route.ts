@@ -47,10 +47,13 @@ export async function GET(req: Request) {
     let canAccess = ownsFile;
 
     if (!canAccess) {
-      const messageRef = await MessageSchema.findOne({ $or: [{ "voiceData.src": accessUrl }, { "attachmentData.src": accessUrl }] }).select("roomID").lean();
+      const messageRefs = await MessageSchema.find({
+        $or: [{ "voiceData.src": accessUrl }, { "attachmentData.src": accessUrl }],
+      }).select("roomID").lean();
+      const roomIds = messageRefs.map((message) => message.roomID);
       const roomRef = await RoomSchema.findOne({ avatar: accessUrl, participants: userId }).select("_id").lean();
-      if (messageRef && !Array.isArray(messageRef)) {
-        canAccess = Boolean(await RoomSchema.exists({ _id: messageRef.roomID, participants: userId }));
+      if (roomIds.length) {
+        canAccess = Boolean(await RoomSchema.exists({ _id: { $in: roomIds }, participants: userId }));
       }
       if (roomRef && !Array.isArray(roomRef)) canAccess = true;
       // Profile pictures are visible to every signed-in user.
