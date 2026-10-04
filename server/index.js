@@ -440,6 +440,60 @@ io.on("connection", (socket) => {
     if (lastMsg?._id.toString() === msgID) io.to(roomID).emit("updateLastMsgData", { roomID, msgData: updated });
   });
 
+  on("forwardMessage", async ({ msgID, sourceRoomID, targetRoomID }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "forwardMessage", 30, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
+    if (!isValidId(msgID) || !isValidId(sourceRoomID) || !isValidId(targetRoomID) || sourceRoomID === targetRoomID) {
+      return callback({ success: false, error: "Invalid forward request" });
+    }
+    const sourceRoom = await isMember(sourceRoomID, userID);
+    const targetRoom = await isMember(targetRoomID, userID);
+    if (!sourceRoom || !targetRoom) return callback({ success: false, error: "Forbidden" });
+    if (targetRoom.type === "channel" && !isAdmin(targetRoom, userID)) {
+      return callback({ success: false, error: "Forbidden" });
+    }
+
+    const source = await MessageSchema.findOne({ _id: msgID, roomID: sourceRoomID })
+      .populate("sender", "name username avatar _id")
+      .lean();
+    if (!source) return callback({ success: false, error: "Message not found" });
+
+    const forwarded = await MessageSchema.create({
+      sender: userID,
+      message: source.message || "",
+      roomID: targetRoomID,
+      seen: [],
+      readTime: null,
+      replays: [],
+      pinnedAt: null,
+      hideFor: [],
+      isEdited: false,
+      voiceData: source.voiceData || null,
+      attachmentData: source.attachmentData || null,
+      stickerData: source.stickerData || null,
+      reactions: [],
+      forwardedFrom: {
+        messageId: source._id.toString(),
+        senderName: typeof source.sender?.name === "string" ? source.sender.name : "کاربر",
+      },
+      createdAt: Date.now(),
+      status: "sent",
+    });
+
+    await RoomSchema.updateOne(
+      { _id: targetRoomID },
+      { $set: { lastMessageId: forwarded._id, lastMessageAt: forwarded.createdAt } },
+    );
+
+    const populated = await MessageSchema.findById(forwarded._id)
+      .populate("sender", "name username avatar _id")
+      .lean();
+
+    io.to(targetRoomID).emit("newMessage", populated);
+    io.to(targetRoomID).emit("lastMsgUpdate", populated);
+    io.to(targetRoomID).emit("updateLastMsgData", { roomID: targetRoomID, msgData: populated });
+    callback({ success: true, message: populated });
+  });
+
   on("toggleReaction", async ({ msgID, roomID, emoji }, callback = () => {}) => {
     if (!(await allowEvent(userID, "toggleReaction", 60, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     if (!isValidId(msgID) || !isValidId(roomID) || typeof emoji !== "string") return callback({ success: false, error: "Invalid reaction" });
