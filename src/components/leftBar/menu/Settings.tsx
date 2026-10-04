@@ -241,7 +241,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
                 </h3>
 
                 <div className="font-bold text-[14px] text-darkGray font-vazirBold line-clamp-1 whitespace-normal text-nowrap">
-                  Online
+                  {onlineUsers.some((user) => user.userID === _id) ? "آنلاین" : "آفلاین"}
                 </div>
               </div>
             </div>
@@ -260,7 +260,6 @@ const Settings = ({ getBack, updateRoute }: Props) => {
 
             <div className="cursor-pointer px-4 py-2 hover:bg-white/5 transition-all duration-200">
               <p className="text-sm">
-                +98{" "}
                 {phone
                   .toString()
                   .split("")
