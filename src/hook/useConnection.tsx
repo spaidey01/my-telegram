@@ -353,6 +353,7 @@ const useConnection = ({
     socket.on("connect", () => {
       setStatus("Telegram");
       socket.emit("getRooms", userId);
+      if (selectedRoom?._id) socket.emit("joining", selectedRoom._id);
     });
 
     const refreshSocketAuth = async () => {
