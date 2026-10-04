@@ -452,7 +452,7 @@ io.on("connection", (socket) => {
       return callback({ success: false, error: "Forbidden" });
     }
 
-    const source = await MessageSchema.findOne({ _id: msgID, roomID: sourceRoomID })
+    const source = await MessageSchema.findOne({ _id: msgID, roomID: sourceRoomID, hideFor: { $ne: userID } })
       .populate("sender", "name username avatar _id")
       .lean();
     if (!source) return callback({ success: false, error: "Message not found" });
