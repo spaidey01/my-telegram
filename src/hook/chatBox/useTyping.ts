@@ -14,7 +14,9 @@ const useTyping = ({ rooms, roomID, myName, setTypings }: useTypingProps) => {
   useEffect(() => {
     const handleTyping = (data: Message) => {
       if (data.sender.name !== myName && data.roomID === roomID) {
-        setTypings((prev) => [...prev, data.sender.name]);
+        setTypings((prev) =>
+          prev.includes(data.sender.name) ? prev : [...prev, data.sender.name]
+        );
       }
     };
 
