@@ -90,7 +90,9 @@ const RoomDetails = ({
   }, [roomSocket, roomID, isRoomDetailsShown, type]);
 
   const copyText = async () => {
-    await copyFn((username && "@" + username) || link);
+    const valueToCopy = (username && "@" + username) || link;
+    if (!valueToCopy) return;
+    await copyFn(valueToCopy);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 1000);
   };
