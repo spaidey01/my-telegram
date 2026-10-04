@@ -14,6 +14,7 @@ export default interface Message {
   attachmentData?: { src: string; name: string; mimeType: string; size: number } | null;
   stickerData?: { emoji: string } | null;
   reactions?: { emoji: string; userIds: string[] }[];
+  forwardedFrom?: { messageId: string; senderName: string } | null;
   replayedTo: { message: string; msgID: string; username: string } | null;
   roomID: string;
   hideFor: string[];
