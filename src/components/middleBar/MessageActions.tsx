@@ -35,6 +35,7 @@ import Message from "@/models/message";
 import ProfileGradients from "../modules/ProfileGradients";
 import { formatDateByDistance } from "@/utils/Date/formatDateByDistance";
 import { FiSend } from "react-icons/fi";
+import { IoArrowRedoOutline } from "react-icons/io5";
 import { pendingMessagesService } from "@/utils/pendingMessages";
 import { msgDataProps } from "./Message";
 import { voiceBlobStorage } from "@/utils/voiceBlobStorage";
@@ -53,6 +54,7 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
   >([]);
   const [dropDownPosition, setDropDownPosition] = useState({ x: 0, y: 0 });
   const [isDropDownOpen, setIsDropDownOpen] = useState(false);
+  const [isForwardOpen, setIsForwardOpen] = useState(false);
 
   const { setter: modalSetter, isChecked } = useModalStore((state) => state);
   const { setter, selectedRoom } = useGlobalStore((state) => state);
@@ -291,6 +293,26 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
     modalSetter((prev) => ({ ...prev, msgData: null }));
   }, [modalSetter]);
 
+  const openForward = useCallback(() => {
+    setIsDropDownOpen(false);
+    setIsForwardOpen(true);
+  }, []);
+
+  const forwardTo = useCallback((targetRoomID: string) => {
+    roomSocket?.emit(
+      "forwardMessage",
+      { msgID: msgData._id, sourceRoomID: msgData.roomID, targetRoomID },
+      (response: { success: boolean; error?: string }) => {
+        if (!response?.success) {
+          console.error(response?.error || "Forward failed");
+          return;
+        }
+        setIsForwardOpen(false);
+        onClose();
+      },
+    );
+  }, [msgData._id, msgData.roomID, onClose, roomSocket]);
+
   const copy = useCallback(() => {
     if (msgData) copyText(msgData.message);
     onClose();
@@ -513,6 +535,11 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
                 icon: <MdContentCopy className="size-5  text-gray-400 " />,
                 onClick: copy,
               },
+              msgData?.status === "sent" && {
+                title: "Forward",
+                icon: <IoArrowRedoOutline className="size-5 text-gray-400" />,
+                onClick: openForward,
+              },
               msgData?.sender._id === myData._id &&
                 msgData?.status === "sent" && {
                   title: "Edit",
@@ -572,6 +599,7 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
       deleteMessage,
       actionHandler,
       openProfile,
+      openForward,
       isUserChannel,
       retry,
       cancelSending,
@@ -627,6 +655,39 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
   }, [msgData]);
   return (
     <>
+      {isForwardOpen && (
+        <dialog className="modal modal-open z-9999">
+          <div className="modal-box bg-modalBg text-white max-h-[75vh]">
+            <h3 className="font-vazirBold text-base mb-3">ارسال به...</h3>
+            <div className="space-y-1 overflow-y-auto max-h-[55vh]">
+              {myData.rooms
+                .filter((room) => room._id !== msgData.roomID)
+                .map((room) => (
+                  <button
+                    key={room._id}
+                    type="button"
+                    onClick={() => forwardTo(room._id)}
+                    className="w-full flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-white/10 text-right"
+                  >
+                    <div className="size-10 rounded-full bg-lightBlue/20 flex items-center justify-center shrink-0">
+                      <FiSend className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-vazirBold">{room.name || "گفتگو"}</p>
+                      <p className="text-xs text-white/50">{room.type === "private" ? "خصوصی" : room.type === "group" ? "گروه" : "کانال"}</p>
+                    </div>
+                  </button>
+                ))}
+            </div>
+            <div className="modal-action">
+              <button type="button" className="btn btn-ghost" onClick={() => setIsForwardOpen(false)}>لغو</button>
+            </div>
+          </div>
+          <form method="dialog" className="modal-backdrop">
+            <button type="button" onClick={() => setIsForwardOpen(false)}>close</button>
+          </form>
+        </dialog>
+      )}
       <DropDown
         button={<></>}
         dropDownItems={dropDownItems}
