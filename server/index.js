@@ -867,7 +867,22 @@ io.on("connection", (socket) => {
     if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 70);
     try {
       await UserSchema.updateOne({ _id: userID }, { $set }, { runValidators: true });
-      socket.emit("updateUserData");
+      const updatedUser = await UserSchema.findById(userID)
+        .select("name lastName username avatar biography phone status _id createdAt updatedAt")
+        .lean();
+
+      if (!updatedUser) {
+        return socket.emit("updateUserDataError", { message: "User not found" });
+      }
+
+      socket.emit("updateUserData", updatedUser);
+
+      const memberRooms = await RoomSchema.find({ participants: userID })
+        .select("_id")
+        .lean();
+      for (const room of memberRooms) {
+        io.to(room._id.toString()).emit("userProfileUpdated", updatedUser);
+      }
     } catch (error) {
       console.error("updateUserData:", error);
       socket.emit("updateUserDataError", { message: "Unable to update profile" });
