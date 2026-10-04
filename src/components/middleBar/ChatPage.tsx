@@ -129,6 +129,24 @@ const ChatPage = () => {
     };
   }, [roomsSocket, handlePinMessage]);
 
+  useEffect(() => {
+    const handleReaction = (data: { msgID: string; roomID: string; reactions: { emoji: string; userIds: string[] }[] }) => {
+      if (!selectedRoom || data.roomID !== selectedRoom._id) return;
+      setter({
+        selectedRoom: {
+          ...selectedRoom,
+          messages: selectedRoom.messages.map((msg) =>
+            msg._id === data.msgID ? { ...msg, reactions: data.reactions } : msg
+          ),
+        },
+      });
+    };
+    roomsSocket?.on("messageReaction", handleReaction);
+    return () => {
+      roomsSocket?.off("messageReaction", handleReaction);
+    };
+  }, [roomsSocket, selectedRoom, setter]);
+
   // Remove user from selected group or channel
   const leaveRoom = () => {
     const newParticipants = participants.filter(
