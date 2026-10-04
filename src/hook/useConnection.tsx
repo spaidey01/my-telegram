@@ -306,6 +306,61 @@ const useConnection = ({
 
     socket.on("updateOnlineUsers", (onlineUsers) => setter({ onlineUsers }));
 
+    socket.on("userProfileUpdated", (updatedUser: Partial<User> & { _id: string }) => {
+      userDataUpdater((prev) => ({ ...prev, ...updatedUser }));
+      setRooms((prevRooms) =>
+        prevRooms.map((room) => {
+          if (room.type !== "private") return room;
+          return {
+            ...room,
+            participants: room.participants.map((participant) =>
+              typeof participant === "string"
+                ? participant
+                : participant._id === updatedUser._id
+                  ? { ...participant, ...updatedUser }
+                  : participant
+            ),
+            messages: (room.messages || []).map((message) =>
+              message.sender?._id === updatedUser._id
+                ? { ...message, sender: { ...message.sender, ...updatedUser } }
+                : message
+            ),
+            lastMsgData:
+              room.lastMsgData?.sender?._id === updatedUser._id
+                ? { ...room.lastMsgData, sender: { ...room.lastMsgData.sender, ...updatedUser } }
+                : room.lastMsgData,
+          };
+        })
+      );
+      setter((prev) => {
+        if (!prev.selectedRoom) return prev;
+        return {
+          selectedRoom: {
+            ...prev.selectedRoom,
+            participants: prev.selectedRoom.participants.map((participant) =>
+              typeof participant === "string"
+                ? participant
+                : participant._id === updatedUser._id
+                  ? { ...participant, ...updatedUser }
+                  : participant
+            ),
+            messages: prev.selectedRoom.messages.map((message) =>
+              message.sender?._id === updatedUser._id
+                ? { ...message, sender: { ...message.sender, ...updatedUser } }
+                : message
+            ),
+            lastMsgData:
+              prev.selectedRoom.lastMsgData?.sender?._id === updatedUser._id
+                ? {
+                    ...prev.selectedRoom.lastMsgData,
+                    sender: { ...prev.selectedRoom.lastMsgData.sender, ...updatedUser },
+                  }
+                : prev.selectedRoom.lastMsgData,
+          },
+        };
+      });
+    });
+
     socket.on("updateLastMsgPos", (updatedData) => {
       userDataUpdater({ roomMessageTrack: updatedData });
     });
@@ -417,6 +472,7 @@ const useConnection = ({
         "updateLastMsgPos",
         "lastMsgUpdate",
         "updateOnlineUsers",
+        "userProfileUpdated",
         "deleteRoom",
         "seenMsg",
         "updateRoomData",
