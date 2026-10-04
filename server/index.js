@@ -440,6 +440,41 @@ io.on("connection", (socket) => {
     if (lastMsg?._id.toString() === msgID) io.to(roomID).emit("updateLastMsgData", { roomID, msgData: updated });
   });
 
+  on("toggleReaction", async ({ msgID, roomID, emoji }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "toggleReaction", 60, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
+    if (!isValidId(msgID) || !isValidId(roomID) || typeof emoji !== "string") return callback({ success: false, error: "Invalid reaction" });
+    const safeEmoji = emoji.trim();
+    if (!safeEmoji || safeEmoji.length > 16) return callback({ success: false, error: "Invalid reaction" });
+
+    const room = await isMember(roomID, userID);
+    const msg = await isMessageInRoom(msgID, roomID);
+    if (!room || !msg) return callback({ success: false, error: "Forbidden" });
+
+    const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
+    const index = reactions.findIndex((reaction) => reaction.emoji === safeEmoji);
+    if (index === -1) {
+      reactions.push({ emoji: safeEmoji, userIds: [userID] });
+    } else {
+      const userIndex = reactions[index].userIds.findIndex((id) => id.toString() === userID);
+      if (userIndex === -1) reactions[index].userIds.push(userID);
+      else reactions[index].userIds.splice(userIndex, 1);
+      if (!reactions[index].userIds.length) reactions.splice(index, 1);
+    }
+
+    msg.reactions = reactions;
+    await msg.save();
+    const payload = {
+      msgID,
+      roomID,
+      reactions: reactions.map((reaction) => ({
+        emoji: reaction.emoji,
+        userIds: reaction.userIds.map((id) => id.toString()),
+      })),
+    };
+    io.to(roomID).emit("messageReaction", payload);
+    callback({ success: true, reactions: payload.reactions });
+  });
+
   on("seenMsg", async ({ msgID, roomID, readTime }) => {
     if (!(await allowEvent(userID, "seenMsg", 120, 60_000))) return;
     const room = await isMember(roomID, userID);
