@@ -6,6 +6,7 @@ import useSockets from "@/stores/useSockets";
 import LineSeparator from "@/components/modules/LineSeparator";
 import Loading from "@/components/modules/ui/Loading";
 import { toaster } from "@/utils";
+import { toaster } from "@/utils";
 
 const EditInfo = ({ getBack }: { getBack: () => void }) => {
   const { name = "", lastName = "", biography = "" } = useUserStore((state) => state);
