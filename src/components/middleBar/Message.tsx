@@ -64,6 +64,7 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
     useCallback((state) => state.msgData?._id === _id, [_id])
   );
   const setter = useGlobalStore((state) => state.setter);
+  const reactionChoices = ["❤️", "👍", "😂", "🔥", "😮", "😢"];
   const selectedRoom = useGlobalStore((state) => state.selectedRoom);
   const [isInViewport, setIsInViewport] = useState<boolean>(false);
   useOnScreen(messageRef, setIsInViewport);
@@ -267,6 +268,34 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
             <p dir="auto" className="text-white break-all whitespace-pre-wrap">
               {message}
             </p>
+            {msgData.reactions?.length ? (
+              <div className="flex flex-wrap gap-1 mt-1 pr-1" onClick={(e) => e.stopPropagation()}>
+                {msgData.reactions.map((reaction) => (
+                  <button
+                    key={reaction.emoji}
+                    type="button"
+                    title={reaction.userIds.includes(myId) ? "برداشتن واکنش" : "واکنش"}
+                    onClick={() => rooms?.emit("toggleReaction", { msgID: _id, roomID, emoji: reaction.emoji })}
+                    className={`px-2 py-0.5 rounded-full text-xs border transition-colors ${reaction.userIds.includes(myId) ? "bg-lightBlue/30 border-lightBlue/60" : "bg-black/20 border-white/10"}`}
+                  >
+                    {reaction.emoji} {reaction.userIds.length}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+              {reactionChoices.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`واکنش ${emoji}`}
+                  onClick={() => rooms?.emit("toggleReaction", { msgID: _id, roomID, emoji })}
+                  className="size-7 rounded-full bg-black/10 hover:bg-white/10 text-sm transition-transform hover:scale-110"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
 
           <span
