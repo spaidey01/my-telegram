@@ -38,18 +38,28 @@ const useRoomEvents = ({
       userID: string;
       roomID: string;
     }) => {
-      if (selectedRoom?._id === roomID) {
-        const updatedRoom = {
-          ...selectedRoom,
-          participants: [...selectedRoom?.participants, userID],
-        };
+      if (selectedRoom?._id !== roomID) return;
 
-        setter({ selectedRoom: updatedRoom });
+      const participants = selectedRoom.participants.includes(userID)
+        ? selectedRoom.participants
+        : [...selectedRoom.participants, userID];
 
-        if (userID === myID) {
-          userDataUpdater({ rooms: [...userRooms, updatedRoom] });
-          rooms?.emit("joining", selectedRoom?._id);
-        }
+      const updatedRoom = {
+        ...selectedRoom,
+        participants,
+      };
+
+      setter({ selectedRoom: updatedRoom });
+
+      if (userID === myID) {
+        const nextRooms = userRooms.some((room) => room._id === updatedRoom._id)
+          ? userRooms.map((room) =>
+              room._id === updatedRoom._id ? updatedRoom : room
+            )
+          : [...userRooms, updatedRoom];
+
+        userDataUpdater({ rooms: nextRooms });
+        rooms?.emit("joining", selectedRoom._id);
       }
     };
 
