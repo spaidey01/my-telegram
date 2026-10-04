@@ -218,6 +218,12 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
           )}
 
           <div className="flex flex-col text-sm gap-1 p-1 mt-1 wrap-break-word mb-3">
+            {msgData.forwardedFrom && (
+              <div className="flex items-center gap-2 text-lightBlue text-xs border-l-2 border-lightBlue/60 pl-2 mb-1">
+                <span>↪</span>
+                <span className="truncate">فوروارد از {msgData.forwardedFrom.senderName}</span>
+              </div>
+            )}
             {replayedToMessage && (
               <div
                 onClick={(e) => {
