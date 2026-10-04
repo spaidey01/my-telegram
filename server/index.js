@@ -914,7 +914,16 @@ io.on("connection", (socket) => {
     for (const [roomID, members] of typingRooms) {
       if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
     }
-    for(const [callId,c] of activeCalls){if(c.caller===userID||c.callee===userID){const target=c.caller===userID?c.callee:c.caller;for(const sid of onlineUsers.get(target)||[])io.sockets.sockets.get(sid)?.emit("call:ended",{callId});activeCalls.delete(callId);}}
+    for (const [callId, c] of activeCalls) {
+      if (c.caller === userID || c.callee === userID) {
+        const target = c.caller === userID ? c.callee : c.caller;
+        for (const sid of onlineUsers.get(target) || []) {
+          io.sockets.sockets.get(sid)?.emit("call:ended", { callId, reason: "disconnected" });
+        }
+        if (c.timer) clearTimeout(c.timer);
+        activeCalls.delete(callId);
+      }
+    }
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
     if (!sockets?.size) onlineUsers.delete(userID);
