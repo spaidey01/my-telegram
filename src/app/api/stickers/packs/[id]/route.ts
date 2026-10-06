@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 import tokenDecoder from "@/utils/TokenDecoder";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
-import StickerSchema from "@/schemas/stickerSchema";
 import StickerPackSchema from "@/schemas/stickerPackSchema";
 import UserStickerPackSchema from "@/schemas/userStickerPackSchema";
 import { rateLimit } from "@/utils/rateLimit";
