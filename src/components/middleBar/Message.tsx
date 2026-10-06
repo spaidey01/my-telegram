@@ -167,12 +167,6 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
           isMounted ? "" : "opacity-0 scale-0"
         }`}
       >
-        {selectionMode && (
-          <button type="button" aria-label={isSelected ? "لغو انتخاب پیام" : "انتخاب پیام"} onClick={(e) => { e.stopPropagation(); toggleMessageSelection(roomID, _id); }} className={`absolute z-20 top-1 ${isFromMe ? "left-1" : "right-1"} size-6 rounded-full border-2 border-white/70 flex items-center justify-center ${isSelected ? "bg-lightBlue" : "bg-black/30"}`}>
-            {isSelected ? "✓" : ""}
-          </button>
-        )}
-
         {/* Show sender avatar in received messages */}
         {!isFromMe &&
           !isPv &&
@@ -205,6 +199,12 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
 
         <div
           id="messageBox"
+        {selectionMode && (
+          <button type="button" aria-label={isSelected ? "لغو انتخاب پیام" : "انتخاب پیام"} onClick={(e) => { e.stopPropagation(); toggleMessageSelection(roomID, _id); }} className={`absolute z-20 top-1 ${isFromMe ? "left-1" : "right-1"} size-6 rounded-full border-2 border-white/70 flex items-center justify-center ${isSelected ? "bg-lightBlue" : "bg-black/30"}`}>
+            {isSelected ? "✓" : ""}
+          </button>
+        )}
+
           onClick={updateModalMsgData}
           onContextMenu={(e) => { e.preventDefault(); selectionMode ? toggleMessageSelection(roomID, _id) : enterMessageSelection(roomID, _id); }}
           onTouchStart={() => { longPressTriggered.current = false; longPressTimer.current = setTimeout(() => { longPressTriggered.current = true; selectionMode ? toggleMessageSelection(roomID, _id) : enterMessageSelection(roomID, _id); }, 450); }}
