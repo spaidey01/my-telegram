@@ -14,7 +14,9 @@ const STORE = "outgoingMessages";
 const openOfflineDB = () => new Promise<IDBDatabase | null>((resolve) => {
   if (typeof indexedDB === "undefined") return resolve(null);
   const request = indexedDB.open(DB_NAME, DB_VERSION);
-  request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE, { keyPath: "tempId" }); };
+  request.onupgradeneeded = () => {
+    if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE, { keyPath: "tempId" });
+  };
   request.onsuccess = () => resolve(request.result);
   request.onerror = () => resolve(null);
 });
@@ -38,20 +40,17 @@ const removeFromIndexedDB = (tempId: string) => {
 };
 
 export const pendingMessagesService = {
-  // Stored pending messages in localStorage
   savePendingMessages: (roomId: string, messages: PendingMessage[]) => {
     try {
       const existing = pendingMessagesService.getAllPendingMessages();
       existing[roomId] = messages;
       localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(existing));
-    mirrorToIndexedDB(existing[roomId] || []);
       mirrorToIndexedDB(messages);
     } catch (error) {
       console.error("Error saving pending messages:", error);
     }
   },
 
-  // Receive pending messages for a specific room
   getPendingMessages: (roomId: string): PendingMessage[] => {
     try {
       const allMessages = pendingMessagesService.getAllPendingMessages();
@@ -62,7 +61,6 @@ export const pendingMessagesService = {
     }
   },
 
-  // Get all pending messages
   getAllPendingMessages: (): Record<string, PendingMessage[]> => {
     try {
       const stored = localStorage.getItem(PENDING_MESSAGES_KEY);
@@ -73,63 +71,46 @@ export const pendingMessagesService = {
     }
   },
 
-  // Delete pending message
   removePendingMessage: (roomId: string, tempId: string) => {
     try {
       const existing = pendingMessagesService.getAllPendingMessages();
       if (existing[roomId]) {
-        existing[roomId] = existing[roomId].filter(
-          (msg) => msg.tempId !== tempId
-        );
-        if (existing[roomId].length === 0) {
-          delete existing[roomId];
-        }
+        existing[roomId] = existing[roomId].filter((msg) => msg.tempId !== tempId);
+        if (existing[roomId].length === 0) delete existing[roomId];
         localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(existing));
         removeFromIndexedDB(tempId);
-        removeFromIndexedDB(tempId);
-        for (const message of existing[roomId] || []) mirrorToIndexedDB([message]);
       }
     } catch (error) {
       console.error("Error removing pending message:", error);
     }
   },
 
-  // Add a new message to pending
   addPendingMessage: (
     roomId: string,
     message: Omit<PendingMessage, "retryCount" | "lastAttempt">
   ) => {
-    const pendingMessage: PendingMessage = {
-      ...message,
-      retryCount: 0,
-      lastAttempt: Date.now(),
-    };
-
+    const pendingMessage: PendingMessage = { ...message, retryCount: 0, lastAttempt: Date.now() };
     const existing = pendingMessagesService.getPendingMessages(roomId);
     existing.push(pendingMessage);
     pendingMessagesService.savePendingMessages(roomId, existing);
     return pendingMessage;
   },
 
-  // Clear all pending messages for a room
   clearPendingMessages: (roomId: string) => {
     const existing = pendingMessagesService.getAllPendingMessages();
+    for (const message of existing[roomId] || []) removeFromIndexedDB(message.tempId);
     delete existing[roomId];
     localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(existing));
   },
 
-  // Cancel a pending or failed message and delete it from local storage
   cancelPendingMessage: (roomId: string, tempId: string) => {
     try {
       const existing = pendingMessagesService.getAllPendingMessages();
       if (existing[roomId]) {
-        existing[roomId] = existing[roomId].filter(
-          (msg) => msg.tempId !== tempId
-        );
-        if (existing[roomId].length === 0) {
-          delete existing[roomId];
-        }
+        existing[roomId] = existing[roomId].filter((msg) => msg.tempId !== tempId);
+        if (existing[roomId].length === 0) delete existing[roomId];
         localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(existing));
+        removeFromIndexedDB(tempId);
       }
     } catch (error) {
       console.error("Error canceling pending message:", error);
