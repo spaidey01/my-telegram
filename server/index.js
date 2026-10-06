@@ -529,6 +529,63 @@ io.on("connection", (socket) => {
     callback({ success: true, reactions: payload.reactions });
   });
 
+  on("markRoomRead", async ({ roomID, messageID }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "markRoomRead", 120, 60_000))) {
+      return callback({ success: false, error: "Rate limit exceeded" });
+    }
+    if (!isValidId(roomID) || !isValidId(messageID)) {
+      return callback({ success: false, error: "Invalid read marker" });
+    }
+
+    const room = await isMember(roomID, userID);
+    if (!room) return callback({ success: false, error: "Forbidden" });
+
+    const target = await MessageSchema.findOne({
+      _id: messageID,
+      roomID,
+      hideFor: { $nin: [userID] },
+    }).select("_id createdAt").lean();
+    if (!target) return callback({ success: false, error: "Message not found" });
+
+    const readTime = new Date();
+    const reader = new mongoose.Types.ObjectId(userID);
+
+    await MessageSchema.updateMany(
+      {
+        roomID,
+        sender: { $ne: reader },
+        hideFor: { $nin: [reader] },
+        seen: { $nin: [reader] },
+        $or: [
+          { createdAt: { $lt: target.createdAt } },
+          { createdAt: target.createdAt, _id: { $lte: target._id } },
+        ],
+      },
+      {
+        $addToSet: { seen: reader },
+        $set: { readTime },
+      },
+    );
+
+    const unread = await MessageSchema.countDocuments({
+      roomID,
+      sender: { $ne: reader },
+      seen: { $nin: [reader] },
+      hideFor: { $nin: [reader] },
+    });
+
+    const payload = {
+      roomID,
+      messageID,
+      readBy: userID,
+      readTime,
+      unreadCount: unread,
+    };
+
+    io.to(roomID).emit("roomRead", payload);
+    callback({ success: true, ...payload });
+  });
+
   on("seenMsg", async ({ msgID, roomID, readTime }) => {
     if (!(await allowEvent(userID, "seenMsg", 120, 60_000))) return;
     const room = await isMember(roomID, userID);
