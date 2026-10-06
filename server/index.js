@@ -185,7 +185,7 @@ const isMessageInRoom = async (msgID, roomID) => {
   return MessageSchema.findOne({ _id: msgID, roomID });
 };
 
-const publicUserFields = "name username avatar _id status lastSeenAt";
+const publicUserFields = "name username _id status lastSeenAt";
 
 const broadcastPresence = async (targetUserID, status, lastSeenAt) => {
   const sockets = await io.fetchSockets();
@@ -225,7 +225,7 @@ io.on("connection", (socket) => {
   const presenceRoom = `presence:${userID}`;
   socket.data.userId = userID;
   socket.join(presenceRoom);
-  const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean();
+  const publicUserPromise = UserSchema.findById(userID).select("name username _id").lean();
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
 
   const initializePresence = async () => {
@@ -312,7 +312,7 @@ io.on("connection", (socket) => {
       );
 
       const populatedMsg = await MessageSchema.findById(newMsg._id)
-        .populate("sender", "name username avatar _id")
+        .populate("sender", "name username _id")
         .lean();
 
       socket.to(roomID).emit("newMessage", populatedMsg);
