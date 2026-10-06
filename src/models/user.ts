@@ -10,6 +10,7 @@ export default interface User {
   avatar: string;
   biography: string;
   status: "online" | "offline";
+  lastSeenAt: string | null;
   isLogin: boolean;
   roomMessageTrack: { roomId: string; scrollPos: number }[];
   createdAt: string;
