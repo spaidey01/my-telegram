@@ -41,6 +41,7 @@ const Settings = ({ getBack, updateRoute }: Props) => {
     username,
     biography,
     phone,
+    _id,
     setter: userStateUpdater,
   } = useUserStore((state) => state);
 
