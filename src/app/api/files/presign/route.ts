@@ -43,12 +43,15 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    const purpose = body?.purpose === "sticker" ? "sticker" : "file";
     const contentType = typeof body?.contentType === "string" ? body.contentType.trim().toLowerCase() : "";
     const size = Number(body?.size);
 
-    if (!contentType || !Number.isFinite(size) || size <= 0 || size > MAX_FILE_SIZE) {
+    if (!contentType || !Number.isFinite(size) || size <= 0 || size > (purpose === "sticker" ? 512 * 1024 : MAX_FILE_SIZE)) {
       return NextResponse.json({ message: "Invalid file" }, { status: 400 });
     }
+
+    if (purpose === "sticker" && !new Set(["image/png", "image/webp", "image/gif"]).has(contentType)) return NextResponse.json({ message: "Sticker type not allowed" }, { status: 415 });
 
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
       return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
@@ -59,7 +62,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
     }
 
-    const prefix = contentType.startsWith("image/") ? "images" : contentType.startsWith("audio/") ? "voices" : "files";
+    const prefix = purpose === "sticker" ? "stickers" : contentType.startsWith("image/") ? "images" : contentType.startsWith("audio/") ? "voices" : "files";
     const key = `${prefix}/${userId}/${randomUUID()}`;
     const client = s3();
     const post = await createPresignedPost(client, {
@@ -67,7 +70,7 @@ export async function POST(req: Request) {
       Key: key,
       Fields: { "Content-Type": contentType, key },
       Conditions: [
-        ["content-length-range", 1, MAX_FILE_SIZE],
+        ["content-length-range", 1, purpose === "sticker" ? 512 * 1024 : MAX_FILE_SIZE],
         ["eq", "$Content-Type", contentType],
       ],
       Expires: 60,
