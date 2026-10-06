@@ -8,6 +8,7 @@ export interface MessageSelectionState {
   selectedMessageIds: string[];
   selectionRoomID: string | null;
   selectionMode: boolean;
+  pendingMessageJumpId: string | null;
 }
 
 export interface GlobalStoreProps {
@@ -42,6 +43,7 @@ interface Updater {
   clearMessageSelection: () => void;
   pruneMessageSelection: (roomID: string, messageIDs: string[]) => void;
   replaceMessageSelection: (roomID: string, oldMessageID: string, newMessageID: string) => void;
+  setPendingMessageJump: (messageID: string | null) => void;
 }
 
 const emptySelection = EMPTY_MESSAGE_SELECTION;
@@ -58,6 +60,7 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
   showCreateRoomBtn: true,
   createRoomType: null,
   ...emptySelection,
+  pendingMessageJumpId: null,
 
   updater(
     key: keyof GlobalStoreProps,
@@ -90,6 +93,10 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
 
   replaceMessageSelection(roomID, oldMessageID, newMessageID) {
     set((state) => replaceMessageSelection(state, roomID, oldMessageID, newMessageID));
+  },
+
+  setPendingMessageJump(messageID) {
+    set({ pendingMessageJumpId: messageID });
   },
 
 }));
