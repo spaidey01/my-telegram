@@ -253,8 +253,15 @@ const isMember = async (roomID, userID) => {
   return RoomSchema.findOne({ _id: roomID, participants: userID });
 };
 
-const isAdmin = (room, userID) =>
-  !!room && (room.creator?.toString() === userID || room.admins?.some((id) => id.toString() === userID));
+const isAdmin = (room, userID) => {
+  if (!room) return false;
+  if (room.creator?.toString() === userID) return true;
+  if (room.type === "channel") {
+    const role = room.channelRoles?.get?.(userID);
+    if (role) return role === "owner" || role === "admin";
+  }
+  return room.admins?.some((id) => id.toString() === userID);
+};
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const recordCallHistory = async (call, status, endedAt = new Date()) => {
