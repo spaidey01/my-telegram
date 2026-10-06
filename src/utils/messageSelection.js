@@ -37,3 +37,12 @@ export const pruneMessageSelection = (state, roomID, messageIDs) => {
     ? { selectedMessageIds, selectionRoomID: roomID, selectionMode: true }
     : EMPTY_MESSAGE_SELECTION;
 };
+
+export const replaceMessageSelection = (state, roomID, oldMessageID, newMessageID) => {
+  if (state.selectionRoomID !== roomID || !state.selectedMessageIds.includes(oldMessageID)) return state;
+  return {
+    selectedMessageIds: state.selectedMessageIds.map((id) => id === oldMessageID ? newMessageID : id),
+    selectionRoomID: roomID,
+    selectionMode: true,
+  };
+};
