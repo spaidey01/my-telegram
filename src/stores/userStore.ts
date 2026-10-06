@@ -27,6 +27,7 @@ const useUserStore = create<UserStore>((set) => ({
   isLogin: false,
   biography: "",
   status: "offline",
+  lastSeenAt: null,
   updatedAt: "",
   roomMessageTrack: [],
   isInitialSet: false,
