@@ -81,6 +81,7 @@ const useMessages = ({
       _id: string;
     }) => {
       playRingSound();
+      replaceMessageSelection(roomID, tempId, _id);
       setter((prev) => ({
         selectedRoom: {
           ...prev.selectedRoom!,
