@@ -1167,6 +1167,18 @@ io.on("connection", (socket) => {
     callback({success:true,inviteToken:token});
   });
 
+  on("channel:joinByInvite", async ({ inviteToken }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "channel:joinByInvite", 10, 60_000))) return callback({success:false,error:"Rate limit exceeded"});
+    if (typeof inviteToken !== "string" || inviteToken.length < 20 || inviteToken.length > 100) return callback({success:false,error:"Invalid invite"});
+    const room = await RoomSchema.findOne({type:"channel",inviteToken}).select("_id name avatar type participants admins creator visibility link biography").lean();
+    if (!room) return callback({success:false,error:"Invite is invalid or expired"});
+    if (room.participants.some(id=>id.toString()===userID)) return callback({success:true,roomID:room._id.toString(),alreadyMember:true});
+    await RoomSchema.updateOne({_id:room._id},{$addToSet:{participants:userID}});
+    await io.in(`presence:${userID}`).socketsJoin(room._id.toString());
+    io.to(room._id.toString()).emit("channel:subscriberAdded",{roomID:room._id.toString(),userID});
+    callback({success:true,roomID:room._id.toString(),alreadyMember:false});
+  });
+
   on("channel:leave", async ({ roomID }, callback = () => {}) => {
     const room=await isMember(roomID,userID); if(!room||room.type!=="channel"||room.creator?.toString()===userID)return callback({success:false,error:"Forbidden"});
     room.participants=room.participants.filter(id=>id.toString()!==userID); room.admins=room.admins.filter(id=>id.toString()!==userID); await room.save(); await io.in(`presence:${userID}`).socketsLeave(roomID); io.to(roomID).emit("channel:subscriberRemoved",{roomID,userID}); callback({success:true});
