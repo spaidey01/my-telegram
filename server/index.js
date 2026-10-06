@@ -720,9 +720,13 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "editMessage", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
-    if (!room || !msg || msg.sender.toString() !== userID || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
+    const channelRole = room?.type === "channel" ? (room.channelRoles?.get?.(userID) || room.channelRoles?.[userID]) : null;
+    const canEdit = room?.type === "channel"
+      ? (msg.sender.toString() === userID || channelRole === "editor" || channelRole === "moderator" || isAdmin(room,userID))
+      : msg.sender.toString() === userID;
+    if (!room || !msg || !canEdit || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
 
-    const updated = await MessageSchema.findOneAndUpdate({ _id: msgID, roomID, sender: userID }, { message: editedMsg, isEdited: true }, { new: true }).lean();
+    const updated = await MessageSchema.findOneAndUpdate({ _id: msgID, roomID, sender: userID }, { message: editedMsg, isEdited: true, mentions: parseMentionsServer(editedMsg), hashtags: parseHashtagsServer(editedMsg) }, { new: true }).lean();
     if (!updated) return;
     io.to(roomID).emit("editMessage", { msgID, editedMsg, roomID });
     const lastMsg = await MessageSchema.findOne({ roomID }).sort({ createdAt: -1 }).lean();
