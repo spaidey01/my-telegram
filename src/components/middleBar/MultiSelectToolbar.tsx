@@ -185,7 +185,6 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
           </option>
         ))}
       </select>
-      <MdDone className="hidden" />
     </div>
   );
 };
