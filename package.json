@@ -10,7 +10,8 @@
     "server": "node ./server",
     "lint": "eslint .",
     "db:cleanup-legacy-room-messages": "node ./scripts/cleanup-legacy-room-messages.mjs",
-    "test:integration": "node --test tests/socket.integration.test.mjs"
+    "test:integration": "node --test tests/socket.integration.test.mjs",
+    "test:turn": "node --test tests/turn-credentials.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
@@ -45,7 +46,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.0.0",
+    "@tailwindcss/postcss": "^9",
     "@types/aos": "^3.0.7",
     "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.7",
