@@ -216,7 +216,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     if (!roomId || !message || !room) return;
     if (room.type === "channel") {
       const role = room.channelRoles?.[me._id] || (room.admins.includes(me._id) ? "admin" : null);
-      if (!["owner", "admin", "editor", "moderator"].includes(role)) return;
+      if (!["owner", "admin", "editor", "moderator"].includes(role ?? "")) return;
     }
     send({
       roomID: roomId,
