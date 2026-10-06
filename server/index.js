@@ -816,6 +816,8 @@ io.on("connection", (socket) => {
       calleeSocketId: null,
       createdAt: Date.now(),
       timer: null,
+      reconnectTimer: null,
+      retryCount: 0,
     };
 
     call.timer = setTimeout(() => {
@@ -864,6 +866,7 @@ io.on("connection", (socket) => {
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
     if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:rejected", { callId, reason });
     if (c.timer) clearTimeout(c.timer);
+    if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
     activeCalls.delete(callId);
     callback({ success: true });
   });
