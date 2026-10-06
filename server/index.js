@@ -594,7 +594,7 @@ io.on("connection", async (socket) => {
     callback({ success: true, ...payload });
   });
 
-  on("seenMsg", async ({ msgID, roomID, readTime }) => {
+  on("seenMsg", async ({ msgID, roomID }) => {
     if (!(await allowEvent(userID, "seenMsg", 120, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
