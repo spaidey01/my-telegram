@@ -15,6 +15,7 @@ import useGlobalStore from "@/stores/globalStore";
 import ProfileGradients from "../modules/ProfileGradients";
 import { IoTimeOutline } from "react-icons/io5";
 import { TbExclamationCircle } from "react-icons/tb";
+import useGlobalStore from "@/stores/globalStore";
 
 export interface msgDataProps {
   myId: string;
@@ -64,9 +65,14 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
     useCallback((state) => state.msgData?._id === _id, [_id])
   );
   const setter = useGlobalStore((state) => state.setter);
+  const selectionMode = useGlobalStore((state) => state.selectionMode);
+  const isSelected = useGlobalStore((state) => state.selectedMessageIds.includes(_id));
+  const enterMessageSelection = useGlobalStore((state) => state.enterMessageSelection);
+  const toggleMessageSelection = useGlobalStore((state) => state.toggleMessageSelection);
   const reactionChoices = ["❤️", "👍", "😂", "🔥", "😮", "😢"];
   const selectedRoom = useGlobalStore((state) => state.selectedRoom);
   const [isInViewport, setIsInViewport] = useState<boolean>(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useOnScreen(messageRef, setIsInViewport);
 
   //Calculate whether the message is the last message from the current sender.
@@ -106,6 +112,11 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
 
   //Update modal data (for editing, replying, and pinning)
   const updateModalMsgData = (e: React.MouseEvent) => {
+    if (selectionMode) {
+      e.preventDefault();
+      toggleMessageSelection(roomID, _id);
+      return;
+    }
     if (msgData._id === useModalStore.getState().msgData?._id) return;
     modalSetter((prev) => ({
       ...prev,
@@ -144,10 +155,16 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
 
       <div
         ref={messageRef}
-        className={`chat  w-full  ${isFromMe ? "chat-end " : "chat-start"} ${
+        className={`chat  w-full  ${isFromMe ? "chat-end " : "chat-start"} ${selectionMode && isSelected ? "bg-lightBlue/10 rounded-xl" : ""} ${
           isMounted ? "" : "opacity-0 scale-0"
         }`}
       >
+        {selectionMode && (
+          <button type="button" aria-label={isSelected ? "لغو انتخاب پیام" : "انتخاب پیام"} onClick={() => toggleMessageSelection(roomID, _id)} className={`absolute z-20 top-1 ${isFromMe ? "left-1" : "right-1"} size-6 rounded-full border-2 border-white/70 flex items-center justify-center ${isSelected ? "bg-lightBlue" : "bg-black/30"}`}>
+            {isSelected ? "✓" : ""}
+          </button>
+        )}
+
         {/* Show sender avatar in received messages */}
         {!isFromMe &&
           !isPv &&
@@ -181,7 +198,10 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
         <div
           id="messageBox"
           onClick={updateModalMsgData}
-          onContextMenu={updateModalMsgData}
+          onContextMenu={(e) => { e.preventDefault(); enterMessageSelection(roomID, _id); }}
+          onTouchStart={() => { longPressTimer.current = setTimeout(() => enterMessageSelection(roomID, _id), 450); }}
+          onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+          onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
           className={`relative grid break-all w-fit max-w-[80%] min-w-32 xl:max-w-[60%] py-0 rounded-t-xl transition-all duration-200
             ${
               isFromMe
