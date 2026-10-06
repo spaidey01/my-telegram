@@ -9,6 +9,9 @@ import MediaSchema from "../src/schemas/mediaSchema.js";
 import LocationSchema from "../src/schemas/locationSchema.js";
 import UserSchema from "../src/schemas/userSchema.js";
 import FileSchema from "../src/schemas/fileSchema.js";
+import StickerSchema from "../src/schemas/stickerSchema.js";
+import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
+import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 
@@ -159,10 +162,23 @@ const sanitizeAttachmentData = async (data, userID) => {
   if (!(await isOwnVerifiedFile(src, userID, prefix))) return null;
   return { src, name, mimeType, size };
 };
-const sanitizeStickerData = (data) => {
-  if (!data || typeof data !== "object" || typeof data.emoji !== "string") return null;
-  const emoji = data.emoji.trim();
-  return emoji && emoji.length <= 16 ? { emoji } : null;
+const sanitizeStickerData = async (data, userID) => {
+  if (!data || typeof data !== "object") return null;
+  const stickerId = typeof data.stickerId === "string" ? data.stickerId : "";
+  const packId = typeof data.packId === "string" ? data.packId : "";
+  if (!isValidId(stickerId) || !isValidId(packId)) return null;
+  const sticker = await StickerSchema.findOne({ _id: stickerId, packId }).select("_id packId file mimeType emoji").lean();
+  if (!sticker) return null;
+  const pack = await StickerPackSchema.findById(packId).select("_id owner").lean();
+  if (!pack) return null;
+  if (String(pack.owner) !== userID && !(await UserStickerPackSchema.exists({ user: userID, packId }))) return null;
+  return {
+    stickerId: sticker._id,
+    packId: sticker.packId,
+    file: sticker.file,
+    mimeType: sticker.mimeType,
+    emoji: sticker.emoji,
+  };
 };
 
 await connectToDB();
@@ -312,7 +328,7 @@ io.on("connection", (socket) => {
         seen: [],
         voiceData: await sanitizeVoiceData(voiceData, userID),
         attachmentData: await sanitizeAttachmentData(attachmentData, userID),
-        stickerData: sanitizeStickerData(stickerData),
+        stickerData: await sanitizeStickerData(stickerData, userID),
         createdAt: Date.now(),
         tempId: scopedTempId,
         status: "sent",
