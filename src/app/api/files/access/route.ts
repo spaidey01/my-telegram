@@ -20,7 +20,7 @@ const s3 = () => new S3Client({
 });
 
 const validKey = (key: string) =>
-  /^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key);
+  /^(images|voices|files|stickers)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key);
 
 export async function GET(req: Request) {
   try {
