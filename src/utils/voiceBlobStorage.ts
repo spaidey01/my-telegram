@@ -168,4 +168,19 @@ export const voiceBlobStorage = {
       console.error("Debug database error:", error);
     }
   },
+
+  async hasBlob(id: string): Promise<boolean> {
+    return (await this.getBlob(id)) !== null;
+  },
+
+  async clearAll(): Promise<void> {
+    const db = await initializeDB();
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction("voiceBlobs", "readwrite");
+      transaction.objectStore("voiceBlobs").clear();
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || new Error("Failed to clear voice blobs")); };
+    });
+  },
+
 };
