@@ -9,6 +9,8 @@ import Button from "../modules/ui/Button";
 type Inputs = {
   phone: number;
   password: string;
+  totp?: string;
+  recoveryCode?: string;
 };
 
 type SignInState =
@@ -21,8 +23,10 @@ async function signInAction(_prevState: SignInState, formData: FormData): Promis
   try {
     const phone = formData.get("phone") as string;
     const password = formData.get("password") as string;
+    const totp = formData.get("totp") as string;
+    const recoveryCode = formData.get("recoveryCode") as string;
 
-    const response = await axios.post("/api/auth/login", { phone, password });
+    const response = await axios.post("/api/auth/login", { phone, password, ...(totp ? { totp } : {}), ...(recoveryCode ? { recoveryCode } : {}) });
 
     if (response.status === 200) {
       return {
@@ -36,6 +40,7 @@ async function signInAction(_prevState: SignInState, formData: FormData): Promis
     const message = axios.isAxiosError(error)
       ? error.response?.data?.message || "Login failed"
       : "Login failed";
+    if (axios.isAxiosError(error) && error.response?.data?.requires2FA) return { success: false, error: "TWO_FACTOR_REQUIRED" };
     return { success: false, error: message };
   }
 }
@@ -55,6 +60,8 @@ const SignInForm = () => {
     null
   );
   const [isTransition, startTransition] = useTransition();
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [useRecovery, setUseRecovery] = useState(false);
 
   // Handle action state updates
   useEffect(() => {
@@ -64,6 +71,9 @@ const SignInForm = () => {
         isLogin: true,
       });
       toaster("success", actionState.message);
+    } else if (actionState?.error === "TWO_FACTOR_REQUIRED") {
+      setRequires2FA(true);
+      toaster("info", "کد تأیید دو مرحله‌ای را وارد کن.");
     } else if (actionState?.error) {
       toaster("error", actionState.error);
     }
@@ -74,6 +84,8 @@ const SignInForm = () => {
       const formData = new FormData();
       formData.append("phone", data.phone.toString());
       formData.append("password", data.password);
+      if (data.totp) formData.append("totp", data.totp);
+      if (data.recoveryCode) formData.append("recoveryCode", data.recoveryCode);
       await formAction(formData);
     });
   };
@@ -167,6 +179,7 @@ const SignInForm = () => {
       </label>
       <p className="text-xs text-red-500">{errors.password?.message}</p>
 
+      {requires2FA && <div className="space-y-2"><input {...register(useRecovery ? "recoveryCode" : "totp", { required: true })} inputMode={useRecovery ? "text" : "numeric"} className="input w-full rounded-xl bg-inherit" placeholder={useRecovery ? "کد بازیابی" : "کد ۶ رقمی"} autoComplete="one-time-code" /><button type="button" className="text-xs text-lightBlue" onClick={() => setUseRecovery(v=>!v)}>{useRecovery ? "Authenticator" : "کد بازیابی"}</button></div>}
       <Button
         size="lg"
         color="info"
