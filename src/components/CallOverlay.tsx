@@ -164,8 +164,9 @@ export default function CallOverlay(){
   const offline=()=>{setNetworkOnline(false);if(call)setState("reconnecting");};
   window.addEventListener("online",online);window.addEventListener("offline",offline);
   const connection=(navigator as Navigator&{connection?:EventTarget}).connection;
-  connection?.addEventListener("change",()=>{if(call&&networkOnline)restartIce("شبکه تغییر کرد؛ در حال بهینه‌سازی مسیر...");});
-  return()=>{window.removeEventListener("online",online);window.removeEventListener("offline",offline);};
+  const onConnectionChange=()=>{if(call&&networkOnline)restartIce("شبکه تغییر کرد؛ در حال بهینه‌سازی مسیر...");};
+  connection?.addEventListener("change",onConnectionChange);
+  return()=>{window.removeEventListener("online",online);window.removeEventListener("offline",offline);connection?.removeEventListener("change",onConnectionChange);};
  },[call,networkOnline,restartIce,state]);
 
  useEffect(()=>{if(socket&&call&&restoring.current){restoring.current=false;socket.emit("call:reconnect",{callId:call.callId});}},[socket,call?.callId]);
@@ -191,7 +192,7 @@ export default function CallOverlay(){
       const stream=localRef.current||await getMedia(call.type);
       stream.getTracks().forEach(t=>{if(!p.getSenders().some(s=>s.track===t))p.addTrack(t,stream);});
       for(const candidate of pending.current.splice(0))await p.addIceCandidate(candidate);
-      const answer=await p.createAnswer();await p.setLocalDescription(answer);socket.emit("call:answer",{callId,description:p.localDescription});setState("connecting");beginDuration();
+      const answer=await p.createAnswer();await p.setLocalDescription(answer);socket.emit("call:answer",{callId,description:p.localDescription});setState("connecting");
     }catch(e){setError(e instanceof Error&&e.message==="PERMISSION_DENIED"?"برای تماس باید اجازه‌ی میکروفون یا دوربین را بدهید.":"دریافت تماس ناموفق بود.");setState("failed");}
   };
   const answer=async({callId,description}:{callId:string;description:RTCSessionDescriptionInit})=>{
