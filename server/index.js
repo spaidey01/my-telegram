@@ -254,27 +254,7 @@ const isMember = async (roomID, userID) => {
 
 const isAdmin = (room, userID) =>
   !!room && (room.creator?.toString() === userID || room.admins?.some((id) => id.toString() === userID));
-const GROUP_PERMISSION_KEYS = ["sendMessages","sendMedia","sendStickers","sendLinks","addMembers","pinMessages","changeInfo","manageMembers"];
-const hasGroupPermission = (room, userID, key) => {
-  if (!room || room.type !== "group") return true;
-  if (isAdmin(room, userID)) return true;
-  if (room.bannedUsers?.some((id) => id.toString() === userID)) return false;
-  if (room.restrictedUsers?.some((id) => id.toString() === userID)) return false;
-  if (room.mutedUsers?.some((id) => id.toString() === userID) && key === "sendMessages") return false;
-  const member = room.memberPermissions?.get?.(userID) || room.memberPermissions?.[userID] || {};
-  if (typeof member[key] === "boolean") return member[key];
-  return room.groupPermissions?.[key] !== false;
-};
-const channelCanPost = (room, userID) => {
-  if (room?.type !== "channel") return true;
-  if (isAdmin(room, userID)) return true;
-  const role = room.channelRoles?.get?.(userID) || room.channelRoles?.[userID];
-  return role === "editor" || role === "moderator";
-};
-const validatePayloadServer = (value, max = 10000) => {
-  try { return value !== null && value !== undefined && JSON.stringify(value).length <= max; } catch { return false; }
-};
-
+import { GROUP_PERMISSION_KEYS, hasGroupPermission, channelCanPost } from "./security/permissions.js";
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const recordCallHistory = async (call, status, endedAt = new Date()) => {
