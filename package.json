@@ -12,7 +12,8 @@
     "db:cleanup-legacy-room-messages": "node ./scripts/cleanup-legacy-room-messages.mjs",
     "test:integration": "node --test tests/socket.integration.test.mjs",
     "test:turn": "node --test tests/turn-credentials.test.mjs",
-    "test:call-reliability": "node --test tests/call-reliability.test.mjs"
+    "test:call-reliability": "node --test tests/call-reliability.test.mjs",
+    "test:backlog": "node --test tests/backlog.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
