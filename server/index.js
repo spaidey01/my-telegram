@@ -914,17 +914,18 @@ io.on("connection", (socket) => {
     }
   });
 
-  on("pinMessage", async (id, roomID, isLastMessage, desiredPinned) => {
-    if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return;
+  on("pinMessage", async (id, roomID, isLastMessage, desiredPinned, callback = () => {}) => {
+    if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
-    if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return socket.emit("error", { message: "Forbidden" });
+    if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return callback({ success: false, error: "Forbidden" });
     msg.pinnedAt = typeof desiredPinned === "boolean"
       ? (desiredPinned ? new Date() : null)
       : (msg.pinnedAt ? null : new Date());
     await msg.save();
     io.to(roomID).emit("pinMessage", { msgID: id, roomID, pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null });
-    if (isLastMessage) io.to(roomID).emit("updateLastMsgData", { msgData: msg, roomID });
+    if (isLastMessage) await emitVisibleMessage(roomID, "updateLastMsgData", { msgData: msg, roomID });
+    callback({ success: true, pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null });
   });
 
   on("updateLastMsgPos", async ({ roomID, scrollPos, shouldEmitBack = true }) => {
