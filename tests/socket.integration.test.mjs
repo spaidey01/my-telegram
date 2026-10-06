@@ -456,7 +456,7 @@ test("room read marker rejects non-members and invalid target messages", async (
 });
 
 
-test("last seen updates on connect and final disconnect", async () => {
+test("last seen handles multi-socket presence and reconnects", async () => {
   const makeSocket = (uid) =>
     createClient("http://127.0.0.1:3101", {
       auth: {
@@ -470,13 +470,13 @@ test("last seen updates on connect and final disconnect", async () => {
     });
 
   const observer = makeSocket(user._id);
-  const target = makeSocket(otherUser._id);
+  const targetA = makeSocket(otherUser._id);
+  const targetB = makeSocket(otherUser._id);
 
   try {
     await waitFor(observer, "connect");
-
     const onlinePresence = waitFor(observer, "userPresence");
-    await waitFor(target, "connect");
+    await Promise.all([waitFor(targetA, "connect"), waitFor(targetB, "connect")]);
     const online = await onlinePresence;
     assert.equal(online.userID, otherUser._id.toString());
     assert.equal(online.status, "online");
@@ -484,19 +484,45 @@ test("last seen updates on connect and final disconnect", async () => {
     const onlineUser = await UserSchema.findById(otherUser._id).lean();
     assert.equal(onlineUser.status, "online");
 
+    targetA.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const stillOnline = await UserSchema.findById(otherUser._id).lean();
+    assert.equal(stillOnline.status, "online");
+    assert.equal(stillOnline.lastSeenAt, null);
+
     const offlinePresence = waitFor(observer, "userPresence");
-    target.disconnect();
+    targetB.disconnect();
     const offline = await offlinePresence;
     assert.equal(offline.userID, otherUser._id.toString());
     assert.equal(offline.status, "offline");
     assert.ok(offline.lastSeenAt);
 
+    const lastSeenAt = offline.lastSeenAt;
     const offlineUser = await UserSchema.findById(otherUser._id).lean();
     assert.equal(offlineUser.status, "offline");
     assert.ok(offlineUser.lastSeenAt);
+
+    const reconnectPresence = waitFor(observer, "userPresence");
+    const targetReconnect = makeSocket(otherUser._id);
+    try {
+      await waitFor(targetReconnect, "connect");
+      const reconnected = await reconnectPresence;
+      assert.equal(reconnected.userID, otherUser._id.toString());
+      assert.equal(reconnected.status, "online");
+      assert.ok(reconnected.lastSeenAt);
+      assert.equal(new Date(reconnected.lastSeenAt).getTime(), new Date(lastSeenAt).getTime());
+
+      const reconnectedUser = await UserSchema.findById(otherUser._id).lean();
+      assert.equal(reconnectedUser.status, "online");
+      assert.equal(new Date(reconnectedUser.lastSeenAt).getTime(), new Date(lastSeenAt).getTime());
+    } finally {
+      targetReconnect.disconnect();
+    }
   } finally {
     observer.disconnect();
-    target.disconnect();
+    targetA.disconnect();
+    targetB.disconnect();
     await UserSchema.updateOne(
       { _id: otherUser._id },
       { $set: { status: "offline" } },
