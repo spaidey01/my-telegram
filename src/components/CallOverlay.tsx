@@ -43,7 +43,7 @@ export default function CallOverlay(){
  const durationTimer=useRef<ReturnType<typeof setInterval>|null>(null);
  const restartCount=useRef(0);
  const retrying=useRef(false);
- const restoring=useRef(false);
+ const restoring=useRef(false);\n const qualityPrevious=useRef<{lost:number;received:number;at:number}|null>(null);
  const lv=useRef<HTMLVideoElement|null>(null);
  const rv=useRef<HTMLVideoElement|null>(null);
  const ra=useRef<HTMLAudioElement|null>(null);
@@ -137,7 +137,7 @@ export default function CallOverlay(){
    peer.onicecandidate=e=>e.candidate&&socket?.emit("call:ice",{callId:info.callId,candidate:e.candidate.toJSON()});
    peer.ontrack=e=>setRemote(e.streams?.[0]||new MediaStream([e.track]));
    peer.onconnectionstatechange=()=>{
-     if(peer.connectionState==="connected"){setState("connected");setError("");retrying.current=false;startQualityMonitor(peer);}
+     if(peer.connectionState==="connected"){setState("connected");setError("");retrying.current=false;restartCount.current=0;qualityPrevious.current=null;startQualityMonitor(peer);if(!durationTimer.current)beginDuration();}
      if(peer.connectionState==="disconnected"){if(reconnectTimer.current)clearTimeout(reconnectTimer.current);reconnectTimer.current=setTimeout(()=>{if(peer.connectionState==="disconnected")restartIce("شبکه ناپایدار است؛ در حال بازسازی اتصال...");},5000);}
      if(peer.connectionState==="failed"){restartIce("اتصال قطع شد؛ در حال تلاش مجدد...");}
      if(peer.connectionState==="closed")stopTimers();
@@ -146,7 +146,7 @@ export default function CallOverlay(){
      if(peer.iceConnectionState==="failed")restartIce("مسیر شبکه‌ی تماس از دست رفت.");
    };
    pc.current=peer;return peer;
- },[loadRtcConfig,socket,startQualityMonitor,restartIce,stopTimers]);
+ },[loadRtcConfig,socket,startQualityMonitor,restartIce,stopTimers,beginDuration]);
 
  const beginDuration=useCallback(()=>{
    if(durationTimer.current)clearInterval(durationTimer.current);
@@ -217,7 +217,7 @@ export default function CallOverlay(){
 
  const accept=async()=>{
    if(!call)return;
-   try{setError("");await getMedia(call.type);await makePeer(call);socket?.emit("call:accept",{callId:call.callId});setState("connecting");beginDuration();}
+   try{setError("");await getMedia(call.type);await makePeer(call);socket?.emit("call:accept",{callId:call.callId});setState("connecting");}
    catch(e){setError(e instanceof Error&&e.message==="PERMISSION_DENIED"?"برای پاسخ به تماس باید اجازه‌ی میکروفون یا دوربین را بدهید.":"دسترسی به رسانه ممکن نشد.");setState("failed");}
  };
  const retryCall=async()=>{if(!call)return;restartCount.current=0;setError("");setState("reconnecting");if(pc.current){await restartIce("در حال تلاش مجدد...");}else{socket?.emit("call:reconnect",{callId:call.callId});}};
