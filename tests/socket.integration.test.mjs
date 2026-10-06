@@ -636,6 +636,14 @@ test("bulk message delete removes selected messages in one operation and enforce
 
   try {
     await Promise.all([waitFor(socket, "connect"), waitFor(otherSocket, "connect")]);
+    const join = (s, roomID) => new Promise((resolve) => {
+      s.emit("joining", roomID);
+      s.once("joining", resolve);
+    });
+    await Promise.all([
+      join(socket, room._id.toString()),
+      join(otherSocket, room._id.toString()),
+    ]);
 
     const ownMessages = await MessageSchema.create([
       {
