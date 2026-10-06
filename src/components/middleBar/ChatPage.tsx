@@ -7,6 +7,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
 } from "react";
 import { IoIosArrowUp, IoMdArrowRoundBack } from "react-icons/io";
 import { IoSearch } from "react-icons/io5";
@@ -59,18 +60,54 @@ const ChatPage = () => {
   const pendingMessageJumpId = useGlobalStore((state) => state.pendingMessageJumpId);
   const setPendingMessageJump = useGlobalStore((state) => state.setPendingMessageJump);
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+  const jumpRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();
   }, [selectionRoomID, selectedRoom?._id, clearMessageSelection]);
 
   useEffect(() => {
-    if (!pendingMessageJumpId || !selectedRoom) return;
-    if (!messages?.some((message) => message._id === pendingMessageJumpId)) return;
+    if (!pendingMessageJumpId || !selectedRoom?._id || !roomsSocket) return;
+
     const messageID = pendingMessageJumpId;
-    setPendingMessageJump(null);
-    requestAnimationFrame(() => scrollToMessage(messageID));
-  }, [pendingMessageJumpId, selectedRoom, messages, setPendingMessageJump]);
+    if (messages?.some((message) => message._id === messageID)) {
+      jumpRequestRef.current = null;
+      setPendingMessageJump(null);
+      requestAnimationFrame(() => scrollToMessage(messageID));
+      return;
+    }
+
+    const requestKey = selectedRoom._id + ":" + messageID;
+    if (jumpRequestRef.current === requestKey) return;
+    jumpRequestRef.current = requestKey;
+
+    roomsSocket.emit(
+      "loadMessageAround",
+      { roomID: selectedRoom._id, messageID, limit: 50 },
+      (response: { success: boolean; messages?: MessageModel[] }) => {
+        if (!response?.success || !response.messages?.length) {
+          jumpRequestRef.current = null;
+          setPendingMessageJump(null);
+          return;
+        }
+
+        setter((prev) => {
+          if (!prev.selectedRoom || prev.selectedRoom._id !== selectedRoom._id) return {};
+          const byId = new Map((prev.selectedRoom.messages || []).map((message) => [message._id, message]));
+          response.messages!.forEach((message) => byId.set(message._id, message));
+          return {
+            selectedRoom: {
+              ...prev.selectedRoom,
+              messages: [...byId.values()].sort((a, b) =>
+                new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+              ),
+            },
+          };
+        });
+        jumpRequestRef.current = null;
+      },
+    );
+  }, [pendingMessageJumpId, selectedRoom, messages, roomsSocket, setter, setPendingMessageJump]);
 
   // Avatar, name and _id information from room or user information (in private mode)
   const {
