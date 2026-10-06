@@ -914,12 +914,12 @@ io.on("connection", (socket) => {
     }
   });
 
-  on("pinMessage", async (id, roomID, isLastMessage) => {
+  on("pinMessage", async (id, roomID, isLastMessage, desiredPinned) => {
     if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
     if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return socket.emit("error", { message: "Forbidden" });
-    msg.pinnedAt = msg.pinnedAt ? null : Date.now();
+    msg.pinnedAt = typeof desiredPinned === "boolean"\n      ? (desiredPinned ? new Date() : null)\n      : (msg.pinnedAt ? null : new Date());
     await msg.save();
     io.to(roomID).emit("pinMessage", { msgID: id, roomID, pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null });
     if (isLastMessage) io.to(roomID).emit("updateLastMsgData", { msgData: msg, roomID });
