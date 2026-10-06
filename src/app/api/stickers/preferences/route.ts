@@ -47,7 +47,10 @@ export async function PATCH(req: Request) {
 
   const rows = await UserStickerPackSchema.find({ user: userId }) as unknown as { packId: { toString(): string }; recentStickerIds: { toString(): string }[]; favoriteStickerIds: { toString(): string }[]; save: () => Promise<void> }[];
   let row = rows.find((item) => String(item.packId) === String(sticker.packId));
-  if (!row) row = await UserStickerPackSchema.create({ user: userId, packId: sticker.packId });
+  if (!row) {
+    row = await UserStickerPackSchema.create({ user: userId, packId: sticker.packId }) as unknown as (typeof rows)[number];
+  }
+  if (!row) return NextResponse.json({ message: "Unable to update sticker preferences" }, { status: 500 });
 
   if (type === "recent") {
     row.recentStickerIds = [sticker._id, ...row.recentStickerIds.filter((id) => String(id) !== String(sticker._id))].slice(0, 50);
