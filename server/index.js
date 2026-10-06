@@ -652,6 +652,12 @@ io.on("connection", (socket) => {
     const sourceRoom = await isMember(sourceRoomID, userID);
     const targetRoom = await isMember(targetRoomID, userID);
     if (!sourceRoom || !targetRoom) return callback({ success: false, error: "Forbidden" });
+    if (targetRoom.type === "private") {
+      const recipientID = targetRoom.participants.map((id) => id.toString()).find((id) => id !== userID);
+      if (recipientID && !(await canViewPrivacy(recipientID, userID, "messages"))) {
+        return callback({ success: false, error: "Messages are restricted by this user" });
+      }
+    }
     if (targetRoom.type === "channel" && !isAdmin(targetRoom, userID)) {
       return callback({ success: false, error: "Forbidden" });
     }
