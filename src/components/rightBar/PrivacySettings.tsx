@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import useUserStore from "@/stores/userStore";
-import useGlobalStore from "@/stores/globalStore";
 import Loading from "../modules/ui/Loading";
 import { toaster } from "@/utils";
 
@@ -19,7 +18,6 @@ const labels: Record<PrivacyKey, string> = {
 
 const PrivacySettings = () => {
   const myData = useUserStore((state) => state);
-  const setter = useGlobalStore((state) => state.setter);
   const [settings, setSettings] = useState(myData.privacySettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<PrivacyKey | null>(null);
