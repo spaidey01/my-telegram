@@ -52,7 +52,7 @@ export const schema = new Schema(
 schema.index({ roomID: 1, createdAt: -1, _id: -1 });
 schema.index({ roomID: 1, sender: 1, createdAt: -1 });
 schema.index({ roomID: 1, message: 1 });
-schema.index({ message: "text", roomID: 1, sender: 1, createdAt: -1 });
+schema.index({ message: "text" });
 schema.index({ "attachmentData.src": 1 });
 schema.index({ "voiceData.src": 1 });
 
