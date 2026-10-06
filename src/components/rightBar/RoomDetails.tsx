@@ -247,6 +247,16 @@ const RoomDetails = ({
           </div>
         </div>
 
+        {type === "private" && roomID === myID && (
+          <button
+            type="button"
+            onClick={() => setter({ rightBarRoute: "/privacy" })}
+            className="w-full text-left py-3 text-lightBlue hover:bg-white/5 rounded px-2"
+          >
+            Privacy settings
+          </button>
+        )}
+
         <div className="flex items-start justify-between">
           <div>
             <p>Notifications</p>
