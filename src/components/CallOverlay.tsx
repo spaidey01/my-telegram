@@ -19,7 +19,7 @@ const persistCall=(call:CallInfo|null)=>{
   try{if(call)sessionStorage.setItem(CALL_STORAGE_KEY,JSON.stringify(call));else sessionStorage.removeItem(CALL_STORAGE_KEY);}catch{}
 };
 const readPersistedCall=():CallInfo|null=>{
-  try{const raw=sessionStorage.getItem(CALL_STORAGE_KEY);if(!raw)return null;const value=JSON.parse(raw);return value?.callId&&value?.roomID&&value?.type?value:null;}catch{return null;}
+  try{const raw=sessionStorage.getItem(CALL_STORAGE_KEY);if(!raw)return null;const value=JSON.parse(raw);return value?.callId&&value?.roomID&&value?.type&&typeof value?.isCaller==="boolean"?value:null;}catch{return null;}
 };
 
 export default function CallOverlay(){
