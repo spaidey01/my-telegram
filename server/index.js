@@ -1418,17 +1418,18 @@ io.on("connection", (socket) => {
       const isCaller = c.caller === userID && c.callerSocketId === socket.id;
       const isCallee = c.callee === userID && c.calleeSocketId === socket.id;
       if (!isCaller && !isCallee) continue;
-      const replacementSocketId = [...(onlineUsers.get(userID) || [])].find((id) => id !== socket.id);
+      const replacementSockets = await io.in(presenceRoom).fetchSockets();
+      const replacementSocketId = replacementSockets.find((connectedSocket) => connectedSocket.id !== socket.id)?.id;
       if (replacementSocketId) {
         if (isCaller) c.callerSocketId = replacementSocketId;
         if (isCallee) c.calleeSocketId = replacementSocketId;
         await setActiveCall(callId, c);
         const peerSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
-        io.sockets.sockets.get(peerSocketId)?.emit("call:peer-reconnecting", { callId });
+        io.to(peerSocketId).emit("call:peer-reconnecting", { callId });
         continue;
       }
       const peerSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
-      io.sockets.sockets.get(peerSocketId)?.emit("call:peer-reconnecting", { callId });
+      io.to(peerSocketId).emit("call:peer-reconnecting", { callId });
       if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
       await setActiveCall(callId, c, CALL_RECONNECT_GRACE_MS);
       c.reconnectTimer = setTimeout(() => {
@@ -1437,7 +1438,7 @@ io.on("connection", (socket) => {
         if (!active) return;
         const currentSocketId = isCaller ? active.callerSocketId : active.calleeSocketId;
         if (currentSocketId !== socket.id) return;
-        io.sockets.sockets.get(peerSocketId)?.emit("call:ended", { callId, reason: "disconnected" });
+        io.to(peerSocketId).emit("call:ended", { callId, reason: "disconnected" });
         await deleteActiveCall(callId);
         })();
       }, CALL_RECONNECT_GRACE_MS);
