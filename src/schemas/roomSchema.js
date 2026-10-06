@@ -18,6 +18,23 @@ const schema = new Schema(
     lastMessageAt: { type: Date, default: null },
     link: { type: String, trim: true, maxlength: 500, unique: true, sparse: true },
     biography: { type: String, default: "", maxlength: 1000 },
+    visibility: { type: String, enum: ["private", "public"], default: "public" },
+    groupPermissions: {
+      sendMessages: { type: Boolean, default: true }, sendMedia: { type: Boolean, default: true },
+      sendStickers: { type: Boolean, default: true }, sendLinks: { type: Boolean, default: true },
+      addMembers: { type: Boolean, default: true }, pinMessages: { type: Boolean, default: true },
+      changeInfo: { type: Boolean, default: false }, manageMembers: { type: Boolean, default: false },
+    },
+    memberPermissions: { type: Map, of: new Schema({
+      sendMessages: { type: Boolean }, sendMedia: { type: Boolean }, sendStickers: { type: Boolean },
+      sendLinks: { type: Boolean }, addMembers: { type: Boolean }, pinMessages: { type: Boolean },
+      changeInfo: { type: Boolean }, manageMembers: { type: Boolean },
+    }, { _id: false }), default: {} },
+    bannedUsers: [{ type: Schema.ObjectId, ref: "User" }],
+    restrictedUsers: [{ type: Schema.ObjectId, ref: "User" }],
+    mutedUsers: [{ type: Schema.ObjectId, ref: "User" }],
+    allowedReactions: { type: [String], default: [] },
+    inviteToken: { type: String, default: null, unique: true, sparse: true },
   },
   { timestamps: true }
 );

@@ -20,6 +20,9 @@ export const schema = new Schema(
     },
     password: { type: String, required: true, select: false },
     sessionVersion: { type: Number, default: 0, min: 0 },
+    twoFactorEnabled: { type: Boolean, default: false },
+    twoFactorSecret: { type: String, default: null, select: false },
+    twoFactorBackupCodes: { type: [String], default: [], select: false },
     roomMessageTrack: { type: [{ roomId: String, scrollPos: Number }], default: [] },
   },
   { timestamps: true }

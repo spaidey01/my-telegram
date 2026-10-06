@@ -46,6 +46,9 @@ export const schema = new Schema(
     },
     tempId: { type: String, unique: true, sparse: true, maxlength: 200 },
     status: { type: String, enum: ["pending", "sent", "failed"], default: "sent" },
+    kind: { type: String, enum: ["message", "post", "system"], default: "message", index: true },
+    mentions: { type: [String], default: [], index: true },
+    hashtags: { type: [String], default: [], index: true },
   },
   { timestamps: true, strictPopulate: false },
 );
