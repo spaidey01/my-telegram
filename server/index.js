@@ -235,11 +235,20 @@ io.on("connection", (socket) => {
   };
   void initializePresence();
 
-  const broadcastOnlineUsers = () => {
-    const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
-    io.emit("updateOnlineUsers", ids);
+  const broadcastOnlineUsers = async () => {
+    const sockets = await io.fetchSockets();
+    const onlineIDs = [...new Set(sockets.map((connectedSocket) => connectedSocket.data.userId).filter(Boolean))];
+    await Promise.all(sockets.map(async (viewerSocket) => {
+      const visible = [];
+      for (const targetUserID of onlineIDs) {
+        if (await canViewPrivacy(targetUserID, viewerSocket.data.userId, "lastSeen")) {
+          visible.push({ userID: targetUserID });
+        }
+      }
+      viewerSocket.emit("updateOnlineUsers", visible);
+    }));
   };
-  broadcastOnlineUsers();
+  void broadcastOnlineUsers();
 
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
@@ -1157,7 +1166,7 @@ io.on("connection", (socket) => {
       await broadcastPresence(userID, "offline", lastSeenAt);
     }
 
-    broadcastOnlineUsers();
+    void broadcastOnlineUsers();
   });
 });
 
