@@ -4,6 +4,7 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 import SessionSchema from "@/schemas/sessionSchema";
+type AuthSession={_id:unknown};
 
 export const POST = async (req: Request) => {
   const limit = await rateLimit("currentuser:ip:" + getRequestIp(req), 60, 60_000);
@@ -19,7 +20,7 @@ export const POST = async (req: Request) => {
       return Response.json({ message: "Invalid session" }, { status: 401 });
     }
 
-    const session = await SessionSchema.findOne({ _id: verifiedToken.sid, user: verifiedToken.sub, revokedAt: null }).lean().then((value)=>value);
+    const session = await SessionSchema.findOne({ _id: verifiedToken.sid, user: verifiedToken.sub, revokedAt: null }).lean().then((value)=>value as unknown as AuthSession | null);
     const userData = session ? await UserSchema.findOne({ _id: verifiedToken.sub, sessionVersion: verifiedToken.sv }).select("-password").lean().then((value)=>value) : null;
     if (session) await SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
 
