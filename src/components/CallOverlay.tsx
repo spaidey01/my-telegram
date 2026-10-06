@@ -43,7 +43,8 @@ export default function CallOverlay(){
  const durationTimer=useRef<ReturnType<typeof setInterval>|null>(null);
  const restartCount=useRef(0);
  const retrying=useRef(false);
- const restoring=useRef(false);\n const qualityPrevious=useRef<{lost:number;received:number;at:number}|null>(null);
+ const restoring=useRef(false);
+ const qualityPrevious=useRef<{lost:number;received:number;at:number}|null>(null);
  const lv=useRef<HTMLVideoElement|null>(null);
  const rv=useRef<HTMLVideoElement|null>(null);
  const ra=useRef<HTMLAudioElement|null>(null);
