@@ -12,7 +12,6 @@ import useGlobalStore, { GlobalStoreProps } from "@/stores/globalStore";
 import useUserStore from "@/stores/userStore";
 import useSockets from "@/stores/useSockets";
 import { RiSendPlaneFill } from "react-icons/ri";
-import { toaster } from "@/utils";
 import EmojiPicker from "../modules/EmojiPicker";
 import { v4 as uuidv4 } from "uuid";
 import { pendingMessagesService, PendingMessage } from "@/utils/pendingMessages";
@@ -189,6 +188,19 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     activeTask.current?.cancel();
     queue.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
   }, []);
+
+  useEffect(() => {
+    if (roomRef.current === undefined) {
+      roomRef.current = roomId;
+      return;
+    }
+    if (roomRef.current === roomId) return;
+    activeTask.current?.cancel();
+    queueRef.current.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
+    activeTask.current = null;
+    setQueue([]);
+    roomRef.current = roomId;
+  }, [roomId]);
 
   const sendText = () => {
     const message = text.trim().replace(/\n+$/, "");
