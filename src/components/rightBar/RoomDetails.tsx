@@ -247,7 +247,7 @@ const RoomDetails = ({
           </div>
         </div>
 
-        {type === "private" && roomID === myID && (
+        {type === "private" && (
           <button
             type="button"
             onClick={() => setter({ rightBarRoute: "/privacy" })}
