@@ -218,13 +218,11 @@ io.on("connection", async (socket) => {
   await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
   io.emit("userPresence", { userID, status: "online", lastSeenAt: currentUser?.lastSeenAt ?? null });
 
-  const broadcastOnlineUsers = async () => {
-    const sockets = await io.fetchSockets();
-    const ids = [...new Set(sockets.map((remoteSocket) => remoteSocket.data?.userId).filter(Boolean))]
-      .map((id) => ({ userID: id }));
+  const broadcastOnlineUsers = () => {
+    const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
     io.emit("updateOnlineUsers", ids);
   };
-  await broadcastOnlineUsers();
+  broadcastOnlineUsers();
 
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
@@ -1121,7 +1119,7 @@ io.on("connection", async (socket) => {
       io.emit("userPresence", { userID, status: "offline", lastSeenAt });
     }
 
-    await broadcastOnlineUsers();
+    broadcastOnlineUsers();
   });
 });
 
