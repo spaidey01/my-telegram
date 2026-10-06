@@ -919,7 +919,9 @@ io.on("connection", (socket) => {
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
     if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return socket.emit("error", { message: "Forbidden" });
-    msg.pinnedAt = typeof desiredPinned === "boolean"\n      ? (desiredPinned ? new Date() : null)\n      : (msg.pinnedAt ? null : new Date());
+    msg.pinnedAt = typeof desiredPinned === "boolean"
+      ? (desiredPinned ? new Date() : null)
+      : (msg.pinnedAt ? null : new Date());
     await msg.save();
     io.to(roomID).emit("pinMessage", { msgID: id, roomID, pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null });
     if (isLastMessage) io.to(roomID).emit("updateLastMsgData", { msgData: msg, roomID });
