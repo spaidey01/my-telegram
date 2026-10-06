@@ -561,9 +561,33 @@ test("multi-select server actions cannot cross rooms", async () => {
     assert.equal((await crossRoomDelete).message, "Forbidden");
     assert.ok(await MessageSchema.exists({ _id: message._id }));
 
-    socket.emit("pinMessage", message._id.toString(), sourceRoom._id.toString(), false, true);
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const pinResult = await new Promise((resolve) => {
+      socket.emit("pinMessage", message._id.toString(), sourceRoom._id.toString(), false, true, resolve);
+    });
+    assert.equal(pinResult.success, true);
     assert.ok((await MessageSchema.findById(message._id)).pinnedAt);
+
+    const reactionResult = await new Promise((resolve) => {
+      socket.emit("toggleReaction", {
+        msgID: message._id.toString(),
+        roomID: sourceRoom._id.toString(),
+        emoji: "❤️",
+      }, resolve);
+    });
+    assert.equal(reactionResult.success, true);
+    const reacted = await MessageSchema.findById(message._id).lean();
+    assert.ok(reacted.reactions.some((reaction) => reaction.emoji === "❤️" && reaction.userIds.map(String).includes(user._id.toString())));
+
+    const forwardedExistsBefore = await MessageSchema.countDocuments({ roomID: targetRoom._id });
+    const validForward = await new Promise((resolve) => {
+      socket.emit("forwardMessage", {
+        msgID: message._id.toString(),
+        sourceRoomID: sourceRoom._id.toString(),
+        targetRoomID: targetRoom._id.toString(),
+      }, resolve);
+    });
+    assert.equal(validForward.success, true);
+    assert.equal(await MessageSchema.countDocuments({ roomID: targetRoom._id }), forwardedExistsBefore + 1);
 
     socket.emit("deleteMsg", {
       forAll: true,
