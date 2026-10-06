@@ -692,6 +692,26 @@ test("bulk message delete removes selected messages in one operation and enforce
       hideFor: [],
     });
 
+    const outsider = makeSocket(thirdUser._id);
+    await waitFor(outsider, "connect");
+    try {
+      const nonMemberResult = await new Promise((resolve) => {
+        outsider.emit(
+          "messages:delete",
+          {
+            roomID: privateRoom._id.toString(),
+            messageIDs: [foreignMessage._id.toString()],
+            forAll: true,
+          },
+          resolve,
+        );
+      });
+      assert.equal(nonMemberResult.success, false);
+      assert.equal(nonMemberResult.error, "Forbidden");
+    } finally {
+      outsider.disconnect();
+    }
+
     const forbidden = await new Promise((resolve) => {
       socket.emit(
         "messages:delete",
