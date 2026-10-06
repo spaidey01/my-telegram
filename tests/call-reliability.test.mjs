@@ -8,6 +8,7 @@ const server=fs.readFileSync(new URL("../server/index.js",import.meta.url),"utf8
 test("call reliability client has recovery primitives",()=>{
   for(const token of [
     "sessionStorage",
+    "socket?.connected",
     "createOffer({iceRestart:true})",
     "getStats()",
     "addEventListener(\"online\"",
