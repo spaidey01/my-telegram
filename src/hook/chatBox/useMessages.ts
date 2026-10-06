@@ -39,19 +39,36 @@ const useMessages = ({
       }
     };
 
-    const handleDeleteMsg = (msgID: string) => {
+    const removeMessages = (messageIDs: string[]) => {
       setter((prev) => {
-        const updatedMessages = (prev.selectedRoom?.messages || []).filter(
-          (msg) => msg._id !== msgID
+        if (!prev.selectedRoom || prev.selectedRoom._id !== roomID) return {};
+        const ids = new Set(messageIDs);
+        const updatedMessages = (prev.selectedRoom.messages || []).filter(
+          (msg) => !ids.has(msg._id)
         );
-        pruneMessageSelection(roomID, updatedMessages.map((msg) => msg._id));
         return {
           selectedRoom: {
-            ...prev.selectedRoom!,
+            ...prev.selectedRoom,
             messages: updatedMessages,
+            lastMsgData: updatedMessages.at(-1) ?? null,
           },
         };
       });
+      const currentMessages = useGlobalStore.getState().selectedRoom?.messages || [];
+      pruneMessageSelection(roomID, currentMessages.filter((msg) => !messageIDs.includes(msg._id)).map((msg) => msg._id));
+    };
+
+    const handleDeleteMsg = (msgID: string) => removeMessages([msgID]);
+
+    const handleBulkDelete = ({
+      roomID: deletedRoomID,
+      messageIDs,
+    }: {
+      roomID: string;
+      messageIDs: string[];
+    }) => {
+      if (deletedRoomID !== roomID) return;
+      removeMessages(messageIDs);
     };
 
     const handleEditMessage = ({
@@ -164,6 +181,7 @@ const useMessages = ({
 
     rooms?.on("newMessage", handleNewMessage);
     rooms?.on("deleteMsg", handleDeleteMsg);
+    rooms?.on("messages:deleted", handleBulkDelete);
     rooms?.on("editMessage", handleEditMessage);
     rooms?.on("newMessageIdUpdate", handleNewMessageIdUpdate);
     rooms?.on("seenMsg", handleSeenMsg);
@@ -172,6 +190,7 @@ const useMessages = ({
     return () => {
       rooms?.off("newMessage", handleNewMessage);
       rooms?.off("deleteMsg", handleDeleteMsg);
+      rooms?.off("messages:deleted", handleBulkDelete);
       rooms?.off("editMessage", handleEditMessage);
       rooms?.off("newMessageIdUpdate", handleNewMessageIdUpdate);
       rooms?.off("seenMsg", handleSeenMsg);
