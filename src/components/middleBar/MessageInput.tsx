@@ -5,6 +5,8 @@ import { IoMdClose } from "react-icons/io";
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { MdAttachFile, MdModeEditOutline, MdOutlineDone } from "react-icons/md";
 import { PiStickerLight } from "react-icons/pi";
+import StickerPicker from "./stickers/StickerPicker";
+import Sticker from "@/models/sticker";
 import { BsFillReplyFill } from "react-icons/bs";
 import VoiceMessageRecorder from "./voice/VoiceMessageRecorder";
 import Message from "@/models/message";
@@ -69,7 +71,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     sender: { _id: string; name: string };
     replayData?: { targetID: string; replayedTo: { message: string; msgID: string; username: string } } | null;
     attachmentData?: Attachment | null;
-    stickerData?: { emoji: string } | null;
+    stickerData?: { stickerId: string; packId: string; file: string; mimeType: string; emoji: string } | null;
     tempId: string;
   }) => {
     const local = {
@@ -220,9 +222,17 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     cleanup();
   };
 
-  const sendSticker = (emojiValue: string) => {
+  const sendSticker = (stickerValue: Sticker) => {
     if (!roomId) return;
-    send({ roomID: roomId, message: "", sender: { _id: me._id, name: me.name }, replayData: null, attachmentData: null, stickerData: { emoji: emojiValue }, tempId: uuidv4() });
+    send({
+      roomID: roomId,
+      message: "",
+      sender: { _id: me._id, name: me.name },
+      replayData: null,
+      attachmentData: null,
+      stickerData: stickerValue,
+      tempId: uuidv4(),
+    });
     setSticker(false);
   };
 
@@ -302,7 +312,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
             ? <RiSendPlaneFill onClick={sendText} className="size-7 cursor-pointer text-lightBlue rotate-45" />
             : <VoiceMessageRecorder replayData={replayData} closeEdit={closeEdit} closeReplay={closeReplay} />}
       </div>
-      {sticker && <div className="grid grid-cols-4 gap-2 p-3 bg-modalBg border-t border-white/10">{["❤️","😂","🔥","😍","😎","🥳","😭","🤯","👍","👎","🎉","🚀"].map(e => <button key={e} onClick={() => sendSticker(e)} className="text-3xl hover:scale-125 transition-transform">{e}</button>)}</div>}
+      {sticker && <StickerPicker open={sticker} onSelect={sendSticker} />}
       {emoji && <div><EmojiPicker handleEmojiClick={(e: { emoji: string }) => setText(v => v + e.emoji)} isEmojiOpen={emoji} /></div>}
     </div>
   );
