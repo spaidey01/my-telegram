@@ -184,7 +184,7 @@ const isMessageInRoom = async (msgID, roomID) => {
   return MessageSchema.findOne({ _id: msgID, roomID });
 };
 
-const publicUserFields = "name username avatar _id";
+const publicUserFields = "name username avatar _id status lastSeenAt";
 const findLatestVisibleMessage = (roomID) =>
   MessageSchema.findOne({ roomID }).sort({ createdAt: -1, _id: -1 }).lean();
 
@@ -209,8 +209,9 @@ io.use(async (socket, next) => {
 
 io.on("connection", (socket) => {
   const userID = getUserId(socket);
-  const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id").lean();
+  const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean();
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
+  await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
 
   const broadcastOnlineUsers = () => {
     const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
@@ -641,8 +642,8 @@ io.on("connection", (socket) => {
     }
 
     const [caller, target] = await Promise.all([
-      UserSchema.findById(userID).select("name username avatar _id").lean(),
-      UserSchema.findById(targetUserID).select("name username avatar _id").lean(),
+      UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean(),
+      UserSchema.findById(targetUserID).select("name username avatar _id status lastSeenAt").lean(),
     ]);
     if (!caller || !target) return callback({ success: false, error: "User not found" });
 
@@ -758,7 +759,7 @@ io.on("connection", (socket) => {
     )];
 
     const privateUsers = participantIds.length
-      ? await UserSchema.find({ _id: { $in: participantIds } }).select("name username avatar _id").lean()
+      ? await UserSchema.find({ _id: { $in: participantIds } }).select("name username avatar _id status lastSeenAt").lean()
       : [];
     const usersById = new Map(privateUsers.map((user) => [user._id.toString(), user]));
 
@@ -776,7 +777,7 @@ io.on("connection", (socket) => {
     const latestMessageDocs = latestMessages.map((item) => item.message);
     const senderIds = [...new Set(latestMessageDocs.map((message) => message.sender?.toString()).filter(Boolean))];
     const senderUsers = senderIds.length
-      ? await UserSchema.find({ _id: { $in: senderIds } }).select("name username avatar _id").lean()
+      ? await UserSchema.find({ _id: { $in: senderIds } }).select("name username avatar _id status lastSeenAt").lean()
       : [];
     const senderById = new Map(senderUsers.map((user) => [user._id.toString(), user]));
     const lastMessagesByRoom = new Map(
@@ -1099,7 +1100,15 @@ io.on("connection", (socket) => {
     }
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
-    if (!sockets?.size) onlineUsers.delete(userID);
+    if (!sockets?.size) {
+      onlineUsers.delete(userID);
+      const lastSeenAt = new Date();
+      await UserSchema.updateOne(
+        { _id: userID },
+        { $set: { status: "offline", lastSeenAt } },
+      );
+      io.emit("userPresence", { userID, status: "offline", lastSeenAt });
+    }
     broadcastOnlineUsers();
   });
 });
