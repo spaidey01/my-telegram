@@ -137,7 +137,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
       ...valid.map((file) => ({
         id: uuidv4(),
         file,
-        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
+        preview: (file.type.startsWith("image/") || file.type.startsWith("video/")) ? URL.createObjectURL(file) : undefined,
         progress: 0,
         status: "queued" as const,
       })),
