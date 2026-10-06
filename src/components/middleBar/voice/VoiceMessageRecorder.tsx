@@ -1205,49 +1205,60 @@ const VoiceMessageRecorder = ({
     }
   }, [uploadVoice]);
 
+  const sendPreview = useCallback(() => {
+    if (!voiceBlob || !selectedRoom?._id || isLoading) return;
+    const extension = voiceBlob.type.includes("webm") ? "webm" : "ogg";
+    void uploadVoice(new File([voiceBlob], `voice-message-${Date.now()}.${extension}`, { type: voiceBlob.type || "audio/webm" }), voiceBlob);
+  }, [isLoading, selectedRoom?._id, uploadVoice, voiceBlob]);
+
+  const retryUpload = useCallback(() => {
+    if (!voiceBlob || isLoading) return;
+    setUploadFailed(false);
+    sendPreview();
+  }, [isLoading, sendPreview, voiceBlob]);
+
+  const cancelUpload = useCallback(() => {
+    uploadTaskRef.current?.cancel();
+    uploadTaskRef.current = null;
+    setIsLoading(false);
+    setUploadFailed(false);
+    setPendingMessageId(null);
+  }, []);
+
   return (
     <div className="max-w-fit size-6 z-10">
-      <PiMicrophoneLight
-        data-aos="zoom-in"
-        onClick={startRecording}
-        className="size-6 cursor-pointer"
-      />
-
-      {isRecording && (
+      {isRecording ? (
         <div className="flex items-center justify-between pl-2 absolute inset-0 z-20 size-full bg-leftBarBg">
-          <div className="flex items-center gap-2 w-18">
-            <div className="size-4 rounded-full bg-red-400 animate-pulse flex-center mb-0.5">
-              <div className="size-3 rounded-full bg-red-400 border-3 border-leftBarBg"></div>
-            </div>
-            <p>{secondsToTimeString(timer)}</p>
-          </div>
-
-          <button
-            onClick={cancelRecording}
-            className="px-5 py-3 text-sm bg-transparent font-vazirBold cursor-pointer text-red-500"
-          >
-            CANCEL
-          </button>
-
-          {isLoading ? (
-            <span className="w-18 text-right">
-              <Loading size="md" />
-            </span>
-          ) : (
-            <span
-              className="bg-lightBlue h-full w-12 flex-center rounded-tl-4xl rounded-bl-4xl cursor-pointer "
-              onClick={stopRecording}
-            >
-              <RiSendPlaneFill
-                data-aos="zoom-in"
-                className=" rounded-sm animate-pulse size-7 rotate-45"
-              />
-            </span>
-          )}
+          <div className="flex items-center gap-2 w-18"><div className="size-4 rounded-full bg-red-400 animate-pulse flex-center" /><p>{secondsToTimeString(timer)}</p></div>
+          <button type="button" onClick={cancelRecording} className="px-4 py-2 text-sm text-red-500">لغو</button>
+          <span className="bg-lightBlue h-full w-12 flex-center rounded-tl-4xl rounded-bl-4xl cursor-pointer" onClick={stopRecording}><RiSendPlaneFill className="size-7 rotate-45" /></span>
         </div>
+      ) : audioURL ? (
+        <div className="flex items-center gap-2 absolute inset-0 z-20 size-full bg-leftBarBg px-1">
+          <button type="button" aria-label="لغو پیش‌نمایش" onClick={() => {
+            uploadTaskRef.current?.cancel(); uploadTaskRef.current = null;
+            previewAudioRef.current?.pause();
+            URL.revokeObjectURL(audioURL);
+            setAudioURL(""); setVoiceBlob(null); setUploadFailed(false); setUploadProgress(0); setIsLoading(false); setIsPreviewing(false); setTimer(0);
+          }} className="text-red-500"><IoClose className="size-5" /></button>
+          <button type="button" aria-label="پخش پیش‌نمایش" onClick={() => {
+            const audio = previewAudioRef.current; if (!audio) return;
+            if (audio.paused) void audio.play().catch(() => {}); else audio.pause();
+          }} className="p-1"><RiSendPlaneFill className="size-5 rotate-45" /></button>
+          <span className="text-xs tabular-nums">{secondsToTimeString(timer)}</span>
+          <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-lightBlue transition-all" style={{ width: `${Math.min(100, uploadProgress)}%` }} /></div>
+          {isLoading ? (
+            <><span className="text-[10px] tabular-nums">{uploadProgress}%</span><button type="button" aria-label="لغو آپلود" onClick={cancelUpload} className="text-red-500"><IoClose className="size-5" /></button></>
+          ) : uploadFailed ? (
+            <button type="button" aria-label="تلاش دوباره" onClick={retryUpload} className="text-yellow-400"><IoRefresh className="size-5" /></button>
+          ) : (
+            <button type="button" aria-label="ارسال پیام صوتی" onClick={sendPreview} className="bg-lightBlue rounded-full p-1"><RiSendPlaneFill className="size-5 rotate-45" /></button>
+          )}
+          <audio ref={previewAudioRef} src={audioURL} className="hidden" onPlay={() => setIsPreviewing(true)} onPause={() => setIsPreviewing(false)} onEnded={() => setIsPreviewing(false)} />
+        </div>
+      ) : (
+        <button type="button" aria-label="ضبط پیام صوتی" onClick={() => void startRecording()} className="size-6 cursor-pointer"><PiMicrophoneLight className="size-6" /></button>
       )}
-
-      {audioURL && <audio className="hidden" controls src={audioURL} />}
     </div>
   );
 };
