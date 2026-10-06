@@ -163,6 +163,8 @@ export default function CallOverlay(){
   return()=>{window.removeEventListener("online",online);window.removeEventListener("offline",offline);};
  },[call,networkOnline,restartIce,state]);
 
+ useEffect(()=>{if(socket&&call&&restoring.current){restoring.current=false;socket.emit("call:reconnect",{callId:call.callId});}},[socket,call?.callId]);
+
  useEffect(()=>{
   if(!socket)return;
   const outgoing=(d:Omit<CallInfo,"isCaller">)=>{const next={...d,isCaller:true};rtcConfigRef.current=null;setCall(next);persistCall(next);setState("calling");setError("");setSeconds(0);timer.current=setTimeout(()=>cleanup(true),RING_TIMEOUT_MS);};
