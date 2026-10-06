@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import { IoClose, IoRefresh } from "react-icons/io5";
 import { TbFileUpload } from "react-icons/tb";
-import { MAX_FILE_SIZE, uploadFileWithRetry, UploadTask } from "@/utils/file/UploadFile";
 import { toaster } from "@/utils";
+import { MAX_FILE_SIZE, UploadTask } from "@/utils/file/UploadFile";
 
 const ALLOWED = new Set([
   "image/jpeg","image/png","image/gif","image/webp",
@@ -17,8 +16,7 @@ const ALLOWED = new Set([
   "text/plain","text/csv","application/json",
 ]);
 
-type Attachment = { src: string; name: string; mimeType: string; size: number };
-type QueueItem = {
+export type QueueItem = {
   id: string;
   file: File;
   preview?: string;
@@ -28,22 +26,14 @@ type QueueItem = {
   task?: UploadTask;
 };
 
-interface Props {
-  files: File[];
-  onRemove: (id: string) => void;
-  onRetry: (id: string) => void;
-  onCancel: (id: string) => void;
-}
-
 export const validateAttachmentFiles = (files: File[]) => {
   const valid: File[] = [];
   for (const file of files) {
-    const type = file.type.toLowerCase();
     if (file.size > MAX_FILE_SIZE) {
       toaster("error", `«${file.name}» بیشتر از ۲۵ مگابایت است.`);
       continue;
     }
-    if (!ALLOWED.has(type)) {
+    if (!ALLOWED.has(file.type.toLowerCase())) {
       toaster("error", `نوع فایل «${file.name}» پشتیبانی نمی‌شود.`);
       continue;
     }
@@ -52,12 +42,20 @@ export const validateAttachmentFiles = (files: File[]) => {
   return valid;
 };
 
+interface Props {
+  files: QueueItem[];
+  onRemove: (id: string) => void;
+  onRetry: (id: string) => void;
+  onCancel: (id: string) => void;
+}
+
 export default function AttachmentUploadQueue({ files, onRemove, onRetry, onCancel }: Props) {
   if (!files.length) return null;
+
   return (
     <div className="border-t border-white/10 px-2 py-2 bg-modalBg/70 max-h-48 overflow-y-auto">
       <div className="flex flex-wrap gap-2">
-        {files.map((item: any) => (
+        {files.map((item) => (
           <div key={item.id} className="relative w-44 rounded-xl bg-black/20 p-2">
             {item.preview ? (
               <img src={item.preview} alt="" className="h-20 w-full rounded-lg object-cover" />
@@ -94,5 +92,3 @@ export default function AttachmentUploadQueue({ files, onRemove, onRetry, onCanc
     </div>
   );
 }
-
-export type { Attachment, QueueItem };
