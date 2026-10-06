@@ -899,14 +899,17 @@ io.on("connection", (socket) => {
     callback({ success: true, attempt: c.retryCount });
   });
 
-  on("call:offer", async ({ callId, description }) => {
+  on("call:offer", async ({ callId, description, restart = false }) => {
     const c = activeCalls.get(callId);
     if (!c || !description?.sdp) return;
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
     if (!isCaller && !isCallee) return;
+    // The caller owns renegotiation/ICE restart. This prevents offer glare
+    // when both peers detect the same network transition at once.
+    if (restart && !isCaller) return;
     const targetSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
-    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:offer", { callId, description, restart: true });
+    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:offer", { callId, description, restart });
   });
 
   on("call:answer", async ({ callId, description }) => {
