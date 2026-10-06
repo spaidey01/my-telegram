@@ -697,7 +697,7 @@ test("message search uses the dedicated text index and respects room visibility 
   try {
     await MessageSchema.create([
       { sender: user._id, message: "unique search phrase alpha", roomID: room._id, seen: [], hideFor: [] },
-      { sender: user._id, message: "unique search phrase hidden", roomID: room._id, seen: [], hideFor: [otherUser._id] },
+      { sender: user._id, message: "unique search phrase hidden", roomID: room._id, seen: [], hideFor: [user._id] },
       { sender: otherUser._id, message: "unique search phrase foreign", roomID: hiddenRoom._id, seen: [], hideFor: [] },
     ]);
 
