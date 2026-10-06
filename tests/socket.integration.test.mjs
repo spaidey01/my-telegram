@@ -502,13 +502,14 @@ test("last seen handles multi-socket presence and reconnects", async () => {
 
     const onlineUser = await UserSchema.findById(otherUser._id).lean();
     assert.equal(onlineUser.status, "online");
+    const previousLastSeenAt = onlineUser.lastSeenAt?.toISOString?.() ?? null;
 
     targetA.disconnect();
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     const stillOnline = await UserSchema.findById(otherUser._id).lean();
     assert.equal(stillOnline.status, "online");
-    assert.equal(stillOnline.lastSeenAt, null);
+    assert.equal(stillOnline.lastSeenAt?.toISOString?.() ?? null, previousLastSeenAt);
 
     const offlinePresence = waitForUserPresence(observer, otherUser._id.toString());
     targetB.disconnect();
