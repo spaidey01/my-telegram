@@ -266,6 +266,10 @@ const hasGroupPermission = (room, userID, key) => {
   return room.groupPermissions?.[key] !== false;
 };
 const channelCanPost = (room, userID) => room?.type !== "channel" || isAdmin(room, userID);
+const validatePayloadServer = (value, max = 10000) => {
+  try { return value !== null && value !== undefined && JSON.stringify(value).length <= max; } catch { return false; }
+};
+
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const recordCallHistory = async (call, status, endedAt = new Date()) => {
@@ -431,7 +435,7 @@ io.on("connection", (socket) => {
           return callback({ success: false, error: "Messages are restricted by this user" });
         }
       }
-      if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
+      if (typeof message !== "string" || message.length > 10000 || !validatePayloadServer({ message, attachmentData, stickerData, voiceData }, 200000)) return callback({ success: false, error: "Invalid message" });
       if (room.type === "group" && attachmentData && !hasGroupPermission(room,userID,"sendMedia")) return callback({success:false,error:"Media sending is disabled"});
       if (room.type === "group" && stickerData && !hasGroupPermission(room,userID,"sendStickers")) return callback({success:false,error:"Sticker sending is disabled"});
       if (room.type === "group" && /https?:\/\//i.test(message) && !hasGroupPermission(room,userID,"sendLinks")) return callback({success:false,error:"Links are disabled"});
