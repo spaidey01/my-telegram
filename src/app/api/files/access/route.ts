@@ -6,6 +6,7 @@ import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
 import RoomSchema from "@/schemas/roomSchema";
 import MessageSchema from "@/schemas/messageSchema";
+import StickerSchema from "@/schemas/stickerSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 
 const s3 = () => new S3Client({
@@ -47,6 +48,9 @@ export async function GET(req: Request) {
     let canAccess = ownsFile;
 
     if (!canAccess) {
+      if (!canAccess && key.startsWith("stickers/")) {
+        canAccess = Boolean(await StickerSchema.exists({ file: accessUrl }));
+      }
       const messageRefs = await MessageSchema.find({
         $or: [{ "voiceData.src": accessUrl }, { "attachmentData.src": accessUrl }],
       }).select("roomID").lean();
