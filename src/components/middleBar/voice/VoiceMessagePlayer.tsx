@@ -20,13 +20,13 @@ interface Props {
 }
 
 const VoiceMessagePlayer = memo(({ _id, voiceDataProp, msgData, isFromMe, myId, roomID }: Props) => {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+
   const [rateMenu, setRateMenu] = useState(false);
   const isPlaying = useAudio((s) => s.isPlaying);
   const voiceData = useAudio((s) => s.voiceData);
   const audioElem = useAudio((s) => s.audioElem);
   const downloadedAudios = useAudio((s) => s.downloadedAudios);
-  const setAudioElement = useAudio((s) => s.setAudioElement);
+  const ensureAudioElement = useAudio((s) => s.ensureAudioElement);
   const setVoiceDataAndPlay = useAudio((s) => s.setVoiceDataAndPlay);
   const toggleAudioPlayback = useAudio((s) => s.toggleAudioPlayback);
   const downloadVoice = useAudio((s) => s.downloadVoice);
@@ -36,14 +36,8 @@ const VoiceMessagePlayer = memo(({ _id, voiceDataProp, msgData, isFromMe, myId, 
   const currentTime = useAudio((s) => s.currentTime);
 
   useEffect(() => {
-    if (audioRef.current) setAudioElement(audioRef.current);
-    return () => {
-      if (audioRef.current && useAudio.getState().audioElem === audioRef.current) {
-        useAudio.getState().audioElem?.pause();
-        useAudio.getState().setter({ audioElem: null, isPlaying: false, voiceData: null });
-      }
-    };
-  }, [setAudioElement]);
+    ensureAudioElement();
+  }, [ensureAudioElement]);
 
   const cached = downloadedAudios.find((audio) => audio._id === _id);
   const isCurrent = voiceData?._id === _id;
