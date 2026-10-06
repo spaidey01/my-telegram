@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
+import MessageSchema from "../src/schemas/messageSchema.js";
 
 process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
 process.env.secretKey ||= "integration-test-secret";
@@ -135,6 +136,133 @@ test("socket authentication, invite-link authorization and message flow", async 
   } finally {
     socket.disconnect();
     await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+
+
+test("reply, edit, reaction, pin, forward and delete message flow", async () => {
+  const room = await RoomSchema.create({
+    name: "Feature Flow Room",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const targetRoom = await RoomSchema.create({
+    name: "Forward Target",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+
+  const makeSocket = (uid) =>
+    createClient("http://127.0.0.1:3101", {
+      auth: {
+        token: jwt.sign(
+          { sub: uid.toString(), sv: 0, scope: "socket" },
+          process.env.secretKey,
+          { expiresIn: "5m" },
+        ),
+      },
+      transports: ["websocket"],
+    });
+
+  const socket = makeSocket(user._id);
+  const otherSocket = makeSocket(otherUser._id);
+
+  try {
+    await Promise.all([waitFor(socket, "connect"), waitFor(otherSocket, "connect")]);
+    const join = (s, roomID) => new Promise((resolve) => {
+      s.emit("joining", roomID);
+      s.once("joining", resolve);
+    });
+    await Promise.all([join(socket, room._id.toString()), join(otherSocket, room._id.toString())]);
+    await join(socket, targetRoom._id.toString());
+
+    const send = (payload) =>
+      new Promise((resolve) => socket.emit("newMessage", payload, resolve));
+
+    const originalTemp = "original-" + Date.now();
+    const originalResult = await send({
+      roomID: room._id.toString(),
+      message: "original",
+      tempId: originalTemp,
+    });
+    assert.equal(originalResult.success, true);
+    const original = await MessageSchema.findById(originalResult._id).lean();
+    assert.equal(original.message, "original");
+
+    const replyResult = await send({
+      roomID: room._id.toString(),
+      message: "reply",
+      replayData: { targetID: originalResult._id },
+      tempId: "reply-" + Date.now(),
+    });
+    assert.equal(replyResult.success, true);
+    const reply = await MessageSchema.findById(replyResult._id).lean();
+    assert.equal(reply.replayedTo.msgID, originalResult._id.toString());
+    assert.equal(reply.replayedTo.username, user.username);
+
+    const editResult = await new Promise((resolve) => {
+      socket.emit("editMessage", {
+        msgID: replyResult._id,
+        editedMsg: "edited reply",
+        roomID: room._id.toString(),
+      });
+      socket.once("editMessage", resolve);
+    });
+    assert.equal(editResult.msgID, replyResult._id);
+    assert.equal(editResult.editedMsg, "edited reply");
+    assert.equal((await MessageSchema.findById(replyResult._id)).message, "edited reply");
+
+    const reactionResult = await new Promise((resolve) => {
+      socket.emit(
+        "toggleReaction",
+        { msgID: originalResult._id, roomID: room._id.toString(), emoji: "❤️" },
+        resolve,
+      );
+    });
+    assert.equal(reactionResult.success, true);
+    const reacted = await MessageSchema.findById(originalResult._id).lean();
+    assert.deepEqual(reacted.reactions[0].userIds.map(String), [user._id.toString()]);
+
+    const pinPromise = waitFor(otherSocket, "pinMessage");
+    socket.emit("pinMessage", originalResult._id, room._id.toString(), false);
+    const pinEvent = await pinPromise;
+    assert.equal(pinEvent.msgID, originalResult._id);
+    assert.equal(pinEvent.roomID, room._id.toString());
+    assert.ok(pinEvent.pinnedAt);
+    assert.ok((await MessageSchema.findById(originalResult._id)).pinnedAt);
+
+    const forwardResult = await new Promise((resolve) => {
+      socket.emit(
+        "forwardMessage",
+        {
+          msgID: originalResult._id,
+          sourceRoomID: room._id.toString(),
+          targetRoomID: targetRoom._id.toString(),
+        },
+        resolve,
+      );
+    });
+    assert.equal(forwardResult.success, true);
+    assert.equal(forwardResult.message.forwardedFrom.messageId, originalResult._id);
+
+    socket.emit("deleteMsg", {
+      forAll: true,
+      msgID: replyResult._id,
+      roomID: room._id.toString(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(await MessageSchema.exists({ _id: replyResult._id }), null);
+  } finally {
+    socket.disconnect();
+    otherSocket.disconnect();
+    await MessageSchema.deleteMany({ roomID: { $in: [room._id, targetRoom._id] } });
+    await RoomSchema.deleteMany({ _id: { $in: [room._id, targetRoom._id] } });
   }
 });
 
