@@ -13,7 +13,6 @@ import {
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PiMicrophoneLight } from "react-icons/pi";
 import { IoClose, IoRefresh } from "react-icons/io5";
-import Loading from "../../modules/ui/Loading";
 import { RiSendPlaneFill } from "react-icons/ri";
 import { v4 as uuidv4 } from "uuid";
 import { voiceBlobStorage } from "@/utils/voiceBlobStorage";
