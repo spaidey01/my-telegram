@@ -132,7 +132,7 @@ export default function CallOverlay(){
    peer.ontrack=e=>setRemote(e.streams?.[0]||new MediaStream([e.track]));
    peer.onconnectionstatechange=()=>{
      if(peer.connectionState==="connected"){setState("connected");setError("");retrying.current=false;startQualityMonitor(peer);}
-     if(peer.connectionState==="disconnected"){restartIce("شبکه ناپایدار است؛ در حال بازسازی اتصال...");}
+     if(peer.connectionState==="disconnected"){if(reconnectTimer.current)clearTimeout(reconnectTimer.current);reconnectTimer.current=setTimeout(()=>{if(peer.connectionState==="disconnected")restartIce("شبکه ناپایدار است؛ در حال بازسازی اتصال...");},5000);}
      if(peer.connectionState==="failed"){restartIce("اتصال قطع شد؛ در حال تلاش مجدد...");}
      if(peer.connectionState==="closed")stopTimers();
    };
