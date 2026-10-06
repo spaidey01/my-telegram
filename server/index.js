@@ -89,7 +89,9 @@ const MAX_EVENT_BUCKETS = 50_000;
 
 const callRedisKey = (callId) => `${CALL_REDIS_PREFIX}${callId}`;
 const serializeCall = (call) => {
-  const { timer, reconnectTimer, ...stored } = call;
+  const stored = { ...call };
+  delete stored.timer;
+  delete stored.reconnectTimer;
   return stored;
 };
 const getActiveCall = async (callId) => {
