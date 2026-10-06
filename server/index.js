@@ -15,6 +15,7 @@ import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import CallSchema from "../src/schemas/callSchema.js";
 import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
 import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
+import SessionSchema from "../src/schemas/sessionSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 import { GROUP_PERMISSION_KEYS, hasGroupPermission, channelCanPost } from "./security/permissions.js";
@@ -367,11 +368,13 @@ io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Unauthorized"));
     const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] });
-    if (!decoded || typeof decoded !== "object" || decoded.scope !== "socket" || !decoded.sub || typeof decoded.sv !== "number") {
+    if (!decoded || typeof decoded !== "object" || decoded.scope !== "socket" || !decoded.sub || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") {
       return next(new Error("Unauthorized"));
     }
-    const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean();
+    const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).lean();
+    const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean() : null;
     if (!user) return next(new Error("Unauthorized"));
+    void SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
     socket.userId = decoded.sub.toString();
     socket.sessionVersion = decoded.sv;
     socket.userTokenExp = decoded.exp;
