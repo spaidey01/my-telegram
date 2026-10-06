@@ -187,9 +187,10 @@ const isMessageInRoom = async (msgID, roomID) => {
 
 const publicUserFields = "name username avatar _id status lastSeenAt";
 
-const emitVisibleMessage = async (roomID, event, payload) => {
+const emitVisibleMessage = async (roomID, event, payload, excludeSocketId = null) => {
   const sockets = await io.in(roomID).fetchSockets();
   await Promise.all(sockets.map(async (viewerSocket) => {
+    if (viewerSocket.id === excludeSocketId) return;
     const visiblePayload = { ...payload };
     if (visiblePayload.sender && typeof visiblePayload.sender === "object") {
       visiblePayload.sender = await sanitizeUserForViewer(visiblePayload.sender, viewerSocket.data.userId);
@@ -343,7 +344,7 @@ io.on("connection", (socket) => {
         .populate("sender", "name username avatar _id")
         .lean();
 
-      await emitVisibleMessage(roomID, "newMessage", populatedMsg);
+      await emitVisibleMessage(roomID, "newMessage", populatedMsg, socket.id);
       socket.emit("newMessageIdUpdate", { tempId, _id: newMsg._id });
       await emitVisibleMessage(roomID, "lastMsgUpdate", populatedMsg);
       await emitVisibleMessage(roomID, "updateLastMsgData", { msgData: populatedMsg, roomID });
