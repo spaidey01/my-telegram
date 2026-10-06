@@ -47,6 +47,7 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
       - run: node --check server/index.js
+      - run: npm run test:turn
       - run: npm run test:integration
         env:
           MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_test
