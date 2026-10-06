@@ -131,6 +131,11 @@ export default function CallOverlay(){
    },3000);
  },[]);
 
+ const beginDuration=useCallback(()=>{
+   if(durationTimer.current)clearInterval(durationTimer.current);
+   setSeconds(0);durationTimer.current=setInterval(()=>setSeconds(v=>v+1),1000);
+ },[]);
+
  const makePeer=useCallback(async(info:CallInfo)=>{
    const config=await loadRtcConfig();
    const peer=new RTCPeerConnection(config);
@@ -147,11 +152,6 @@ export default function CallOverlay(){
    };
    pc.current=peer;return peer;
  },[loadRtcConfig,socket,startQualityMonitor,restartIce,stopTimers,beginDuration]);
-
- const beginDuration=useCallback(()=>{
-   if(durationTimer.current)clearInterval(durationTimer.current);
-   setSeconds(0);durationTimer.current=setInterval(()=>setSeconds(v=>v+1),1000);
- },[]);
 
  useEffect(()=>{
    if(lv.current&&local)lv.current.srcObject=local;
