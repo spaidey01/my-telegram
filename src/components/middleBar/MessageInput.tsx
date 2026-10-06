@@ -119,6 +119,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
 
   const sendAttachment = useCallback((file: File, src: string) => {
     if (!roomId) return;
+    fetch("/api/drafts?roomId=" + encodeURIComponent(roomId), { method: "DELETE" }).catch(() => {});
     send({
       roomID: roomId,
       message: "",
@@ -257,8 +258,28 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     }
   };
 
-  useEffect(() => { resize(); setText(roomId ? localStorage.getItem(roomId) || "" : ""); }, [roomId, resize]);
-  useEffect(() => { if (roomId && text) localStorage.setItem(roomId, text); }, [roomId, text]);
+  useEffect(() => {
+    resize();
+    if (!roomId) { setText(""); return; }
+    let cancelled = false;
+    fetch("/api/drafts?roomId=" + encodeURIComponent(roomId))
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (!cancelled) setText(data?.draft?.message ?? localStorage.getItem(roomId) ?? ""); })
+      .catch(() => { if (!cancelled) setText(localStorage.getItem(roomId) || ""); });
+    return () => { cancelled = true; };
+  }, [roomId, resize]);
+  useEffect(() => {
+    if (!roomId) return;
+    localStorage.setItem(roomId, text);
+    const timer = window.setTimeout(() => {
+      if (text.trim()) {
+        fetch("/api/drafts", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId, message: text }) }).catch(() => {});
+      } else {
+        fetch("/api/drafts?roomId=" + encodeURIComponent(roomId), { method: "DELETE" }).catch(() => {});
+      }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [roomId, text]);
   useEffect(() => { if (editData?.message) setText(editData.message); }, [editData?.message]);
 
   return (
