@@ -321,6 +321,9 @@ io.on("connection", (socket) => {
         if (existing) return callback({ success: true, _id: existing._id });
       }
 
+      const sanitizedSticker = await sanitizeStickerData(stickerData, userID);
+      if (stickerData !== null && stickerData !== undefined && !sanitizedSticker) return callback({ success: false, error: "Invalid sticker" });
+
       const msgData = {
         sender: userID,
         message,
@@ -328,7 +331,7 @@ io.on("connection", (socket) => {
         seen: [],
         voiceData: await sanitizeVoiceData(voiceData, userID),
         attachmentData: await sanitizeAttachmentData(attachmentData, userID),
-        stickerData: await sanitizeStickerData(stickerData, userID),
+        stickerData: sanitizedSticker,
         createdAt: Date.now(),
         tempId: scopedTempId,
         status: "sent",
