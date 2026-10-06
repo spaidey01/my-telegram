@@ -3,6 +3,7 @@ import Main from "./Main";
 import Settings from "./Settings";
 import EditInfo from "./EditInfo";
 import EditUsername from "./EditUsername";
+import SecuritySettings from "./SecuritySettings";
 
 interface Props {
   isOpen: boolean;
@@ -58,6 +59,10 @@ const LeftBarMenu = ({ closeMenu, isOpen, onRouteChanged }: Props) => {
       }
       case "/settings/edit-username": {
         setActiveRoute(<EditUsername getBack={getBack} />);
+        break;
+      }
+      case "/settings/security": {
+        setActiveRoute(<SecuritySettings getBack={getBack} />);
         break;
       }
     }
