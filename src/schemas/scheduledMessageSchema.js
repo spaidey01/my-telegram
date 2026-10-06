@@ -5,7 +5,7 @@ const schema = new Schema({
   room: { type: Schema.ObjectId, ref: "Room", required: true, index: true },
   payload: { type: Schema.Types.Mixed, required: true },
   scheduledFor: { type: Date, required: true, index: true },
-  status: { type: String, enum: ["pending", "sent", "failed", "cancelled"], default: "pending", index: true },
+  status: { type: String, enum: ["pending", "processing", "sent", "failed", "cancelled"], default: "pending", index: true },
   sentAt: { type: Date, default: null },
   error: { type: String, default: null, maxlength: 500 },
 }, { timestamps: true });
