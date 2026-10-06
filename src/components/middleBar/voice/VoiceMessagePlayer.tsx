@@ -24,7 +24,6 @@ const VoiceMessagePlayer = memo(({ _id, voiceDataProp, msgData, isFromMe, myId, 
   const [rateMenu, setRateMenu] = useState(false);
   const isPlaying = useAudio((s) => s.isPlaying);
   const voiceData = useAudio((s) => s.voiceData);
-  const audioElem = useAudio((s) => s.audioElem);
   const downloadedAudios = useAudio((s) => s.downloadedAudios);
   const ensureAudioElement = useAudio((s) => s.ensureAudioElement);
   const setVoiceDataAndPlay = useAudio((s) => s.setVoiceDataAndPlay);
