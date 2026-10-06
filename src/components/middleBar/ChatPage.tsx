@@ -209,9 +209,19 @@ const ChatPage = () => {
 
   // Remove user from selected group or channel
   const leaveRoom = () => {
-    const newParticipants = participants.filter(
-      (participant) => participant !== myID
-    );
+    if (type === "group") {
+      roomsSocket?.emit("group:leave", { roomID: selectedRoom?._id }, (response: { success: boolean }) => {
+        if (response?.success) setter({ selectedRoom: null });
+      });
+      return;
+    }
+    if (type === "channel") {
+      roomsSocket?.emit("channel:leave", { roomID: selectedRoom?._id }, (response: { success: boolean }) => {
+        if (response?.success) setter({ selectedRoom: null });
+      });
+      return;
+    }
+    const newParticipants = participants.filter((participant) => participant !== myID);
     roomsSocket?.emit("updateRoomData", {
       roomID: selectedRoom?._id,
       participants: [...newParticipants],

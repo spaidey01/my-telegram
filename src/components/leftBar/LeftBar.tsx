@@ -122,7 +122,7 @@ const LeftBar = () => {
         ? userRooms
         : userRooms.filter((room) => room.type === filterBy);
 
-    return filteredRooms.sort((a, b) => {
+    return [...filteredRooms].sort((a, b) => {
       const aTime = a?.lastMsgData?.createdAt
         ? new Date(a.lastMsgData.createdAt).getTime()
         : 0;
