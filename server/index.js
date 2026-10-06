@@ -477,7 +477,7 @@ io.on("connection", (socket) => {
           seen: [],
           voiceData: await sanitizeVoiceData(message.voiceData, userID),
           attachmentData: await sanitizeAttachmentData(message.attachmentData, userID),
-          stickerData: sanitizeStickerData(message.stickerData),
+          stickerData: await sanitizeStickerData(message.stickerData, userID),
           status: "sent",
         });
         newRoom.lastMessageId = newMsg._id;
