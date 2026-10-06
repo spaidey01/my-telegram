@@ -293,16 +293,37 @@ const useConnection = ({
         ...prev,
         selectedRoom:
           prev.selectedRoom && prev.selectedRoom._id === roomData._id
-            ? {
-                ...prev.selectedRoom,
-                name: roomData.name,
-                avatar: roomData.avatar,
-                participants: roomData.participants,
-                admins: roomData.admins,
-              }
+            ? { ...prev.selectedRoom, ...roomData }
             : prev.selectedRoom,
       }));
     });
+
+    const updateChannelRole = (roomID: string, memberID: string, role?: string) => {
+      const apply = (room: Room) => {
+        if (room._id !== roomID) return room;
+        const nextRoles = { ...(room.channelRoles || {}) };
+        const nextAdmins = [...(room.admins || [])];
+        if (role) {
+          nextRoles[memberID] = role as NonNullable<Room["channelRoles"]>[string];
+          if (!nextAdmins.includes(memberID)) nextAdmins.push(memberID);
+        } else {
+          delete nextRoles[memberID];
+          const index = nextAdmins.indexOf(memberID);
+          if (index >= 0) nextAdmins.splice(index, 1);
+        }
+        return { ...room, channelRoles: nextRoles, admins: nextAdmins };
+      };
+      setRooms((prev) => prev.map(apply));
+      setter((prev) => ({
+        selectedRoom: prev.selectedRoom ? apply(prev.selectedRoom) : prev.selectedRoom,
+      }));
+    };
+    const onChannelRole = ({ roomID, memberID, role }: { roomID: string; memberID: string; role: string }) =>
+      updateChannelRole(roomID, memberID, role);
+    const onChannelRoleRemove = ({ roomID, memberID }: { roomID: string; memberID: string }) =>
+      updateChannelRole(roomID, memberID);
+    socket.on("channel:role", onChannelRole);
+    socket.on("channel:role:remove", onChannelRoleRemove);
 
     socket.on("updateOnlineUsers", (onlineUsers) => setter({ onlineUsers }));
     socket.on("userProfileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
@@ -481,6 +502,8 @@ const useConnection = ({
         "deleteRoom",
         "seenMsg",
         "updateRoomData",
+        "channel:role",
+        "channel:role:remove",
         "newMessageIdUpdate",
       ].forEach((event) => socket.off(event));
     };
