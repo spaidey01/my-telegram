@@ -13,7 +13,7 @@ const getAuth = async () => {
   const decoded = token ? tokenDecoder(token) : false;
   if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") return null;
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean();
+  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null;
   return user ? String(user._id) : null;
 };
 
@@ -22,7 +22,7 @@ const normalizeIds = (value: unknown) => Array.isArray(value) ? [...new Set(valu
 export async function GET() {
   const userId = await getAuth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  const rows = await UserStickerPackSchema.find({ user: userId }).select("recentStickerIds favoriteStickerIds").lean();
+  const rows = await UserStickerPackSchema.find({ user: userId }).select("recentStickerIds favoriteStickerIds").lean() as unknown as { recentStickerIds: unknown[]; favoriteStickerIds: unknown[] }[];
   return NextResponse.json({
     recentStickerIds: [...new Set(rows.flatMap((row) => row.recentStickerIds.map(String)))].slice(0, 50),
     favoriteStickerIds: [...new Set(rows.flatMap((row) => row.favoriteStickerIds.map(String)))].slice(0, 100),
@@ -39,13 +39,13 @@ export async function PATCH(req: Request) {
   const stickerId = typeof body?.stickerId === "string" ? body.stickerId : "";
   if (!type || !mongoose.isValidObjectId(stickerId)) return NextResponse.json({ message: "Invalid sticker" }, { status: 400 });
 
-  const sticker = await StickerSchema.findById(stickerId).select("_id packId").lean();
+  const sticker = await StickerSchema.findById(stickerId).select("_id packId").lean() as unknown as { _id: { toString(): string }; packId: { toString(): string } } | null;
   if (!sticker) return NextResponse.json({ message: "Sticker not found" }, { status: 404 });
   const installed = await UserStickerPackSchema.exists({ user: userId, packId: sticker.packId });
   const packOwned = await (await import("@/schemas/stickerPackSchema")).default.exists({ _id: sticker.packId, owner: userId });
   if (!installed && !packOwned) return NextResponse.json({ message: "Sticker pack is not installed" }, { status: 403 });
 
-  const rows = await UserStickerPackSchema.find({ user: userId });
+  const rows = await UserStickerPackSchema.find({ user: userId }) as unknown as { packId: { toString(): string }; recentStickerIds: { toString(): string }[]; favoriteStickerIds: { toString(): string }[]; save: () => Promise<void> }[];
   let row = rows.find((item) => String(item.packId) === String(sticker.packId));
   if (!row) row = await UserStickerPackSchema.create({ user: userId, packId: sticker.packId });
 
