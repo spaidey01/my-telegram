@@ -21,6 +21,8 @@ test("call reliability client has recovery primitives",()=>{
     "qualityPrevious",
     "removeEventListener(\"change\",onConnectionChange)",
     "if(!durationTimer.current)beginDuration();",
+    'setLocalDescription({type:"rollback"})',
+    'signalingState!=="stable"',
   ]) assert.ok(overlay.includes(token),`missing reliability primitive: ${token}`);
 });
 
