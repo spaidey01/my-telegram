@@ -9,6 +9,7 @@ import {
   useCallback,
 } from "react";
 import { IoIosArrowUp, IoMdArrowRoundBack } from "react-icons/io";
+import { IoSearch } from "react-icons/io5";
 import Image from "next/image";
 import { PiDotsThreeVerticalBold } from "react-icons/pi";
 import MessageSender from "./MessageInput";
@@ -27,6 +28,7 @@ import Modal from "../modules/ui/Modal";
 import { scrollToMessage } from "@/utils";
 import ProfileGradients from "../modules/ProfileGradients";
 import MultiSelectToolbar from "./MultiSelectToolbar";
+import MessageSearch from "./MessageSearch";
 
 const ChatBox = lazy(() => import("./ChatBox"));
 
@@ -54,10 +56,21 @@ const ChatPage = () => {
   const selectionMode = useGlobalStore((state) => state.selectionMode);
   const selectionRoomID = useGlobalStore((state) => state.selectionRoomID);
   const clearMessageSelection = useGlobalStore((state) => state.clearMessageSelection);
+  const pendingMessageJumpId = useGlobalStore((state) => state.pendingMessageJumpId);
+  const setPendingMessageJump = useGlobalStore((state) => state.setPendingMessageJump);
+  const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
 
   useEffect(() => {
     if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();
   }, [selectionRoomID, selectedRoom?._id, clearMessageSelection]);
+
+  useEffect(() => {
+    if (!pendingMessageJumpId || !selectedRoom) return;
+    if (!messages?.some((message) => message._id === pendingMessageJumpId)) return;
+    const messageID = pendingMessageJumpId;
+    setPendingMessageJump(null);
+    requestAnimationFrame(() => scrollToMessage(messageID));
+  }, [pendingMessageJumpId, selectedRoom, messages, setPendingMessageJump]);
 
   // Avatar, name and _id information from room or user information (in private mode)
   const {
@@ -220,6 +233,10 @@ const ChatPage = () => {
       style={{ transform: "none" }}
       className="relative h-dvh flex flex-col chatBackground w-full "
     >
+      {isMessageSearchOpen && selectedRoom?._id && (
+        <MessageSearch roomId={selectedRoom._id} onClose={() => setIsMessageSearchOpen(false)} />
+      )}
+
       {/* Chat Header */}
       {selectionMode ? (
         <MultiSelectToolbar messages={messages} roomID={selectedRoom?._id || ""} />
@@ -307,6 +324,7 @@ const ChatPage = () => {
         </div>
 
         <div className="flex items-center gap-1 justify-end">
+          <button type="button" title="Search messages" onClick={() => setIsMessageSearchOpen(true)} className="p-2 rounded-full hover:bg-white/10"><IoSearch className="size-5" /></button>
           {type === "private" && _id && _id !== myID && (
             <>
               <button type="button" title="تماس صوتی" className="p-2 rounded-full hover:bg-white/10" onClick={() => {
