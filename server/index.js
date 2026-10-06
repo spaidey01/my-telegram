@@ -265,7 +265,12 @@ const hasGroupPermission = (room, userID, key) => {
   if (typeof member[key] === "boolean") return member[key];
   return room.groupPermissions?.[key] !== false;
 };
-const channelCanPost = (room, userID) => room?.type !== "channel" || isAdmin(room, userID);
+const channelCanPost = (room, userID) => {
+  if (room?.type !== "channel") return true;
+  if (isAdmin(room, userID)) return true;
+  const role = room.channelRoles?.get?.(userID) || room.channelRoles?.[userID];
+  return role === "editor" || role === "moderator";
+};
 const validatePayloadServer = (value, max = 10000) => {
   try { return value !== null && value !== undefined && JSON.stringify(value).length <= max; } catch { return false; }
 };
@@ -426,7 +431,7 @@ io.on("connection", (socket) => {
     try {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
-      if (room.type === "channel" && !isAdmin(room, userID)) return callback({ success: false, error: "Forbidden" });
+      if (room.type === "channel" && !channelCanPost(room, userID)) return callback({ success: false, error: "Only channel admins can post" });
       if (room.type === "group" && !hasGroupPermission(room, userID, "sendMessages")) return callback({ success: false, error: "You cannot send messages in this group" });
       if (room.type === "group" && room.restrictedUsers?.some((id) => id.toString() === userID)) return callback({ success: false, error: "You are restricted" });
       if (room.type === "private") {
