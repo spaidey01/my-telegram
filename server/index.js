@@ -1213,6 +1213,54 @@ io.on("connection", (socket) => {
   }, 60_000);
   sessionCheckTimer.unref();
 
+  on("loadMessageAround", async ({ roomID, messageID, limit = 50 }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "loadMessageAround", 30, 60_000))) {
+      return callback({ success: false, error: "Rate limit exceeded" });
+    }
+    try {
+      if (!isValidId(roomID) || !isValidId(messageID)) return callback({ success: false, error: "Invalid message" });
+      const room = await isMember(roomID, userID);
+      if (!room) return callback({ success: false, error: "Forbidden" });
+
+      const target = await MessageSchema.findOne({
+        _id: messageID,
+        roomID,
+        hideFor: { $nin: [userID] },
+      }).select("_id createdAt").lean();
+      if (!target) return callback({ success: false, error: "Message not found" });
+
+      const safeLimit = Math.min(Math.max(Number(limit) || 50, 10), 50);
+      const [older, newer] = await Promise.all([
+        MessageSchema.find({
+          roomID,
+          hideFor: { $nin: [userID] },
+          $or: [
+            { createdAt: { $lt: target.createdAt } },
+            { createdAt: target.createdAt, _id: { $lt: target._id } },
+          ],
+        }).sort({ createdAt: -1, _id: -1 }).limit(Math.floor(safeLimit / 2)).populate("sender", publicUserFields).lean(),
+        MessageSchema.find({
+          roomID,
+          hideFor: { $nin: [userID] },
+          $or: [
+            { createdAt: { $gt: target.createdAt } },
+            { createdAt: target.createdAt, _id: { $gt: target._id } },
+          ],
+        }).sort({ createdAt: 1, _id: 1 }).limit(Math.ceil(safeLimit / 2)).populate("sender", publicUserFields).lean(),
+      ]);
+
+      const messages = [...older.reverse(), target, ...newer];
+      const populated = await MessageSchema.find({ _id: { $in: messages.map((message) => message._id) } })
+        .populate("sender", publicUserFields).lean();
+      const byId = new Map(populated.map((message) => [String(message._id), message]));
+      const ordered = messages.map((message) => byId.get(String(message._id))).filter(Boolean);
+      callback({ success: true, messages: await sanitizeMessagesForViewer(ordered, userID) });
+    } catch (error) {
+      console.error("loadMessageAround:", error);
+      callback({ success: false, error: "Unable to load message" });
+    }
+  });
+
   on("loadOlderMessages", async ({ roomID, before, limit = 50 }, callback = () => {}) => {
     if (!(await allowEvent(userID, "loadOlderMessages", 60, 60_000))) {
       return callback({ success: false, error: "Rate limit exceeded" });
