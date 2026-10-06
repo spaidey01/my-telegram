@@ -942,7 +942,7 @@ io.on("connection", (socket) => {
         { _id: userID },
         { $set },
         { new: true, runValidators: true }
-      ).select("name lastName username avatar biography status _id").lean();
+      ).select("name lastName username avatar biography status lastSeenAt _id").lean();
 
       if (!updated) return callback({ success: false, error: "کاربر پیدا نشد" });
 
