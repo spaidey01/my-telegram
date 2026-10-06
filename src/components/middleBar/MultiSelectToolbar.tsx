@@ -33,7 +33,7 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
 
   if (!selectionMode || !selectedMessageIds.length) return null;
 
-  const currentRoom = rooms.find((room) => room._id === roomID);
+  const currentRoom = selectedRoom?._id === roomID ? selectedRoom : rooms.find((room) => room._id === roomID);
   const targetRooms = rooms.filter((room) => room._id !== roomID);
   const selectableMessages = messages.filter((message) => !message.hideFor.includes(myID));
 
