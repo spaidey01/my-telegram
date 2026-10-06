@@ -19,6 +19,7 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
     selectionMode,
     clearMessageSelection,
     selectAllMessages,
+    selectedRoom,
   } = useGlobalStore((state) => state);
   const roomsSocket = useSockets((state) => state.rooms);
   const { _id: myID, rooms } = useUserStore((state) => state);
