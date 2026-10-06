@@ -24,7 +24,7 @@ export const GET = async () => {
   await connectToDB();
   const user = await UserSchema.findById(userID).select("privacySettings").lean();
   if (!user) return Response.json({ message: "User not found" }, { status: 404 });
-  return Response.json(normalizePrivacySettings(user.privacySettings));
+  return Response.json(normalizePrivacySettings((user as any).privacySettings));
 };
 
 export const PATCH = async (req: Request) => {
@@ -33,7 +33,7 @@ export const PATCH = async (req: Request) => {
   try {
     await connectToDB();
     const body = await req.json();
-    const current = normalizePrivacySettings((await UserSchema.findById(userID).select("privacySettings").lean())?.privacySettings);
+    const current = normalizePrivacySettings((await UserSchema.findById(userID).select("privacySettings").lean() as any)?.privacySettings);
     const patch = body && typeof body === "object" ? body : {};
     const next = { ...current };
     for (const key of PRIVACY_KEYS) {
@@ -43,7 +43,7 @@ export const PATCH = async (req: Request) => {
       }
     }
     const updated = await UserSchema.findByIdAndUpdate(userID, { $set: { privacySettings: next } }, { new: true }).select("privacySettings").lean();
-    return Response.json(normalizePrivacySettings(updated?.privacySettings || DEFAULT_PRIVACY_SETTINGS));
+    return Response.json(normalizePrivacySettings((updated as any)?.privacySettings || DEFAULT_PRIVACY_SETTINGS));
   } catch {
     return Response.json({ message: "Unable to update privacy settings" }, { status: 500 });
   }
