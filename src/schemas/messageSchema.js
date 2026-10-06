@@ -8,10 +8,7 @@ export const schema = new Schema(
     readTime: { type: Date, default: null },
     replays: [{ type: Schema.ObjectId, ref: "Message" }],
     roomID: { type: Schema.ObjectId, ref: "Room", required: true },
-    replayedTo: {
-      type: { message: String, msgID: String, username: String },
-      default: null,
-    },
+    replayedTo: { type: { message: String, msgID: String, username: String }, default: null },
     isEdited: { type: Boolean, default: false },
     hideFor: [{ type: Schema.ObjectId, ref: "User" }],
     pinnedAt: { type: Date, default: null },
@@ -23,30 +20,34 @@ export const schema = new Schema(
       },
       default: null,
     },
-    attachmentData: { type: { src:{type:String,required:true,maxlength:2048}, name:{type:String,required:true,maxlength:255}, mimeType:{type:String,required:true,maxlength:120}, size:{type:Number,required:true,min:1,max:25*1024*1024} }, default:null },
-    stickerData: { type: { emoji:{type:String,required:true,maxlength:16} }, default:null },
-    forwardedFrom: {
+    attachmentData: {
       type: {
-        messageId: { type: String, required: true, maxlength: 24 },
-        senderName: { type: String, required: true, maxlength: 120 },
+        src: { type: String, required: true, maxlength: 2048 },
+        name: { type: String, required: true, maxlength: 255 },
+        mimeType: { type: String, required: true, maxlength: 120 },
+        size: { type: Number, required: true, min: 1, max: 25 * 1024 * 1024 },
       },
       default: null,
     },
-    reactions: {
-      type: [{
+    stickerData: {
+      type: {
+        stickerId: { type: Schema.ObjectId, ref: "Sticker", required: true },
+        packId: { type: Schema.ObjectId, ref: "StickerPack", required: true },
+        file: { type: String, required: true, maxlength: 2048 },
+        mimeType: { type: String, required: true, enum: ["image/png", "image/webp", "image/gif"] },
         emoji: { type: String, required: true, maxlength: 16 },
-        userIds: [{ type: Schema.ObjectId, ref: "User" }],
-      }],
+      },
+      default: null,
+    },
+    forwardedFrom: { type: { messageId: { type: String, required: true, maxlength: 24 }, senderName: { type: String, required: true, maxlength: 120 } }, default: null },
+    reactions: {
+      type: [{ emoji: { type: String, required: true, maxlength: 16 }, userIds: [{ type: Schema.ObjectId, ref: "User" }] }],
       default: [],
     },
     tempId: { type: String, unique: true, sparse: true, maxlength: 200 },
-    status: {
-      type: String,
-      enum: ["pending", "sent", "failed"],
-      default: "sent",
-    },
+    status: { type: String, enum: ["pending", "sent", "failed"], default: "sent" },
   },
-  { timestamps: true, strictPopulate: false }
+  { timestamps: true, strictPopulate: false },
 );
 
 schema.index({ roomID: 1, createdAt: -1, _id: -1 });
@@ -55,7 +56,7 @@ schema.index({ roomID: 1, message: 1 });
 schema.index({ message: "text" });
 schema.index({ "attachmentData.src": 1 });
 schema.index({ "voiceData.src": 1 });
+schema.index({ "stickerData.stickerId": 1 });
 
-const MessageSchema =
-  mongoose.models.Message || mongoose.model("Message", schema);
+const MessageSchema = mongoose.models.Message || mongoose.model("Message", schema);
 export default MessageSchema;
