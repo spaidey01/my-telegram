@@ -1,5 +1,13 @@
 export const GROUP_PERMISSION_KEYS=["sendMessages","sendMedia","sendStickers","sendLinks","addMembers","pinMessages","changeInfo","manageMembers"];
-export const isAdmin=(room,userID)=>!!room&&(room.creator?.toString()===userID||room.admins?.some(id=>id.toString()===userID));
+export const isAdmin=(room,userID)=>{
+ if(!room)return false;
+ if(room.creator?.toString()===userID)return true;
+ if(room.type==="channel"){
+  const role=room.channelRoles?.get?.(userID)||room.channelRoles?.[userID];
+  if(role)return role==="owner"||role==="admin";
+ }
+ return room.admins?.some(id=>id.toString()===userID);
+};
 export const hasGroupPermission=(room,userID,key)=>{
  if(!room||room.type!=="group")return true;
  if(isAdmin(room,userID))return true;
