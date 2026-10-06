@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { FiPhoneCall, FiVideo, FiX } from "react-icons/fi";
 import useSockets from "@/stores/useSockets";
 import useUserStore from "@/stores/userStore";
-type CallRow={_id:string;callId:string;caller:any;receiver:any;roomID:string;type:"audio"|"video";status:string;startedAt:string};
+type CallPeer={_id:string;name?:string;username?:string};
+type CallRow={_id:string;callId:string;caller:CallPeer;receiver:CallPeer;roomID:string;type:"audio"|"video";status:string;startedAt:string};
 export default function CallHistory({onClose}:{onClose:()=>void}){
  const [calls,setCalls]=useState<CallRow[]>([]); const myID=useUserStore(s=>s._id); const socket=useSockets(s=>s.rooms);
  useEffect(()=>{fetch("/api/calls/history").then(r=>r.ok?r.json():{calls:[]}).then(x=>setCalls(x.calls||[])).catch(()=>setCalls([]));},[]);
