@@ -119,15 +119,12 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
 
   useEffect(() => {
     if (!isFromMe && !seen.some((id) => id === myId) && isInViewport && rooms) {
-      rooms.emit("seenMsg", {
-        seenBy: myId,
-        sender,
-        msgID: _id,
+      rooms.emit("markRoomRead", {
         roomID,
-        readTime: new Date().toISOString(),
+        messageID: _id,
       });
     }
-  }, [_id, isFromMe, isInViewport, myId, roomID, rooms, seen, sender]);
+  }, [_id, isFromMe, isInViewport, myId, roomID, rooms, seen]);
 
   //Set display state only once after mount.
   useEffect(() => {
