@@ -14,13 +14,13 @@ const auth = async () => {
   const decoded = token ? tokenDecoder(token) : false;
   if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") return null;
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean();
+  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null;
   return user ? { id: String(user._id) } : null;
 };
 
 interface StickerRecord {
-  _id: mongoose.Types.ObjectId;
-  packId: mongoose.Types.ObjectId;
+  _id: { toString(): string };
+  packId: { toString(): string };
   file: string;
   mimeType: string;
   emoji: string;
@@ -28,11 +28,11 @@ interface StickerRecord {
 }
 
 interface PackRecord {
-  _id: mongoose.Types.ObjectId;
+  _id: { toString(): string };
   name: string;
   title: string;
   thumbnail?: string;
-  owner: mongoose.Types.ObjectId;
+  owner: { toString(): string };
   stickers?: StickerRecord[];
 }
 
@@ -62,10 +62,12 @@ export async function GET(req: Request) {
 
     const query = new URL(req.url).searchParams.get("q")?.trim() || "";
     const filter = query ? { $or: [{ name: { $regex: query.slice(0, 64), $options: "i" } }, { title: { $regex: query.slice(0, 120), $options: "i" } }] } : {};
-    const [packs, installed] = await Promise.all([
+    const [packsRaw, installedRaw] = await Promise.all([
       StickerPackSchema.find(filter).sort({ createdAt: -1, _id: -1 }).limit(100).populate("stickers").lean(),
       UserStickerPackSchema.find({ user: current.id }).select("packId").lean(),
     ]);
+    const packs = packsRaw as unknown as PackRecord[];
+    const installed = installedRaw as unknown as { packId: { toString(): string } }[];
     const installedIds = new Set(installed.map((row) => String(row.packId)));
     return NextResponse.json(packs.map((pack) => serializePack(pack, installedIds)));
   } catch (error) {
@@ -116,7 +118,7 @@ export async function POST(req: Request) {
       throw error;
     }
     await UserStickerPackSchema.create({ user: current.id, packId: pack._id });
-    const populated = await StickerPackSchema.findById(pack._id).populate("stickers").lean();
+    const populated = await StickerPackSchema.findById(pack._id).populate("stickers").lean() as unknown as PackRecord | null;
     return NextResponse.json(serializePack(populated, new Set([String(pack._id)])), { status: 201 });
   } catch (error) {
     console.error("stickers/packs POST:", error);
