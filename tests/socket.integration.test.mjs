@@ -603,6 +603,77 @@ test("multi-select server actions cannot cross rooms", async () => {
   }
 });
 
+test("message search jump loads an older target with room authorization", async () => {
+  const room = await RoomSchema.create({
+    name: "Message Search Jump",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+    const messages = await MessageSchema.create([
+      { sender: user._id, message: "before target", roomID: room._id, seen: [], hideFor: [] },
+      { sender: otherUser._id, message: "search target message", roomID: room._id, seen: [], hideFor: [] },
+      { sender: user._id, message: "after target", roomID: room._id, seen: [], hideFor: [] },
+    ]);
+
+    const result = await new Promise((resolve) => {
+      socket.emit(
+        "loadMessageAround",
+        { roomID: room._id.toString(), messageID: messages[1]._id.toString(), limit: 10 },
+        resolve,
+      );
+    });
+
+    assert.equal(result.success, true);
+    assert.ok(result.messages.some((message) => message._id.toString() === messages[1]._id.toString()));
+    assert.ok(result.messages.some((message) => message._id.toString() === messages[0]._id.toString()));
+    assert.ok(result.messages.some((message) => message._id.toString() === messages[2]._id.toString()));
+
+    const outsider = createClient("http://127.0.0.1:3101", {
+      auth: {
+        token: jwt.sign(
+          { sub: thirdUser._id.toString(), sv: 0, scope: "socket" },
+          process.env.secretKey,
+          { expiresIn: "5m" },
+        ),
+      },
+      transports: ["websocket"],
+    });
+    try {
+      await waitFor(outsider, "connect");
+      const forbidden = await new Promise((resolve) => {
+        outsider.emit(
+          "loadMessageAround",
+          { roomID: room._id.toString(), messageID: messages[1]._id.toString(), limit: 10 },
+          resolve,
+        );
+      });
+      assert.equal(forbidden.success, false);
+      assert.equal(forbidden.error, "Forbidden");
+    } finally {
+      outsider.disconnect();
+    }
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
 test("message search uses the dedicated text index and respects room visibility filters", async () => {
   const indexes = MessageSchema.schema.indexes();
   assert.ok(indexes.some(([fields]) => fields.message === "text"));
