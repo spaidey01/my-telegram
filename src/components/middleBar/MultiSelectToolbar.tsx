@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MdContentCopy, MdDeleteOutline, MdDone, MdForward, MdPushPin, MdOutlinePushPin, MdSelectAll } from "react-icons/md";
+import { MdContentCopy, MdDeleteOutline, MdForward, MdPushPin, MdOutlinePushPin, MdSelectAll } from "react-icons/md";
 import { IoClose } from "react-icons/io5";
 import useGlobalStore from "@/stores/globalStore";
 import useSockets from "@/stores/useSockets";
@@ -35,16 +35,16 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
 
   const currentRoom = rooms.find((room) => room._id === roomID);
   const targetRooms = rooms.filter((room) => room._id !== roomID);
-  const allVisibleSelected = selectedMessages.length === selectedMessageIds.length;
+  const selectableMessages = messages.filter((message) => !message.hideFor.includes(myID));
 
   const toggleAll = () => {
-    if (selectedMessages.length === messages.length) {
+    if (selectedMessages.length === selectableMessages.length) {
       selectAllMessages(roomID, []);
       return;
     }
     selectAllMessages(
       roomID,
-      messages.filter((message) => !message.hideFor.includes(myID)).map((message) => message._id),
+      selectableMessages.map((message) => message._id),
     );
   };
 
@@ -112,7 +112,7 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
       <button type="button" title="انتخاب همه" onClick={toggleAll} className="p-2 hover:bg-white/10 rounded-full">
         <MdSelectAll className="size-6" />
       </button>
-      <button type="button" title="Copy" onClick={copySelected} disabled={!allVisibleSelected} className="p-2 hover:bg-white/10 rounded-full disabled:opacity-40">
+      <button type="button" title="Copy" onClick={copySelected} className="p-2 hover:bg-white/10 rounded-full disabled:opacity-40">
         <MdContentCopy className="size-5" />
       </button>
       <button type="button" title="Forward" onClick={forwardSelected} disabled={!targetRoomID} className="p-2 hover:bg-white/10 rounded-full disabled:opacity-40">
