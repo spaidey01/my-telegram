@@ -72,6 +72,7 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
   const selectedRoom = useGlobalStore((state) => state.selectedRoom);
   const [isInViewport, setIsInViewport] = useState<boolean>(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
   useOnScreen(messageRef, setIsInViewport);
 
   //Calculate whether the message is the last message from the current sender.
@@ -159,7 +160,7 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
         }`}
       >
         {selectionMode && (
-          <button type="button" aria-label={isSelected ? "لغو انتخاب پیام" : "انتخاب پیام"} onClick={() => toggleMessageSelection(roomID, _id)} className={`absolute z-20 top-1 ${isFromMe ? "left-1" : "right-1"} size-6 rounded-full border-2 border-white/70 flex items-center justify-center ${isSelected ? "bg-lightBlue" : "bg-black/30"}`}>
+          <button type="button" aria-label={isSelected ? "لغو انتخاب پیام" : "انتخاب پیام"} onClick={(e) => { e.stopPropagation(); toggleMessageSelection(roomID, _id); }} className={`absolute z-20 top-1 ${isFromMe ? "left-1" : "right-1"} size-6 rounded-full border-2 border-white/70 flex items-center justify-center ${isSelected ? "bg-lightBlue" : "bg-black/30"}`}>
             {isSelected ? "✓" : ""}
           </button>
         )}
@@ -198,7 +199,7 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
           id="messageBox"
           onClick={updateModalMsgData}
           onContextMenu={(e) => { e.preventDefault(); enterMessageSelection(roomID, _id); }}
-          onTouchStart={() => { longPressTimer.current = setTimeout(() => enterMessageSelection(roomID, _id), 450); }}
+          onTouchStart={() => { longPressTriggered.current = false; longPressTimer.current = setTimeout(() => { longPressTriggered.current = true; enterMessageSelection(roomID, _id); }, 450); }}
           onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
           onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
           className={`relative grid break-all w-fit max-w-[80%] min-w-32 xl:max-w-[60%] py-0 rounded-t-xl transition-all duration-200
