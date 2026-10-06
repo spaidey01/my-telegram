@@ -22,7 +22,7 @@ import useConnection from "@/hook/useConnection";
 import Message from "@/models/message";
 import NotificationPermission from "@/utils/NotificationPermission";
 import CallHistory from "./CallHistory";
-import { FiPhoneCall } from "react-icons/fi";
+import { FiPhoneCall, FiBell } from "react-icons/fi";
 
 const CreateRoomBtn = lazy(() => import("@/components/leftBar/CreateRoomBtn"));
 const LeftBarMenu = lazy(() => import("@/components/leftBar/menu/LeftBarMenu"));
@@ -35,6 +35,7 @@ const LeftBar = () => {
   const [isLeftBarMenuOpen, setIsLeftBarMenuOpen] = useState(false);
   const [showCallHistory, setShowCallHistory] = useState(false);
   const [leftBarActiveRoute, setLeftBarActiveRoute] = useState("/");
+  const [showThreadEvents, setShowThreadEvents] = useState(false);
   const ringAudioRef = useRef<HTMLAudioElement>(null);
 
   const userId = useUserStore((state) => state._id);
@@ -49,6 +50,7 @@ const LeftBar = () => {
     isRoomDetailsShown,
     createRoomType,
     showCreateRoomBtn,
+    threadEvents,
   } = useGlobalStore((state) => state);
   const interactUser = useRef(false);
 
@@ -136,6 +138,15 @@ const LeftBar = () => {
     });
   }, [userRooms, filterBy]);
 
+  const handleThreadEventClick = useCallback((event: { room: string; message?: string }) => {
+    const room = userRooms.find((item) => item._id === event.room);
+    if (!room) return;
+    setter({ selectedRoom: room, rightBarRoute: "/" });
+    roomsSocket?.emit("joining", room._id);
+    if (event.message) useGlobalStore.getState().setPendingMessageJump(event.message);
+    setShowThreadEvents(false);
+  }, [roomsSocket, setter, userRooms]);
+
   const handleOpenLeftBarMenu = useCallback(() => {
     setIsLeftBarMenuOpen(true);
   }, []);
@@ -175,6 +186,20 @@ const LeftBar = () => {
         )}
         {isPageLoaded && showCreateRoomBtn && <CreateRoomBtn />}
         {isSearchOpen && <SearchPage closeSearch={handleCloseSearch} />}
+        {showThreadEvents && (
+          <div className="absolute top-16 right-2 z-50 w-[min(22rem,calc(100vw-1rem))] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-900/95 shadow-2xl backdrop-blur p-2">
+            <div className="flex items-center justify-between px-2 py-2 border-b border-white/10">
+              <span className="font-vazirBold text-white">اعلان‌ها</span>
+              <button type="button" onClick={() => setShowThreadEvents(false)} className="text-white/50 hover:text-white">×</button>
+            </div>
+            {threadEvents.length ? threadEvents.map((event) => (
+              <button key={event._id} type="button" onClick={() => handleThreadEventClick(event)} className="w-full text-right rounded-xl px-3 py-3 hover:bg-white/10 border-b border-white/5 last:border-0">
+                <div className="text-sm text-white">{event.type === "mention" ? "در یک پیام منشن شدید" : event.type === "reaction" ? `واکنش ${event.data?.emoji || ""} به پیام شما` : "اعلان جدید"}</div>
+                <div className="text-[11px] text-white/40 mt-1">{new Date(event.createdAt).toLocaleString("fa-IR")}</div>
+              </button>
+            )) : <div className="p-5 text-center text-sm text-white/50">اعلانی ندارید</div>}
+          </div>
+        )}
 
         {showCallHistory && <CallHistory onClose={() => setShowCallHistory(false)} />}
         {leftBarActiveRoute !== "/settings" && (
@@ -199,6 +224,10 @@ const LeftBar = () => {
                 </div>
                 <div className="flex items-center gap-3">
                   <FiPhoneCall size={20} onClick={() => setShowCallHistory(true)} className="cursor-pointer text-white/90 mt-3" title="Call history" />
+                  <button type="button" onClick={() => setShowThreadEvents((value) => !value)} className="relative mt-3 p-0.5 text-white/90" title="Mentions and reactions">
+                    <FiBell size={20} />
+                    {threadEvents.length > 0 && <span className="absolute -right-1 -top-2 min-w-4 h-4 px-1 rounded-full bg-lightBlue text-black text-[9px] font-bold flex items-center justify-center">{threadEvents.length > 99 ? "99+" : threadEvents.length}</span>}
+                  </button>
                   <BiSearch size={22} onClick={handleOpenSearch} className="cursor-pointer text-white/90 mt-3" />
                 </div>
               </div>
