@@ -501,6 +501,9 @@ test("privacy permissions enforce everyone, contacts and nobody for every field"
 
   try {
     await Promise.all([waitFor(observer, "connect"), waitFor(target, "connect")]);
+    const targetJoin = waitFor(target, "joining");
+    target.emit("joining", room._id.toString());
+    await targetJoin;
 
     await UserSchema.updateOne(
       { _id: otherUser._id },
