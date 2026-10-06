@@ -115,12 +115,17 @@ export default function CallOverlay(){
      if(peer.connectionState!=="connected")return;
      try{
        const stats=await peer.getStats();
-       let loss=0,jitter=0,rtt=0;
+       let lost=0,received=0,jitter=0,rtt=0;
        stats.forEach(report=>{
-         if(report.type==="candidate-pair"&&report.state==="succeeded")rtt=Number(report.currentRoundTripTime||0);
-         if(report.type==="inbound-rtp"&&(report.kind==="audio"||report.mediaType==="audio")){loss+=Number(report.packetsLost||0);jitter=Math.max(jitter,Number(report.jitter||0));}
+         if(report.type==="candidate-pair"&&report.state==="succeeded")rtt=Math.max(rtt,Number(report.currentRoundTripTime||0));
+         if(report.type==="inbound-rtp"&&(report.kind==="audio"||report.kind==="video"||report.mediaType==="audio"||report.mediaType==="video")){lost+=Number(report.packetsLost||0);received+=Number(report.packetsReceived||0);jitter=Math.max(jitter,Number(report.jitter||0));}
        });
-       const score=loss>20||rtt>.35||jitter>.06?"poor":loss>5||rtt>.18||jitter>.03?"good":"excellent";
+       const prev=qualityPrevious.current;
+       const intervalLost=prev?Math.max(0,lost-prev.lost):0;
+       const intervalReceived=prev?Math.max(0,received-prev.received):received;
+       const lossRate=intervalLost+intervalReceived>0?intervalLost/(intervalLost+intervalReceived):0;
+       qualityPrevious.current={lost,received,at:Date.now()};
+       const score=lossRate>.08||rtt>.35||jitter>.06?"poor":lossRate>.03||rtt>.18||jitter>.03?"good":"excellent";
        setQuality(score);
      }catch{}
    },3000);
