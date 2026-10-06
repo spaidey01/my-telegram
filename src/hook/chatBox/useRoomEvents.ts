@@ -96,12 +96,36 @@ const useRoomEvents = ({
       }));
     };
 
+    const handleRoomRead = ({
+      roomID,
+      unreadCount,
+    }: {
+      roomID: string;
+      unreadCount: number;
+    }) => {
+      userDataUpdater((prev) => ({
+        rooms: prev.rooms.map((room) =>
+          room._id === roomID ? { ...room, notSeenCount: unreadCount } : room
+        ),
+      }));
+
+      if (selectedRoom?._id === roomID) {
+        setter((prev) => ({
+          selectedRoom: prev.selectedRoom
+            ? { ...prev.selectedRoom, notSeenCount: unreadCount }
+            : null,
+        }));
+      }
+    };
+
     rooms?.on("joinRoom", handleJoinRoom);
     rooms?.on("listenToVoice", handleListenToVoice);
+    rooms?.on("roomRead", handleRoomRead);
 
     return () => {
       rooms?.off("joinRoom", handleJoinRoom);
       rooms?.off("listenToVoice", handleListenToVoice);
+      rooms?.off("roomRead", handleRoomRead);
     };
   }, [rooms, selectedRoom, setter, myID, userDataUpdater, userRooms]);
 };
