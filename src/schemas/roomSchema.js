@@ -35,6 +35,7 @@ const schema = new Schema(
     mutedUsers: [{ type: Schema.ObjectId, ref: "User" }],
     allowedReactions: { type: [String], default: [] },
     inviteToken: { type: String, default: null, unique: true, sparse: true },
+    channelRoles: { type: Map, of: { type: String, enum: ["owner", "admin", "editor", "moderator"] }, default: {} },
   },
   { timestamps: true }
 );

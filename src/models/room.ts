@@ -26,5 +26,6 @@ export default interface Room {
   mutedUsers?: string[];
   allowedReactions?: string[];
   inviteToken?: string | null;
+  channelRoles?: Record<string, "owner" | "admin" | "editor" | "moderator">;
   updatedAt: string;
 }
