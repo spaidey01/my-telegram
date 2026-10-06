@@ -19,8 +19,8 @@ export const POST = async (req: Request) => {
       return Response.json({ message: "Invalid session" }, { status: 401 });
     }
 
-    const session = await SessionSchema.findOne({ _id: verifiedToken.sid, user: verifiedToken.sub, revokedAt: null }).lean();
-    const userData = session ? await UserSchema.findOne({ _id: verifiedToken.sub, sessionVersion: verifiedToken.sv }).select("-password").lean() : null;
+    const session = await SessionSchema.findOne({ _id: verifiedToken.sid, user: verifiedToken.sub, revokedAt: null }).lean().then((value)=>value);
+    const userData = session ? await UserSchema.findOne({ _id: verifiedToken.sub, sessionVersion: verifiedToken.sv }).select("-password").lean().then((value)=>value) : null;
     if (session) await SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
 
     if (!userData) {
