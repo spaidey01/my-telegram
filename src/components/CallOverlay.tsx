@@ -177,6 +177,8 @@ export default function CallOverlay(){
   const incoming=(d:CallInfo&{from:{name?:string;avatar?:string}})=>{const next={...d,name:d.from?.name||"کاربر",avatar:d.from?.avatar,isCaller:false};rtcConfigRef.current=null;setCall(next);persistCall(next);setState("incoming");setError("");};
   const accepted=async({callId}:{callId:string})=>{
     if(!call||call.callId!==callId)return;
+    if(timer.current)clearTimeout(timer.current);
+    timer.current=null;
     try{
       const stream=localRef.current||await getMedia(call.type);const p=pc.current||await makePeer(call);
       stream.getTracks().forEach(t=>{if(!p.getSenders().some(s=>s.track===t))p.addTrack(t,stream);});
