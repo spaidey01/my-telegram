@@ -88,7 +88,6 @@ const ChatPage = () => {
     return { avatar: "", name: "", _id: "", lastName: "" };
   }, [myID, participants, selectedRoom, type]);
 
-  useEffect(() => {\n    if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();\n  }, [selectionRoomID, selectedRoom?._id, clearMessageSelection]);\n\n  // Calculate the replay message based on replayData (which is the message ID)
   const replayDataMsg = useMemo(() => {
     return messages?.find((msg) => msg._id === replayData);
   }, [messages, replayData]);
