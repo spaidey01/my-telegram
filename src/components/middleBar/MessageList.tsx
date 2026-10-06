@@ -27,7 +27,12 @@ const MessageList = ({
   setReplayData,
   pinMessage,
 }: MessageListProps) => {
-  const firstUnreadId = messages?.find(\n    (msg) =>\n      msg.sender?._id !== myID &&\n      !msg.seen?.includes(myID) &&\n      !msg.hideFor?.includes(myID),\n  )?._id;
+  const firstUnreadId = messages?.find(
+    (msg) =>
+      msg.sender?._id !== myID &&
+      !msg.seen?.includes(myID) &&
+      !msg.hideFor?.includes(myID),
+  )?._id;
 
   const messageContent = useMemo(() => {
     const dates: MsgDate[] = [];
