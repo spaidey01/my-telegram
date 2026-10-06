@@ -212,6 +212,7 @@ io.on("connection", (socket) => {
   const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean();
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
   await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
+  io.emit("userPresence", { userID, status: "online", lastSeenAt: null });
 
   const broadcastOnlineUsers = () => {
     const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
