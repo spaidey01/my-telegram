@@ -271,7 +271,17 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
                 </p>
               </div>
             )}
-            {msgData.stickerData?.emoji && <div className="text-6xl leading-none py-2 text-center">{msgData.stickerData.emoji}</div>}
+            {msgData.stickerData && (
+  <div className="flex flex-col items-center py-2 min-w-20" onClick={(event) => event.stopPropagation()}>
+    <img
+      src={msgData.stickerData.file}
+      alt={msgData.stickerData.emoji}
+      className="size-28 object-contain"
+      loading="lazy"
+    />
+    <span className="text-xs text-white/40">{msgData.stickerData.emoji}</span>
+  </div>
+)}
             {msgData.attachmentData && <div className="w-full mt-2" onClick={(e)=>e.stopPropagation()}>
               {msgData.attachmentData.mimeType.startsWith("image/") ? <a href={msgData.attachmentData.src} target="_blank" rel="noreferrer"><img src={msgData.attachmentData.src} alt={msgData.attachmentData.name} className="max-h-80 max-w-full rounded-xl object-contain"/></a>
               : msgData.attachmentData.mimeType.startsWith("video/") ? <video controls preload="metadata" src={msgData.attachmentData.src} className="max-h-80 max-w-full rounded-xl"/>
