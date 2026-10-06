@@ -172,7 +172,7 @@ export default function CallOverlay(){
       const stream=localRef.current||await getMedia(call.type);const p=pc.current||await makePeer(call);
       stream.getTracks().forEach(t=>{if(!p.getSenders().some(s=>s.track===t))p.addTrack(t,stream);});
       const offer=await p.createOffer();await p.setLocalDescription(offer);socket.emit("call:offer",{callId,description:p.localDescription});
-      setState("connecting");beginDuration();
+      setState("connecting");
     }catch(e){setError(e instanceof Error&&e.message==="PERMISSION_DENIED"?"دسترسی میکروفون یا دوربین داده نشد.":"شروع تماس ناموفق بود.");setState("failed");}
   };
   const rejected=({callId,reason}:{callId:string;reason?:string})=>{if(call?.callId===callId){setError(reason==="permission"?"طرف مقابل به میکروفون یا دوربین دسترسی نداد.":"تماس رد شد.");cleanup(false);}};
