@@ -206,8 +206,8 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
         <div
           id="messageBox"
           onClick={updateModalMsgData}
-          onContextMenu={(e) => { e.preventDefault(); enterMessageSelection(roomID, _id); }}
-          onTouchStart={() => { longPressTriggered.current = false; longPressTimer.current = setTimeout(() => { longPressTriggered.current = true; enterMessageSelection(roomID, _id); }, 450); }}
+          onContextMenu={(e) => { e.preventDefault(); selectionMode ? toggleMessageSelection(roomID, _id) : enterMessageSelection(roomID, _id); }}
+          onTouchStart={() => { longPressTriggered.current = false; longPressTimer.current = setTimeout(() => { longPressTriggered.current = true; selectionMode ? toggleMessageSelection(roomID, _id) : enterMessageSelection(roomID, _id); }, 450); }}
           onTouchEnd={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
           onTouchMove={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
           className={`relative grid break-all w-fit max-w-[80%] min-w-32 xl:max-w-[60%] py-0 rounded-t-xl transition-all duration-200
