@@ -90,6 +90,7 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
           }
         : null,
     }));
+    clearMessageSelection();
 
     roomsSocket.emit(
       "messages:delete",
@@ -109,6 +110,7 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
               }
             : null,
         }));
+        selectAllMessages(roomID, deletedIDs);
         window.alert(result?.error || "حذف پیام‌ها انجام نشد");
       },
     );
