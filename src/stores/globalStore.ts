@@ -2,6 +2,7 @@ import Room from "@/models/room";
 import User from "@/models/user";
 import { Socket } from "socket.io-client";
 import { create } from "zustand";
+import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection } from "@/utils/messageSelection";
 
 export interface MessageSelectionState {
   selectedMessageIds: string[];
@@ -42,11 +43,7 @@ interface Updater {
   pruneMessageSelection: (roomID: string, messageIDs: string[]) => void;
 }
 
-const emptySelection: MessageSelectionState = {
-  selectedMessageIds: [],
-  selectionRoomID: null,
-  selectionMode: false,
-};
+const emptySelection = EMPTY_MESSAGE_SELECTION;
 
 const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
   selectedRoom: null,
@@ -71,39 +68,15 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
   setter: set,
 
   enterMessageSelection(roomID, messageID) {
-    set({
-      selectedMessageIds: [messageID],
-      selectionRoomID: roomID,
-      selectionMode: true,
-    });
+    set(enterMessageSelection(roomID, messageID));
   },
 
   toggleMessageSelection(roomID, messageID) {
-    set((state) => {
-      if (state.selectionRoomID && state.selectionRoomID !== roomID) return state;
-
-      const selected = state.selectedMessageIds.includes(messageID)
-        ? state.selectedMessageIds.filter((id) => id !== messageID)
-        : [...state.selectedMessageIds, messageID];
-
-      if (!selected.length) return emptySelection;
-
-      return {
-        selectedMessageIds: selected,
-        selectionRoomID: roomID,
-        selectionMode: true,
-      };
-    });
+    set((state) => toggleMessageSelection(state, roomID, messageID));
   },
 
   selectAllMessages(roomID, messageIDs) {
-    const uniqueIDs = [...new Set(messageIDs.filter(Boolean))];
-    if (!uniqueIDs.length) return set(emptySelection);
-    set({
-      selectedMessageIds: uniqueIDs,
-      selectionRoomID: roomID,
-      selectionMode: true,
-    });
+    set(selectAllMessages(roomID, messageIDs));
   },
 
   clearMessageSelection() {
@@ -111,14 +84,9 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
   },
 
   pruneMessageSelection(roomID, messageIDs) {
-    set((state) => {
-      if (state.selectionRoomID !== roomID) return state;
-      const valid = new Set(messageIDs);
-      const selected = state.selectedMessageIds.filter((id) => valid.has(id));
-      if (!selected.length) return emptySelection;
-      return { selectedMessageIds: selected, selectionMode: true };
-    });
+    set((state) => pruneMessageSelection(state, roomID, messageIDs));
   },
+
 }));
 
 export default useGlobalStore;
