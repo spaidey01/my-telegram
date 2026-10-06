@@ -9,7 +9,7 @@ import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 
 process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
-process.env.secretKey ||= "integration-test-secret";
+process.env.secretKey ||= "integration-test-secret-012345678901234567890123";
 process.env.SOCKET_PORT ||= "3101";
 process.env.CLIENT_ORIGIN ||= "http://localhost:3000";
 process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
