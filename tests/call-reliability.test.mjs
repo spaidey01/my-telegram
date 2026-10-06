@@ -34,5 +34,10 @@ test("call reliability server keeps a reconnect grace window",()=>{
     "retryCount: 0",
     "restart = false",
     "if (restart && !isCaller) return;",
+    "CALL_REDIS_SET",
+    "getActiveCall",
+    "setActiveCall",
+    "io.in(c.callerSocketId).fetchSockets()",
+    "io.to(targetSocketId).emit",
   ]) assert.ok(server.includes(token),`missing server recovery primitive: ${token}`);
 });
