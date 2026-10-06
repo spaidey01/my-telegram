@@ -18,14 +18,32 @@ const auth = async () => {
   return user ? { id: String(user._id) } : null;
 };
 
-const serializePack = (pack: any, installedIds: Set<string>) => ({
+interface StickerRecord {
+  _id: mongoose.Types.ObjectId;
+  packId: mongoose.Types.ObjectId;
+  file: string;
+  mimeType: string;
+  emoji: string;
+  sortOrder: number;
+}
+
+interface PackRecord {
+  _id: mongoose.Types.ObjectId;
+  name: string;
+  title: string;
+  thumbnail?: string;
+  owner: mongoose.Types.ObjectId;
+  stickers?: StickerRecord[];
+}
+
+const serializePack = (pack: PackRecord, installedIds: Set<string>) => ({
   _id: String(pack._id),
   name: pack.name,
   title: pack.title,
   thumbnail: pack.thumbnail || "",
   owner: String(pack.owner),
   installed: installedIds.has(String(pack._id)),
-  stickers: (pack.stickers || []).filter(Boolean).map((sticker: any) => ({
+  stickers: (pack.stickers || []).map((sticker) => ({
     _id: String(sticker._id),
     packId: String(sticker.packId),
     file: sticker.file,
