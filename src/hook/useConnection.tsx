@@ -316,6 +316,11 @@ const useConnection = ({
               ? { ...participant, ...updatedUser }
               : participant
           ),
+          messages: (room.messages || []).map((message) =>
+            typeof message.sender === "object" && message.sender._id === updatedUser._id
+              ? { ...message, sender: { ...message.sender, ...updatedUser } }
+              : message
+          ),
           lastMsgData: room.lastMsgData
             ? {
                 ...room.lastMsgData,
@@ -330,81 +335,35 @@ const useConnection = ({
       );
 
       setter((prev) => ({
-        ...prev,
-        selectedRoom:
-          prev.selectedRoom
-            ? {
-                ...prev.selectedRoom,
-                participants: prev.selectedRoom.participants.map((participant) =>
-                  typeof participant === "object" && participant._id === updatedUser._id
-                    ? { ...participant, ...updatedUser }
-                    : participant
-                ),
-                messages: prev.selectedRoom.messages.map((message) =>
-                  typeof message.sender === "object" && message.sender._id === updatedUser._id
-                    ? { ...message, sender: { ...message.sender, ...updatedUser } }
-                    : message
-                ),
-              }
-            : prev.selectedRoom,
-      }));
-    });
-
-
-
-    socket.on("profileUpdated", (updatedUser: Partial<User> & { _id: string }) => {
-      userDataUpdater((prev) => ({ ...prev, ...updatedUser }));
-      setRooms((prevRooms) =>
-        prevRooms.map((room) => {
-          if (room.type !== "private") return room;
-          return {
-            ...room,
-            participants: room.participants.map((participant) =>
-              typeof participant === "string"
-                ? participant
-                : participant._id === updatedUser._id
+        selectedRoom: prev.selectedRoom
+          ? {
+              ...prev.selectedRoom,
+              participants: prev.selectedRoom.participants.map((participant) =>
+                typeof participant === "object" && participant._id === updatedUser._id
                   ? { ...participant, ...updatedUser }
                   : participant
-            ),
-            messages: (room.messages || []).map((message) =>
-              message.sender?._id === updatedUser._id
-                ? { ...message, sender: { ...message.sender, ...updatedUser } }
-                : message
-            ),
-            lastMsgData:
-              room.lastMsgData?.sender?._id === updatedUser._id
-                ? { ...room.lastMsgData, sender: { ...room.lastMsgData.sender, ...updatedUser } }
-                : room.lastMsgData,
-          };
-        })
-      );
-      setter((prev) => {
-        if (!prev.selectedRoom) return prev;
-        return {
-          selectedRoom: {
-            ...prev.selectedRoom,
-            participants: prev.selectedRoom.participants.map((participant) =>
-              typeof participant === "string"
-                ? participant
-                : participant._id === updatedUser._id
-                  ? { ...participant, ...updatedUser }
-                  : participant
-            ),
-            messages: prev.selectedRoom.messages.map((message) =>
-              message.sender?._id === updatedUser._id
-                ? { ...message, sender: { ...message.sender, ...updatedUser } }
-                : message
-            ),
-            lastMsgData:
-              prev.selectedRoom.lastMsgData?.sender?._id === updatedUser._id
+              ),
+              messages: prev.selectedRoom.messages.map((message) =>
+                typeof message.sender === "object" && message.sender._id === updatedUser._id
+                  ? { ...message, sender: { ...message.sender, ...updatedUser } }
+                  : message
+              ),
+              lastMsgData: prev.selectedRoom.lastMsgData
                 ? {
                     ...prev.selectedRoom.lastMsgData,
-                    sender: { ...prev.selectedRoom.lastMsgData.sender, ...updatedUser },
+                    sender:
+                      typeof prev.selectedRoom.lastMsgData.sender === "object" &&
+                      prev.selectedRoom.lastMsgData.sender._id === updatedUser._id
+                        ? {
+                            ...prev.selectedRoom.lastMsgData.sender,
+                            ...updatedUser,
+                          }
+                        : prev.selectedRoom.lastMsgData.sender,
                   }
                 : prev.selectedRoom.lastMsgData,
-          },
-        };
-      });
+            }
+          : prev.selectedRoom,
+      }));
     });
 
     socket.on("updateLastMsgPos", (updatedData) => {
