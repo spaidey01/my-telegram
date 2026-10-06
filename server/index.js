@@ -266,8 +266,8 @@ const hasGroupPermission = (room, userID, key) => {
   return room.groupPermissions?.[key] !== false;
 };
 const channelCanPost = (room, userID) => room?.type !== "channel" || isAdmin(room, userID);
-const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\\s)@([a-zA-Z0-9_]{3,20})\\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase())];
-const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\\s)#[\\p{L}\\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase())];
+const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\\s)@([a-zA-Z0-9_]{3,20})\\b/g)||[]).map(v=>v.trim().slice(1) .toLowerCase()))];
+const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\\s)#[\\p{L}\\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1) .toLowerCase()))];
 const recordCallHistory = async (call, status, endedAt = new Date()) => {
   if (!call?.callId) return;
   await CallSchema.updateOne(
