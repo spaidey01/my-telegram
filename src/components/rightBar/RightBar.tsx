@@ -9,6 +9,7 @@ import Loading from "../modules/ui/Loading";
 import Room from "@/models/room";
 import AddMembers from "./AddMembers";
 import AddSubscribers from "./AddSubscribers";
+import PrivacySettings from "./PrivacySettings";
 const RoomDetails = lazy(() => import("@/components/rightBar/RoomDetails"));
 
 const RightBar = () => {
@@ -52,6 +53,8 @@ const RightBar = () => {
             myData={myData}
           />
         );
+      case "/privacy":
+        return <PrivacySettings />;
       case "/add-members":
       case "/add-channel-members":
         return (
@@ -126,6 +129,8 @@ const RightBar = () => {
 
     const getHeaderTitle = () => {
       switch (rightBarRoute) {
+        case "/privacy":
+          return "Privacy";
         case "/add-members":
           return "Add members";
         case "/add-subscribers":
