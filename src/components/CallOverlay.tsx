@@ -100,6 +100,8 @@ export default function CallOverlay(){
    retrying.current=true;restartCount.current+=1;setState("reconnecting");setError(reason);
    if(!call.isCaller){socket?.emit("call:retry",{callId:call.callId});setTimeout(()=>{retrying.current=false;},ICE_RESTART_DELAY_MS);return true;}
    try{
+     if(peer.signalingState==="have-local-offer") await peer.setLocalDescription({type:"rollback"});
+     if(peer.signalingState!=="stable") { retrying.current=false; return false; }
      const offer=await peer.createOffer({iceRestart:true});
      await peer.setLocalDescription(offer);
      socket?.emit("call:offer",{callId:call.callId,description:peer.localDescription,restart:true});
