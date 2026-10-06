@@ -100,9 +100,11 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const key = typeof body?.key === "string" ? body.key : "";
+    const purpose = body?.purpose === "sticker" ? "sticker" : "file";
     const contentType = typeof body?.contentType === "string" ? body.contentType.toLowerCase() : "";
     const ownerPrefix = key.split("/")[1];
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
+    if (purpose === "sticker" && !new Set(["image/png", "image/webp", "image/gif"]).has(contentType)) return NextResponse.json({ message: "Sticker type not allowed" }, { status: 415 });
     if (!/^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key) || ownerPrefix !== userId) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
