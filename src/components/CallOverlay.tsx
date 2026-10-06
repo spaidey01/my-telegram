@@ -12,7 +12,6 @@ type TurnConfigResponse={iceServers:RTCIceServer[];ttl:number|null;expiresAt:num
 const STUN_FALLBACK:RTCIceServer={urls:"stun:stun.l.google.com:19302"};
 const CALL_STORAGE_KEY="stargram:active-call";
 const RING_TIMEOUT_MS=30_000;
-const RECONNECT_GRACE_MS=20_000;
 const ICE_RESTART_DELAY_MS=1_500;
 const MAX_ICE_RESTARTS=2;
 
