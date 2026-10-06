@@ -26,6 +26,7 @@ const useMessages = ({
 }: useMessagesProps) => {
   useEffect(() => {
     const pruneMessageSelection = useGlobalStore.getState().pruneMessageSelection;
+    const replaceMessageSelection = useGlobalStore.getState().replaceMessageSelection;
     const handleNewMessage = (newMsg: Message) => {
       if (newMsg.roomID === roomID) {
         playRingSound();
