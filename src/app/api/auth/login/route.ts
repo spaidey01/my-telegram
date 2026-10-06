@@ -24,7 +24,7 @@ export const POST = async (req: Request) => {
     const accountLimit = await rateLimit("login:account:" + phone, 10, 60_000);
     if (!accountLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(accountLimit.retryAfter) } });
 
-    const userData = await UserSchema.findOne({ phone }).select("+password");
+    const userData = await UserSchema.findOne({ phone }).select("+password +twoFactorSecret +twoFactorBackupCodes");
     // Always run bcrypt so response time doesn't reveal whether the phone exists.
     const passwordOk = await compare(password, userData?.password ?? DUMMY_HASH);
     if (!userData || !passwordOk) {
