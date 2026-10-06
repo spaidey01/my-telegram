@@ -10,6 +10,7 @@ export const schema = new Schema(
     biography: { type: String, default: "", maxLength: 70 },
     type: { type: String, enum: ["private"], default: "private" },
     status: { type: String, enum: ["online", "offline"], default: "offline" },
+    lastSeenAt: { type: Date, default: null },
     password: { type: String, required: true, select: false },
     sessionVersion: { type: Number, default: 0, min: 0 },
     roomMessageTrack: { type: [{ roomId: String, scrollPos: Number }], default: [] },
