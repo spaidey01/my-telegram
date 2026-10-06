@@ -578,16 +578,16 @@ test("multi-select server actions cannot cross rooms", async () => {
     const reacted = await MessageSchema.findById(message._id).lean();
     assert.ok(reacted.reactions.some((reaction) => reaction.emoji === "❤️" && reaction.userIds.map(String).includes(user._id.toString())));
 
-    const forwardedExistsBefore = await MessageSchema.countDocuments({ roomID: targetRoom._id });
+    const forwardedExistsBefore = await MessageSchema.countDocuments({ roomID: otherRoom._id });
     const validForward = await new Promise((resolve) => {
       socket.emit("forwardMessage", {
         msgID: message._id.toString(),
         sourceRoomID: sourceRoom._id.toString(),
-        targetRoomID: targetRoom._id.toString(),
+        targetRoomID: otherRoom._id.toString(),
       }, resolve);
     });
     assert.equal(validForward.success, true);
-    assert.equal(await MessageSchema.countDocuments({ roomID: targetRoom._id }), forwardedExistsBefore + 1);
+    assert.equal(await MessageSchema.countDocuments({ roomID: otherRoom._id }), forwardedExistsBefore + 1);
 
     socket.emit("deleteMsg", {
       forAll: true,
@@ -600,6 +600,135 @@ test("multi-select server actions cannot cross rooms", async () => {
     socket.disconnect();
     await MessageSchema.deleteMany({ roomID: { $in: [sourceRoom._id, otherRoom._id] } });
     await RoomSchema.deleteMany({ _id: { $in: [sourceRoom._id, otherRoom._id] } });
+  }
+});
+
+test("bulk message delete removes selected messages in one operation and enforces authorization", async () => {
+  const room = await RoomSchema.create({
+    name: "Bulk Delete Integration",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const privateRoom = await RoomSchema.create({
+    name: "Bulk Delete Private",
+    type: "private",
+    creator: user._id,
+    admins: [user._id, otherUser._id],
+    participants: [user._id, otherUser._id],
+  });
+
+  const makeSocket = (uid) =>
+    createClient("http://127.0.0.1:3101", {
+      auth: {
+        token: jwt.sign(
+          { sub: uid.toString(), sv: 0, scope: "socket" },
+          process.env.secretKey,
+          { expiresIn: "5m" },
+        ),
+      },
+      transports: ["websocket"],
+    });
+
+  const socket = makeSocket(user._id);
+  const otherSocket = makeSocket(otherUser._id);
+
+  try {
+    await Promise.all([waitFor(socket, "connect"), waitFor(otherSocket, "connect")]);
+
+    const ownMessages = await MessageSchema.create([
+      {
+        sender: user._id,
+        message: "bulk one",
+        roomID: room._id,
+        seen: [],
+        hideFor: [],
+      },
+      {
+        sender: user._id,
+        message: "bulk two",
+        roomID: room._id,
+        seen: [],
+        hideFor: [],
+      },
+    ]);
+
+    const bulkEvent = waitFor(otherSocket, "messages:deleted");
+    const result = await new Promise((resolve) => {
+      socket.emit(
+        "messages:delete",
+        {
+          roomID: room._id.toString(),
+          messageIDs: ownMessages.map((message) => message._id.toString()),
+          forAll: true,
+        },
+        resolve,
+      );
+    });
+
+    assert.equal(result.success, true);
+    assert.deepEqual(
+      result.deletedIds.map(String).sort(),
+      ownMessages.map((message) => message._id.toString()).sort(),
+    );
+    const broadcast = await bulkEvent;
+    assert.deepEqual(broadcast.messageIDs.sort(), result.deletedIds.map(String).sort());
+    assert.equal(await MessageSchema.countDocuments({ _id: { $in: ownMessages.map((message) => message._id) } }), 0);
+
+    const foreignMessage = await MessageSchema.create({
+      sender: otherUser._id,
+      message: "foreign message",
+      roomID: privateRoom._id,
+      seen: [],
+      hideFor: [],
+    });
+
+    const forbidden = await new Promise((resolve) => {
+      socket.emit(
+        "messages:delete",
+        {
+          roomID: privateRoom._id.toString(),
+          messageIDs: [foreignMessage._id.toString()],
+          forAll: true,
+        },
+        resolve,
+      );
+    });
+
+    assert.equal(forbidden.success, false);
+    assert.equal(forbidden.error, "Forbidden");
+    assert.ok(await MessageSchema.exists({ _id: foreignMessage._id }));
+
+    const ownPrivate = await MessageSchema.create({
+      sender: user._id,
+      message: "own private message",
+      roomID: privateRoom._id,
+      seen: [],
+      hideFor: [],
+    });
+
+    const deleteForMe = await new Promise((resolve) => {
+      otherSocket.emit(
+        "messages:delete",
+        {
+          roomID: privateRoom._id.toString(),
+          messageIDs: [ownPrivate._id.toString()],
+          forAll: false,
+        },
+        resolve,
+      );
+    });
+
+    assert.equal(deleteForMe.success, true);
+    const hidden = await MessageSchema.findById(ownPrivate._id).lean();
+    assert.ok(hidden);
+    assert.ok(hidden.hideFor.map(String).includes(otherUser._id.toString()));
+  } finally {
+    socket.disconnect();
+    otherSocket.disconnect();
+    await MessageSchema.deleteMany({ roomID: { $in: [room._id, privateRoom._id] } });
+    await RoomSchema.deleteMany({ _id: { $in: [room._id, privateRoom._id] } });
   }
 });
 
