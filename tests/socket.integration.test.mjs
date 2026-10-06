@@ -454,3 +454,52 @@ test("room read marker rejects non-members and invalid target messages", async (
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
+
+
+test("last seen updates on connect and final disconnect", async () => {
+  const makeSocket = (uid) =>
+    createClient("http://127.0.0.1:3101", {
+      auth: {
+        token: jwt.sign(
+          { sub: uid.toString(), sv: 0, scope: "socket" },
+          process.env.secretKey,
+          { expiresIn: "5m" },
+        ),
+      },
+      transports: ["websocket"],
+    });
+
+  const observer = makeSocket(user._id);
+  const target = makeSocket(otherUser._id);
+
+  try {
+    await waitFor(observer, "connect");
+
+    const onlinePresence = waitFor(observer, "userPresence");
+    await waitFor(target, "connect");
+    const online = await onlinePresence;
+    assert.equal(online.userID, otherUser._id.toString());
+    assert.equal(online.status, "online");
+
+    const onlineUser = await UserSchema.findById(otherUser._id).lean();
+    assert.equal(onlineUser.status, "online");
+
+    const offlinePresence = waitFor(observer, "userPresence");
+    target.disconnect();
+    const offline = await offlinePresence;
+    assert.equal(offline.userID, otherUser._id.toString());
+    assert.equal(offline.status, "offline");
+    assert.ok(offline.lastSeenAt);
+
+    const offlineUser = await UserSchema.findById(otherUser._id).lean();
+    assert.equal(offlineUser.status, "offline");
+    assert.ok(offlineUser.lastSeenAt);
+  } finally {
+    observer.disconnect();
+    target.disconnect();
+    await UserSchema.updateOne(
+      { _id: otherUser._id },
+      { $set: { status: "offline" } },
+    );
+  }
+});
