@@ -1,6 +1,7 @@
 import mongoose, { Schema } from "mongoose";
 
 const schema = new Schema({
+  callId: { type: String, required: true, unique: true, index: true },
   caller: { type: Schema.ObjectId, ref: "User", required: true, index: true },
   receiver: { type: Schema.ObjectId, ref: "User", required: true, index: true },
   roomID: { type: Schema.ObjectId, ref: "Room", required: true, index: true },
