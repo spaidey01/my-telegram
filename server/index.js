@@ -245,7 +245,7 @@ io.on("connection", (socket) => {
   const presenceRoom = `presence:${userID}`;
   socket.data.userId = userID;
   socket.join(presenceRoom);
-  const publicUserPromise = UserSchema.findById(userID).select("name username _id").lean();
+  const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id").lean();
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
 
   const initializePresence = async () => {
@@ -947,7 +947,13 @@ io.on("connection", (socket) => {
     current.add(userID);
     typingByRoom.set(data.roomID, current);
     const user = await publicUserPromise;
-    io.to(data.roomID).emit("typing", { roomID: data.roomID, sender: user });
+    const typingSockets = await io.in(data.roomID).fetchSockets();
+    await Promise.all(typingSockets.map(async (viewerSocket) => {
+      viewerSocket.emit("typing", {
+        roomID: data.roomID,
+        sender: await sanitizeUserForViewer(user, viewerSocket.data.userId),
+      });
+    }));
   });
 
   on("stop-typing", async (data) => {
@@ -958,7 +964,13 @@ io.on("connection", (socket) => {
     current.delete(userID);
     if (!current.size) typingByRoom.delete(data.roomID);
     const user = await publicUserPromise;
-    io.to(data.roomID).emit("stop-typing", { roomID: data.roomID, sender: user });
+    const typingSockets = await io.in(data.roomID).fetchSockets();
+    await Promise.all(typingSockets.map(async (viewerSocket) => {
+      viewerSocket.emit("stop-typing", {
+        roomID: data.roomID,
+        sender: await sanitizeUserForViewer(user, viewerSocket.data.userId),
+      });
+    }));
   });
 
   on("updateUserData", async (updatedFields, callback = () => {}) => {
