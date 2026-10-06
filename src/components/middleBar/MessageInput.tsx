@@ -230,7 +230,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
       sender: { _id: me._id, name: me.name },
       replayData: null,
       attachmentData: null,
-      stickerData: stickerValue,
+      stickerData: { ...stickerValue, stickerId: stickerValue._id },
       tempId: uuidv4(),
     });
     setSticker(false);
