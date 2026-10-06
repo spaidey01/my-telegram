@@ -88,6 +88,10 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
     set((state) => pruneMessageSelection(state, roomID, messageIDs));
   },
 
+  replaceMessageSelection(roomID, oldMessageID, newMessageID) {
+    set((state) => replaceMessageSelection(state, roomID, oldMessageID, newMessageID));
+  },
+
 }));
 
 export default useGlobalStore;
