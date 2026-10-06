@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
+import { canViewPrivacy } from "../src/utils/privacy.js";
 
 process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
 process.env.secretKey ||= "integration-test-secret-012345678901234567890123";
@@ -471,6 +472,181 @@ test("room read marker rejects non-members and invalid target messages", async (
   }
 });
 
+
+
+test("privacy permissions enforce everyone, contacts and nobody for every field", async () => {
+  const room = await RoomSchema.create({
+    name: "Privacy Integration",
+    type: "private",
+    creator: user._id,
+    admins: [user._id, otherUser._id],
+    participants: [user._id, otherUser._id],
+  });
+
+  const keys = ["lastSeen", "profilePhoto", "phone", "calls", "messages"];
+  const makeSocket = (uid) =>
+    createClient("http://127.0.0.1:3101", {
+      auth: {
+        token: jwt.sign(
+          { sub: uid.toString(), sv: 0, scope: "socket" },
+          process.env.secretKey,
+          { expiresIn: "5m" },
+        ),
+      },
+      transports: ["websocket"],
+    });
+
+  const observer = makeSocket(user._id);
+  const target = makeSocket(otherUser._id);
+
+  try {
+    await Promise.all([waitFor(observer, "connect"), waitFor(target, "connect")]);
+
+    await UserSchema.updateOne(
+      { _id: otherUser._id },
+      {
+        $set: {
+          avatar: "/private-avatar.png",
+          phone: "privacy-phone",
+          privacySettings: {
+            lastSeen: "everyone",
+            profilePhoto: "everyone",
+            phone: "everyone",
+            calls: "everyone",
+            messages: "everyone",
+          },
+        },
+      },
+    );
+
+    for (const key of keys) {
+      await UserSchema.updateOne({ _id: otherUser._id }, { $set: { ["privacySettings." + key]: "everyone" } });
+      assert.equal(await canViewPrivacy(otherUser._id.toString(), user._id.toString(), key), true, key + ": everyone");
+      assert.equal(await canViewPrivacy(otherUser._id.toString(), thirdUser._id.toString(), key), true, key + ": everyone for non-contact");
+
+      await UserSchema.updateOne({ _id: otherUser._id }, { $set: { ["privacySettings." + key]: "contacts" } });
+      assert.equal(await canViewPrivacy(otherUser._id.toString(), user._id.toString(), key), true, key + ": contacts for contact");
+      assert.equal(await canViewPrivacy(otherUser._id.toString(), thirdUser._id.toString(), key), false, key + ": contacts for non-contact");
+
+      await UserSchema.updateOne({ _id: otherUser._id }, { $set: { ["privacySettings." + key]: "nobody" } });
+      assert.equal(await canViewPrivacy(otherUser._id.toString(), user._id.toString(), key), false, key + ": nobody");
+      assert.equal(await canViewPrivacy(otherUser._id.toString(), thirdUser._id.toString(), key), false, key + ": nobody for non-contact");
+    }
+
+    await UserSchema.updateOne(
+      { _id: otherUser._id },
+      {
+        $set: {
+          "privacySettings.lastSeen": "nobody",
+          "privacySettings.profilePhoto": "nobody",
+          "privacySettings.phone": "nobody",
+          "privacySettings.calls": "nobody",
+          "privacySettings.messages": "nobody",
+        },
+      },
+    );
+
+    const hiddenPresencePromise = waitForUserPresence(observer, otherUser._id.toString());
+    const hiddenReconnect = makeSocket(otherUser._id);
+    try {
+      await waitFor(hiddenReconnect, "connect");
+      const hiddenPresence = await hiddenPresencePromise;
+      assert.equal(hiddenPresence.status, "offline");
+      assert.equal(hiddenPresence.lastSeenAt, null);
+    } finally {
+      hiddenReconnect.disconnect();
+    }
+
+    const membersPromise = waitFor(observer, "getRoomMembers");
+    observer.emit("getRoomMembers", { roomID: room._id.toString() });
+    const hiddenMembers = await membersPromise;
+    const hiddenTarget = hiddenMembers.find((member) => member._id === otherUser._id.toString());
+    assert.equal(hiddenTarget.avatar, "");
+    assert.equal(hiddenTarget.phone, undefined);
+
+    const blockedMessage = await new Promise((resolve) => {
+      observer.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "blocked by privacy",
+        tempId: "privacy-blocked-" + Date.now(),
+      }, resolve);
+    });
+    assert.equal(blockedMessage.success, false);
+    assert.equal(blockedMessage.error, "Messages are restricted by this user");
+
+    const blockedCall = await new Promise((resolve) => {
+      observer.emit("call:invite", {
+        callId: "11111111-1111-4111-8111-111111111111",
+        roomID: room._id.toString(),
+        targetUserID: otherUser._id.toString(),
+        type: "audio",
+      }, resolve);
+    });
+    assert.equal(blockedCall.success, false);
+    assert.equal(blockedCall.error, "Calls are restricted by this user");
+
+    await UserSchema.updateOne(
+      { _id: otherUser._id },
+      {
+        $set: {
+          "privacySettings.lastSeen": "everyone",
+          "privacySettings.profilePhoto": "everyone",
+          "privacySettings.phone": "everyone",
+          "privacySettings.calls": "everyone",
+          "privacySettings.messages": "everyone",
+        },
+      },
+    );
+
+    const visibleMembersPromise = waitFor(observer, "getRoomMembers");
+    observer.emit("getRoomMembers", { roomID: room._id.toString() });
+    const visibleMembers = await visibleMembersPromise;
+    const visibleTarget = visibleMembers.find((member) => member._id === otherUser._id.toString());
+    assert.equal(visibleTarget.avatar, "/private-avatar.png");
+    assert.equal(visibleTarget.phone, "privacy-phone");
+
+    const messagePromise = waitFor(target, "newMessage");
+    const allowedMessage = await new Promise((resolve) => {
+      observer.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "allowed by privacy",
+        tempId: "privacy-allowed-" + Date.now(),
+      }, resolve);
+    });
+    assert.equal(allowedMessage.success, true);
+    await messagePromise;
+
+    const incomingCallPromise = waitFor(target, "call:incoming");
+    const allowedCall = await new Promise((resolve) => {
+      observer.emit("call:invite", {
+        callId: "22222222-2222-4222-8222-222222222222",
+        roomID: room._id.toString(),
+        targetUserID: otherUser._id.toString(),
+        type: "audio",
+      }, resolve);
+    });
+    assert.equal(allowedCall.success, true);
+    await incomingCallPromise;
+    target.emit("call:reject", { callId: "22222222-2222-4222-8222-222222222222" }, () => {});
+  } finally {
+    observer.disconnect();
+    target.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+    await UserSchema.updateOne(
+      { _id: otherUser._id },
+      {
+        $set: {
+          "privacySettings.lastSeen": "everyone",
+          "privacySettings.profilePhoto": "everyone",
+          "privacySettings.phone": "everyone",
+          "privacySettings.calls": "everyone",
+          "privacySettings.messages": "everyone",
+        },
+      },
+    );
+  }
+});
 
 test("last seen handles multi-socket presence and reconnects", async () => {
   const makeSocket = (uid) =>
