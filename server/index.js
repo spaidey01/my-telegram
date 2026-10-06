@@ -546,9 +546,9 @@ io.on("connection", (socket) => {
       .populate("sender", "name username _id")
       .lean();
 
-    io.to(targetRoomID).emit("newMessage", populated);
-    io.to(targetRoomID).emit("lastMsgUpdate", populated);
-    io.to(targetRoomID).emit("updateLastMsgData", { roomID: targetRoomID, msgData: populated });
+    await emitVisibleMessage(targetRoomID, "newMessage", populated);
+    await emitVisibleMessage(targetRoomID, "lastMsgUpdate", populated);
+    await emitVisibleMessage(targetRoomID, "updateLastMsgData", { roomID: targetRoomID, msgData: populated });
     callback({ success: true, message: populated });
   });
 
