@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+type AuthSession={_id:unknown};
 import { NextResponse } from "next/server";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { socketTokenGenerator } from "@/utils/TokenGenerator";
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
   }
 
   await connectToDB();
-  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).lean().then((value)=>value);
+  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }) .lean().then((value)=>value as unknown as AuthSession | null);
   const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean().then((value)=>value) : null;
   if (session) await SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
   if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
