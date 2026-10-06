@@ -86,7 +86,7 @@ const uploadFileOnce = async (
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1200;
 
-const uploadFileWithRetry = (file: File, onProgress?: (progress: number) => void): UploadTask => {
+const createUploadTask = (file: File, onProgress?: (progress: number) => void): UploadTask => {
   const controller = new AbortController();
   let currentXhr: XMLHttpRequest | null = null;
 
