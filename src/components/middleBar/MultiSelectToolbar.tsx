@@ -20,6 +20,7 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
     clearMessageSelection,
     selectAllMessages,
     selectedRoom,
+    setter,
   } = useGlobalStore((state) => state);
   const roomsSocket = useSockets((state) => state.rooms);
   const { _id: myID, rooms } = useUserStore((state) => state);
@@ -58,18 +59,59 @@ const MultiSelectToolbar = ({ messages, roomID }: Props) => {
   };
 
   const deleteSelected = () => {
-    for (const message of selectedMessages) {
-      const forAll =
-        currentRoom?.type === "private" ||
+    if (!roomsSocket || !currentRoom || !selectedMessages.length) return;
+
+    const canDeleteForAll = selectedMessages.every((message) => (
+      currentRoom.type !== "private" && (
         message.sender?._id === myID ||
-        currentRoom?.admins?.includes(myID);
-      roomsSocket?.emit("deleteMsg", {
-        forAll,
-        msgID: message._id,
-        roomID,
-      });
-    }
-    clearMessageSelection();
+        currentRoom.admins?.includes(myID)
+      )
+    ) || (
+      currentRoom.type === "private" &&
+      message.sender?._id === myID
+    ));
+
+    const modeLabel = canDeleteForAll ? "برای همه" : "برای من";
+    const confirmed = window.confirm(
+      `حذف ${selectedMessages.length} پیام ${modeLabel} انجام شود؟`,
+    );
+    if (!confirmed) return;
+
+    const deletedIDs = selectedMessages.map((message) => message._id);
+    const previousMessages = selectedRoom?.messages ?? [];
+    const optimisticMessages = previousMessages.filter((message) => !deletedIDs.includes(message._id));
+
+    setter((prev) => ({
+      selectedRoom: prev.selectedRoom
+        ? {
+            ...prev.selectedRoom,
+            messages: optimisticMessages,
+            lastMsgData: optimisticMessages.at(-1) ?? null,
+          }
+        : null,
+    }));
+
+    roomsSocket.emit(
+      "messages:delete",
+      { roomID, messageIDs: deletedIDs, forAll: canDeleteForAll },
+      (result: { success: boolean; error?: string }) => {
+        if (result?.success) {
+          clearMessageSelection();
+          return;
+        }
+
+        setter((prev) => ({
+          selectedRoom: prev.selectedRoom
+            ? {
+                ...prev.selectedRoom,
+                messages: previousMessages,
+                lastMsgData: previousMessages.at(-1) ?? null,
+              }
+            : null,
+        }));
+        window.alert(result?.error || "حذف پیام‌ها انجام نشد");
+      },
+    );
   };
 
   const pinSelected = () => {
