@@ -97,6 +97,7 @@ export default function CallOverlay(){
    if(!peer||!call||retrying.current)return false;
    if(restartCount.current>=MAX_ICE_RESTARTS){setState("failed");setError("اتصال پایدار نشد. دوباره تلاش کنید.");return false;}
    retrying.current=true;restartCount.current+=1;setState("reconnecting");setError(reason);
+   if(!call.isCaller){socket?.emit("call:retry",{callId:call.callId});setTimeout(()=>{retrying.current=false;},ICE_RESTART_DELAY_MS);return true;}
    try{
      const offer=await peer.createOffer({iceRestart:true});
      await peer.setLocalDescription(offer);
