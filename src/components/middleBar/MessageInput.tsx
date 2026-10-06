@@ -18,7 +18,7 @@ import { v4 as uuidv4 } from "uuid";
 import { pendingMessagesService, PendingMessage } from "@/utils/pendingMessages";
 import { isMobile } from "@/utils/isMobile";
 import AttachmentUploadQueue, { validateAttachmentFiles, QueueItem } from "./AttachmentUploadQueue";
-import { uploadFileWithRetry } from "@/utils/file/UploadFile";
+import { createUploadTask } from "@/utils/file/UploadFile";
 
 interface Props {
   replayData?: Partial<Message>;
@@ -166,7 +166,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     const next = queue.find((item) => item.status === "queued");
     if (!next || activeTask.current || !roomId) return;
 
-    const task = uploadFileWithRetry(next.file, (progress) => {
+    const task = createUploadTask(next.file, (progress: number) => {
       setQueue((prev) => prev.map((item) => item.id === next.id ? { ...item, progress, status: "uploading", task } : item));
     });
     activeTask.current = { id: next.id, cancel: task.cancel };
