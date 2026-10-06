@@ -347,9 +347,7 @@ const VoiceMessageRecorder = ({
         const startTime = Date.now();
         const minUploadTime = 2000; // Minimum 2 seconds to show progress
 
-        const uploadResult = await uploadFileWithRetry(
-          voiceFile,
-          (progress) => {
+        const uploadTask = createUploadTask(voiceFile, (progress) => {
             // Ensure progress is visible for at least 2 seconds minimum
             const elapsedTime = Date.now() - startTime;
             const adjustedProgress = Math.min(progress, 95);\n            setUploadProgress(adjustedProgress);
@@ -394,6 +392,9 @@ const VoiceMessageRecorder = ({
             }
           }
         );
+        uploadTaskRef.current = { cancel: uploadTask.cancel };
+        const uploadResult = await uploadTask.promise;
+        uploadTaskRef.current = null;
 
         // Ensure minimum upload time is respected
         const elapsedTime = Date.now() - startTime;
