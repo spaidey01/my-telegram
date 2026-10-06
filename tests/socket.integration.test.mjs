@@ -418,3 +418,39 @@ test("room read marker clears unread messages through the referenced message", a
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
+
+
+test("room read marker rejects non-members and invalid target messages", async () => {
+  const room = await RoomSchema.create({
+    name: "Read Authorization Integration",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: thirdUser._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const result = await new Promise((resolve) => {
+      socket.emit("markRoomRead", {
+        roomID: room._id.toString(),
+        messageID: new mongoose.Types.ObjectId().toString(),
+      }, resolve);
+    });
+    assert.equal(result.success, false);
+    assert.equal(result.error, "Forbidden");
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
