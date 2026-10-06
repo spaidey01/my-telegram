@@ -163,8 +163,8 @@ export default function CallOverlay(){
 
  useEffect(()=>{
   if(!socket)return;
-  const outgoing=(d:CallInfo)=>{rtcConfigRef.current=null;setCall(d);persistCall(d);setState("calling");setError("");setSeconds(0);timer.current=setTimeout(()=>cleanup(true),RING_TIMEOUT_MS);};
-  const incoming=(d:CallInfo&{from:{name?:string;avatar?:string}})=>{const next={...d,name:d.from?.name||"کاربر",avatar:d.from?.avatar};rtcConfigRef.current=null;setCall(next);persistCall(next);setState("incoming");setError("");};
+  const outgoing=(d:Omit<CallInfo,"isCaller">)=>{const next={...d,isCaller:true};rtcConfigRef.current=null;setCall(next);persistCall(next);setState("calling");setError("");setSeconds(0);timer.current=setTimeout(()=>cleanup(true),RING_TIMEOUT_MS);};
+  const incoming=(d:CallInfo&{from:{name?:string;avatar?:string}})=>{const next={...d,name:d.from?.name||"کاربر",avatar:d.from?.avatar,isCaller:false};rtcConfigRef.current=null;setCall(next);persistCall(next);setState("incoming");setError("");};
   const accepted=async({callId}:{callId:string})=>{
     if(!call||call.callId!==callId)return;
     try{
@@ -194,16 +194,16 @@ export default function CallOverlay(){
     if(!call||call.callId!==callId)return;
     if(pc.current?.remoteDescription){try{await pc.current.addIceCandidate(candidate);}catch{}}else pending.current.push(candidate);
   };
-  const reconnect=({callId}:{callId:string})=>{if(call?.callId!==callId)return;setState("reconnecting");setError("اتصال برگشت؛ در حال بازیابی تماس...");socket.emit("call:reconnect",{callId});};
-  const peerReconnecting=({callId}:{callId:string})=>{if(call?.callId===callId)setState("reconnecting");};
-  const retry=({callId}:{callId:string})=>{if(call?.callId===callId)restartIce("طرف مقابل در حال تلاش مجدد برای اتصال است.");};
+  const reconnect=({callId,ready}:{callId:string;ready?:boolean})=>{if(call?.callId!==callId)return;if(!ready){setState("reconnecting");return;}if(call.isCaller)void restartIce("اتصال برگشت؛ در حال بازسازی تماس...");else setState("reconnecting");};
+  const peerReconnecting=({callId}:{callId:string})=>{if(call?.callId===callId){setState("reconnecting");if(call.isCaller)void restartIce("طرف مقابل دوباره متصل شد؛ در حال بازسازی تماس...");}};
+  const retry=({callId}:{callId:string})=>{if(call?.callId===callId&&call.isCaller)void restartIce("طرف مقابل در حال تلاش مجدد برای اتصال است.");};
   const ended=({callId,reason}:{callId:string;reason?:string})=>{if(call?.callId===callId){setError(reason==="timeout"?"پاسخی دریافت نشد.":reason==="disconnected"?"تماس به‌دلیل قطع اتصال پایان یافت.":"تماس پایان یافت.");cleanup(false);}};
   const onConnect=()=>{const saved=readPersistedCall();if(saved&&!call){setCall(saved);setState("reconnecting");socket.emit("call:reconnect",{callId:saved.callId});}};
   socket.on("call:outgoing",outgoing);socket.on("call:incoming",incoming);socket.on("call:accepted",accepted);socket.on("call:rejected",rejected);
   socket.on("call:offer",offer);socket.on("call:answer",answer);socket.on("call:ice",ice);socket.on("call:reconnected",reconnect);
-  socket.on("call:peer-reconnecting",peerReconnecting);socket.on("call:peer-reconnected",()=>{if(call)setState("reconnecting");restartIce("طرف مقابل دوباره متصل شد.");});
+  socket.on("call:peer-reconnecting",peerReconnecting);
   socket.on("call:retry",retry);socket.on("call:ended",ended);socket.on("connect",onConnect);
-  return()=>{socket.off("call:outgoing",outgoing);socket.off("call:incoming",incoming);socket.off("call:accepted",accepted);socket.off("call:rejected",rejected);socket.off("call:offer",offer);socket.off("call:answer",answer);socket.off("call:ice",ice);socket.off("call:reconnected",reconnect);socket.off("call:peer-reconnecting",peerReconnecting);socket.off("call:peer-reconnected");socket.off("call:retry",retry);socket.off("call:ended",ended);socket.off("connect",onConnect);};
+  return()=>{socket.off("call:outgoing",outgoing);socket.off("call:incoming",incoming);socket.off("call:accepted",accepted);socket.off("call:rejected",rejected);socket.off("call:offer",offer);socket.off("call:answer",answer);socket.off("call:ice",ice);socket.off("call:reconnected",reconnect);socket.off("call:peer-reconnecting",peerReconnecting);socket.off("call:retry",retry);socket.off("call:ended",ended);socket.off("connect",onConnect);};
  },[socket,call,cleanup,getMedia,makePeer,restartIce,beginDuration]);
 
  const accept=async()=>{
