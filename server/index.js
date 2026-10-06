@@ -772,6 +772,7 @@ io.on("connection", (socket) => {
     if (!room || !msg || !canEdit || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
 
     const updated = await MessageSchema.findOneAndUpdate({ _id: msgID, roomID, sender: userID }, { message: editedMsg, isEdited: true, mentions: parseMentionsServer(editedMsg), hashtags: parseHashtagsServer(editedMsg) }, { new: true }).lean();
+    if (updated) await createThreadMentionEvents(userID, roomID, msgID, parseMentionsServer(editedMsg));
     if (!updated) return;
     io.to(roomID).emit("editMessage", { msgID, editedMsg, roomID });
     const lastMsg = await MessageSchema.findOne({ roomID }).sort({ createdAt: -1 }).lean();
