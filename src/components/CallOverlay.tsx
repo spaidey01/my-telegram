@@ -171,6 +171,12 @@ export default function CallOverlay(){
   return()=>{window.removeEventListener("online",online);window.removeEventListener("offline",offline);connection?.removeEventListener("change",onConnectionChange);};
  },[call,networkOnline,restartIce,state]);
 
+ useEffect(()=>{
+   if(!socket?.connected||call)return;
+   const saved=readPersistedCall();
+   if(saved){restoring.current=true;setCall(saved);setState("reconnecting");}
+ },[socket,call]);
+
  useEffect(()=>{if(socket&&call&&restoring.current){restoring.current=false;socket.emit("call:reconnect",{callId:call.callId});}},[socket,call?.callId]);
 
  useEffect(()=>{
