@@ -8,7 +8,6 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import {
   pendingMessagesService,
-  PendingMessage,
 } from "@/utils/pendingMessages";
 import { uploadFile as uploadFileWithRetry } from "@/utils";
 import { voiceBlobStorage } from "@/utils/voiceBlobStorage";
