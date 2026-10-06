@@ -38,12 +38,13 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
   const [error, setError] = useState("");
 
   const participants = useMemo(() => {
-    if (!selectedRoom) return [];
-    return selectedRoom.participants
+    const sourceRooms = allRooms ? rooms : (selectedRoom ? [selectedRoom] : []);
+    return sourceRooms
+      .flatMap((room) => room.participants)
       .filter((participant) => typeof participant !== "string")
       .map((participant) => participant as { _id: string; name?: string })
       .filter((participant, index, list) => list.findIndex((item) => item._id === participant._id) === index);
-  }, [selectedRoom]);
+  }, [allRooms, rooms, selectedRoom]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -88,8 +89,8 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
 
   const jumpTo = (result: SearchResult) => {
     if (result.roomID === selectedRoom?._id) {
+      setPendingMessageJump(result._id);
       onClose();
-      requestAnimationFrame(() => scrollToMessage(result._id));
       return;
     }
     const targetRoom = rooms.find((room) => room._id === result.roomID);
