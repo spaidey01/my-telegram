@@ -346,3 +346,75 @@ test("server rejects non-hex public room links", async () => {
     await RoomSchema.deleteMany({ name: roomName });
   }
 });
+
+
+test("room read marker clears unread messages through the referenced message", async () => {
+  const room = await RoomSchema.create({
+    name: "Read Integration",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+
+  const makeSocket = (uid) =>
+    createClient("http://127.0.0.1:3101", {
+      auth: {
+        token: jwt.sign(
+          { sub: uid.toString(), sv: 0, scope: "socket" },
+          process.env.secretKey,
+          { expiresIn: "5m" },
+        ),
+      },
+      transports: ["websocket"],
+    });
+
+  const socket = makeSocket(user._id);
+  const otherSocket = makeSocket(otherUser._id);
+
+  try {
+    await Promise.all([waitFor(socket, "connect"), waitFor(otherSocket, "connect")]);
+
+    const join = (s) => new Promise((resolve) => {
+      s.emit("joining", room._id.toString());
+      s.once("joining", resolve);
+    });
+    await Promise.all([join(socket), join(otherSocket)]);
+
+    const send = (message) =>
+      new Promise((resolve) => {
+        socket.emit("newMessage", {
+          roomID: room._id.toString(),
+          message,
+          tempId: "read-" + Date.now() + "-" + Math.random(),
+        }, resolve);
+      });
+
+    const first = await send("first unread");
+    const second = await send("second unread");
+
+    const readEvent = waitFor(socket, "roomRead");
+    otherSocket.emit("markRoomRead", {
+      roomID: room._id.toString(),
+      messageID: second._id,
+    });
+    const payload = await readEvent;
+
+    assert.equal(payload.roomID, room._id.toString());
+    assert.equal(payload.messageID, second._id);
+    assert.equal(payload.readBy, otherUser._id.toString());
+    assert.equal(payload.unreadCount, 0);
+
+    const [firstDoc, secondDoc] = await Promise.all([
+      MessageSchema.findById(first._id).lean(),
+      MessageSchema.findById(second._id).lean(),
+    ]);
+    assert.ok(firstDoc.seen.map(String).includes(otherUser._id.toString()));
+    assert.ok(secondDoc.seen.map(String).includes(otherUser._id.toString()));
+  } finally {
+    socket.disconnect();
+    otherSocket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
