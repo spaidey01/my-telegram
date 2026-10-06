@@ -24,7 +24,7 @@ const getTtlSeconds = () => {
   return Math.min(MAX_TTL_SECONDS, Math.max(MIN_TTL_SECONDS, Math.floor(configured)));
 };
 
-const createEphemeralCredential = (userId, ttlSeconds) => {
+const createEphemeralCredential = (ttlSeconds) => {
   const expiresAt = Math.floor(Date.now() / 1000) + ttlSeconds;
   // Keep the application identity opaque on the wire; TURN only needs a stable
   // value for the lifetime of this credential.
@@ -43,11 +43,9 @@ export const buildTurnIceServers = (userId) => {
 
   const ttl = getTtlSeconds();
   if (process.env.TURN_SECRET) {
-    const { username, credential, expiresAt } = createEphemeralCredential(userId, ttl);
+    const { username, credential, expiresAt } = createEphemeralCredential(ttl);
     return {
-      iceServers: [
-        { urls, username, credential },
-      ],
+      iceServers: [{ urls, username, credential }],
       ttl,
       expiresAt,
       mode: "ephemeral",
