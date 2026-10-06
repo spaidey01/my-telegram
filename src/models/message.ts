@@ -12,7 +12,7 @@ export default interface Message {
   pinnedAt: string | null;
   voiceData: { src: string; duration: number; playedBy: string[] } | null;
   attachmentData?: { src: string; name: string; mimeType: string; size: number } | null;
-  stickerData?: { emoji: string } | null;
+  stickerData?: { stickerId: string; packId: string; file: string; mimeType: string; emoji: string } | null;
   reactions?: { emoji: string; userIds: string[] }[];
   forwardedFrom?: { messageId: string; senderName: string } | null;
   replayedTo: { message: string; msgID: string; username: string } | null;
