@@ -36,7 +36,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLTextAreaElement | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
-  const activeTask = useRef<{ id: string; cancel: () => void } | null>(null);
+  const activeTask = useRef<{ id: string; cancel: () => void } | null>(null);\n  const queueRef = useRef<QueueItem[]>([]);\n  const roomRef = useRef<string | undefined>(roomId);
 
   const room = useGlobalStore((s) => s.selectedRoom);
   const setter = useGlobalStore((s) => s.setter);
@@ -44,7 +44,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
   const me = useUserStore((s) => s);
   const roomId = room?._id;
 
-  const resize = useCallback(() => {
+  queueRef.current = queue;\n\n  const resize = useCallback(() => {
     if (input.current) {
       input.current.style.height = "24px";
       input.current.style.height = Math.min(input.current.scrollHeight, 100) + "px";
