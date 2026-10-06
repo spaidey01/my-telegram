@@ -39,7 +39,6 @@ const VoiceMessagePlayer = memo(({ _id, voiceDataProp, msgData, isFromMe, myId, 
     if (audioRef.current) setAudioElement(audioRef.current);
     return () => {
       if (audioRef.current && useAudio.getState().audioElem === audioRef.current) {
-        audioRef.getState?.();
         useAudio.getState().audioElem?.pause();
         useAudio.getState().setter({ audioElem: null, isPlaying: false, voiceData: null });
       }
