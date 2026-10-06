@@ -105,18 +105,20 @@ const ChatPage = () => {
 
   // Event handler for receiving pinned message
   const handlePinMessage = useCallback(
-    (msgId: string) => {
-      const updatedMessages = messages.map((msg) =>
-        msg._id === msgId
-          ? { ...msg, pinnedAt: msg.pinnedAt ? null : String(Date.now()) }
-          : msg
-      );
-      setter({
-        selectedRoom: {
-          ...selectedRoom!,
-          messages: updatedMessages,
-        },
-      });
+    (data: { msgID: string; roomID: string; pinnedAt: string | null }) => {
+      if (!selectedRoom || data.roomID !== selectedRoom._id) return;
+      setter((prev) => ({
+        selectedRoom: prev.selectedRoom
+          ? {
+              ...prev.selectedRoom,
+              messages: prev.selectedRoom.messages.map((msg) =>
+                msg._id === data.msgID
+                  ? { ...msg, pinnedAt: data.pinnedAt }
+                  : msg
+              ),
+            }
+          : null,
+      }));
     },
     [messages, selectedRoom, setter]
   );
