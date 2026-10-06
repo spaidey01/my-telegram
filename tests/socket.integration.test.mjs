@@ -7,6 +7,7 @@ import mongoose from "mongoose";
 import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
+import FileSchema from "../src/schemas/fileSchema.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
@@ -1142,5 +1143,66 @@ test("last seen handles multi-socket presence and reconnects", async () => {
       { _id: otherUser._id },
       { $set: { status: "offline" } },
     );
+  }
+});
+
+
+test("attachment messages enforce verified-file ownership", async () => {
+  const room = await RoomSchema.create({
+    name: "Attachment Ownership",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const ownKey = `files/${user._id.toString()}/00000000-0000-4000-8000-000000000001`;
+  const foreignKey = `files/${otherUser._id.toString()}/00000000-0000-4000-8000-000000000002`;
+  await FileSchema.create([
+    { key: ownKey, owner: user._id, contentType: "application/pdf" },
+    { key: foreignKey, owner: otherUser._id, contentType: "application/pdf" },
+  ]);
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+    await new Promise((resolve) => { socket.emit("joining", room._id.toString()); socket.once("joining", resolve); });
+
+    const send = (attachmentData, tempId) =>
+      new Promise((resolve) => socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "",
+        attachmentData,
+        tempId,
+      }, resolve));
+
+    const own = await send({
+      src: `/api/files/access?key=${encodeURIComponent(ownKey)}`,
+      name: "document.pdf",
+      mimeType: "application/pdf",
+      size: 1024,
+    }, "attachment-own-" + Date.now());
+    assert.equal(own.success, true);
+    const saved = await MessageSchema.findById(own._id).lean();
+    assert.equal(saved.attachmentData.name, "document.pdf");
+
+    const foreign = await send({
+      src: `/api/files/access?key=${encodeURIComponent(foreignKey)}`,
+      name: "foreign.pdf",
+      mimeType: "application/pdf",
+      size: 1024,
+    }, "attachment-foreign-" + Date.now());
+    assert.equal(foreign.success, true);
+    assert.equal((await MessageSchema.findById(foreign._id)).attachmentData, null);
+
+    await MessageSchema.deleteMany({ roomID: room._id });
+  } finally {
+    socket.disconnect();
+    await FileSchema.deleteMany({ key: { $in: [ownKey, foreignKey] } });
+    await RoomSchema.deleteOne({ _id: room._id });
   }
 });
