@@ -486,7 +486,7 @@ io.on("connection", (socket) => {
       }
 
       for (const memberID of participants) {
-        for (const socketID of onlineUsers.get(memberID) || []) io.sockets.sockets.get(socketID)?.join(newRoom._id.toString());
+        await io.in(`presence:${memberID}`).socketsJoin(newRoom._id.toString());
       }
       io.to(newRoom._id.toString()).emit("createRoom", newRoom);
     } catch (error) {
@@ -1293,14 +1293,10 @@ io.on("connection", (socket) => {
         const nextParticipants = new Set($set.participants.map((id) => id.toString()));
         for (const memberID of previousParticipants) {
           if (nextParticipants.has(memberID)) continue;
-          for (const socketID of onlineUsers.get(memberID) || []) {
-            io.sockets.sockets.get(socketID)?.leave(roomID);
-          }
+          await io.in(`presence:${memberID}`).socketsLeave(roomID);
         }
         for (const memberID of nextParticipants) {
-          for (const socketID of onlineUsers.get(memberID) || []) {
-            io.sockets.sockets.get(socketID)?.join(roomID);
-          }
+          await io.in(`presence:${memberID}`).socketsJoin(roomID);
         }
       }
       io.to(roomID).emit("updateRoomData", updatedRoom);
