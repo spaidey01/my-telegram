@@ -40,6 +40,10 @@ const VoiceMessageRecorder = ({
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
+  const uploadTaskRef = useRef<{ cancel: () => void } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const uploadTaskRef = useRef<{ cancel: () => void } | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -347,7 +351,7 @@ const VoiceMessageRecorder = ({
           (progress) => {
             // Ensure progress is visible for at least 2 seconds minimum
             const elapsedTime = Date.now() - startTime;
-            const adjustedProgress = Math.min(progress, 95);
+            const adjustedProgress = Math.min(progress, 95);\n            setUploadProgress(adjustedProgress);
 
             // If upload is too fast, artificially slow it down
             if (elapsedTime < minUploadTime && progress < 100) {
@@ -420,6 +424,8 @@ const VoiceMessageRecorder = ({
         }
 
         if (uploadResult.success) {
+          setUploadProgress(100);
+          setUploadFailed(false);
           sendVoiceMessage(uploadResult.downloadUrl!, timerRef.current, tempId);
         } else {
           toaster(
