@@ -2,29 +2,134 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {FiMic,FiMicOff,FiPhoneOff,FiVideo,FiVideoOff} from "react-icons/fi";
 import useSockets from "@/stores/useSockets";
-type CallType="audio"|"video"; type CallState="idle"|"calling"|"incoming"|"connected";
+
+type CallType="audio"|"video";
+type CallState="idle"|"calling"|"incoming"|"connected";
 type CallInfo={callId:string;roomID:string;type:CallType;name:string;avatar?:string};
-const RTC_CONFIG:RTCConfiguration={iceServers:[{urls:"stun:stun.l.google.com:19302"}]};
+type TurnConfigResponse={iceServers:RTCIceServer[];ttl:number|null;expiresAt:number|null;mode:"ephemeral"|"static"};
+
+const STUN_FALLBACK:RTCIceServer={urls:"stun:stun.l.google.com:19302"};
+
 export default function CallOverlay(){
- const socket=useSockets(s=>s.rooms); const [state,setState]=useState<CallState>("idle"); const [call,setCall]=useState<CallInfo|null>(null); const [local,setLocal]=useState<MediaStream|null>(null); const [remote,setRemote]=useState<MediaStream|null>(null); const [muted,setMuted]=useState(false); const [cameraOff,setCameraOff]=useState(false);
- const pc=useRef<RTCPeerConnection|null>(null),localRef=useRef<MediaStream|null>(null),pending=useRef<RTCIceCandidateInit[]>([]),timer=useRef<ReturnType<typeof setTimeout>|null>(null),lv=useRef<HTMLVideoElement|null>(null),rv=useRef<HTMLVideoElement|null>(null),ra=useRef<HTMLAudioElement|null>(null);
- const cleanup=useCallback((notify=false)=>{if(notify&&call?.callId)socket?.emit("call:end",{callId:call.callId});if(timer.current)clearTimeout(timer.current);pc.current?.close();pc.current=null;localRef.current?.getTracks().forEach(t=>t.stop());localRef.current=null;setLocal(null);setRemote(null);setCall(null);setState("idle");setMuted(false);setCameraOff(false);pending.current=[];},[call,socket]);
- const getMedia=useCallback(async(type:CallType)=>{if(!navigator.mediaDevices?.getUserMedia)throw new Error("Media unavailable");const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:type==="video"});localRef.current=stream;setLocal(stream);return stream;},[]);
- const makePeer=useCallback((info:CallInfo)=>{const p=new RTCPeerConnection(RTC_CONFIG);p.onicecandidate=e=>e.candidate&&socket?.emit("call:ice",{callId:info.callId,candidate:e.candidate.toJSON()});p.ontrack=e=>setRemote(e.streams?.[0]||new MediaStream([e.track]));p.onconnectionstatechange=()=>{if(["failed","closed"].includes(p.connectionState))cleanup(false)};pc.current=p;return p;},[socket,cleanup]);
- useEffect(()=>{if(lv.current&&local)lv.current.srcObject=local;if(rv.current&&remote)rv.current.srcObject=remote;if(ra.current&&remote)ra.current.srcObject=remote;},[local,remote]);
- useEffect(()=>{if(!socket)return;
-  const outgoing=(d:CallInfo)=>{setCall(d);setState("calling");timer.current=setTimeout(()=>cleanup(true),30000)};
-  const incoming=(d:CallInfo&{from:{name?:string;avatar?:string}})=>{setCall({...d,name:d.from?.name||"کاربر",avatar:d.from?.avatar});setState("incoming")};
-  const accepted=async({callId}:{callId:string})=>{if(!call||call.callId!==callId)return;try{const stream=localRef.current||await getMedia(call.type);const p=pc.current||makePeer(call);stream.getTracks().forEach(t=>p.addTrack(t,stream));const offer=await p.createOffer();await p.setLocalDescription(offer);socket.emit("call:offer",{callId,description:p.localDescription});setState("connected")}catch{cleanup(true)}};
+ const socket=useSockets(s=>s.rooms);
+ const [state,setState]=useState<CallState>("idle");
+ const [call,setCall]=useState<CallInfo|null>(null);
+ const [local,setLocal]=useState<MediaStream|null>(null);
+ const [remote,setRemote]=useState<MediaStream|null>(null);
+ const [muted,setMuted]=useState(false);
+ const [cameraOff,setCameraOff]=useState(false);
+ const pc=useRef<RTCPeerConnection|null>(null);
+ const localRef=useRef<MediaStream|null>(null);
+ const pending=useRef<RTCIceCandidateInit[]>([]);
+ const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const lv=useRef<HTMLVideoElement|null>(null);
+ const rv=useRef<HTMLVideoElement|null>(null);
+ const ra=useRef<HTMLAudioElement|null>(null);
+ const rtcConfigRef=useRef<RTCConfiguration|null>(null);
+
+ const cleanup=useCallback((notify=false)=>{
+   if(notify&&call?.callId)socket?.emit("call:end",{callId:call.callId});
+   if(timer.current)clearTimeout(timer.current);
+   pc.current?.close();
+   pc.current=null;
+   localRef.current?.getTracks().forEach(t=>t.stop());
+   localRef.current=null;
+   setLocal(null);setRemote(null);setCall(null);setState("idle");
+   setMuted(false);setCameraOff(false);pending.current=[];rtcConfigRef.current=null;
+ },[call,socket]);
+
+ const getMedia=useCallback(async(type:CallType)=>{
+   if(!navigator.mediaDevices?.getUserMedia)throw new Error("Media unavailable");
+   const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:type==="video"});
+   localRef.current=stream;setLocal(stream);return stream;
+ },[]);
+
+ const loadRtcConfig=useCallback(async()=>{
+   if(rtcConfigRef.current)return rtcConfigRef.current;
+   try{
+     const response=await fetch("/api/calls/turn-credentials",{cache:"no-store",credentials:"same-origin"});
+     if(!response.ok)throw new Error("TURN credentials unavailable");
+     const data=(await response.json()) as TurnConfigResponse;
+     if(!Array.isArray(data.iceServers)||data.iceServers.length===0)throw new Error("Invalid TURN configuration");
+     const config:RTCConfiguration={iceServers:data.iceServers};
+     rtcConfigRef.current=config;return config;
+   }catch(error){
+     if(process.env.NODE_ENV==="production")throw error;
+     const config:RTCConfiguration={iceServers:[STUN_FALLBACK]};
+     rtcConfigRef.current=config;return config;
+   }
+ },[]);
+
+ const makePeer=useCallback(async(info:CallInfo)=>{
+   const config=await loadRtcConfig();
+   const p=new RTCPeerConnection(config);
+   p.onicecandidate=e=>e.candidate&&socket?.emit("call:ice",{callId:info.callId,candidate:e.candidate.toJSON()});
+   p.ontrack=e=>setRemote(e.streams?.[0]||new MediaStream([e.track]));
+   p.onconnectionstatechange=()=>{if(["failed","closed"].includes(p.connectionState))cleanup(false)};
+   pc.current=p;return p;
+ },[socket,cleanup,loadRtcConfig]);
+
+ useEffect(()=>{
+   if(lv.current&&local)lv.current.srcObject=local;
+   if(rv.current&&remote)rv.current.srcObject=remote;
+   if(ra.current&&remote)ra.current.srcObject=remote;
+ },[local,remote]);
+
+ useEffect(()=>{
+  if(!socket)return;
+  const outgoing=(d:CallInfo)=>{rtcConfigRef.current=null;setCall(d);setState("calling");timer.current=setTimeout(()=>cleanup(true),30000)};
+  const incoming=(d:CallInfo&{from:{name?:string;avatar?:string}})=>{rtcConfigRef.current=null;setCall({...d,name:d.from?.name||"کاربر",avatar:d.from?.avatar});setState("incoming")};
+  const accepted=async({callId}:{callId:string})=>{
+    if(!call||call.callId!==callId)return;
+    try{
+      const stream=localRef.current||await getMedia(call.type);
+      const p=pc.current||await makePeer(call);
+      stream.getTracks().forEach(t=>p.addTrack(t,stream));
+      const offer=await p.createOffer();await p.setLocalDescription(offer);
+      socket.emit("call:offer",{callId,description:p.localDescription});setState("connected");
+    }catch{cleanup(true)}
+  };
   const rejected=({callId}:{callId:string})=>{if(call?.callId===callId)cleanup(false)};
-  const offer=async({callId,description}:{callId:string;description:RTCSessionDescriptionInit})=>{if(!call||call.callId!==callId)return;try{const p=pc.current||makePeer(call);await p.setRemoteDescription(description);const stream=localRef.current||await getMedia(call.type);stream.getTracks().forEach(t=>p.addTrack(t,stream));for(const candidate of pending.current.splice(0))await p.addIceCandidate(candidate);const answer=await p.createAnswer();await p.setLocalDescription(answer);socket.emit("call:answer",{callId,description:p.localDescription});setState("connected")}catch{cleanup(true)}};
-  const answer=async({callId,description}:{callId:string;description:RTCSessionDescriptionInit})=>{if(!call||call.callId!==callId||!pc.current)return;try{await pc.current.setRemoteDescription(description);for(const candidate of pending.current.splice(0))await pc.current.addIceCandidate(candidate);setState("connected")}catch{cleanup(true)}};
-  const ice=async({callId,candidate}:{callId:string;candidate:RTCIceCandidateInit})=>{if(!call||call.callId!==callId)return;if(pc.current?.remoteDescription){try{await pc.current.addIceCandidate(candidate)}catch{}}else pending.current.push(candidate)};
+  const offer=async({callId,description}:{callId:string;description:RTCSessionDescriptionInit})=>{
+    if(!call||call.callId!==callId)return;
+    try{
+      const p=pc.current||await makePeer(call);
+      await p.setRemoteDescription(description);
+      const stream=localRef.current||await getMedia(call.type);
+      stream.getTracks().forEach(t=>p.addTrack(t,stream));
+      for(const candidate of pending.current.splice(0))await p.addIceCandidate(candidate);
+      const answer=await p.createAnswer();await p.setLocalDescription(answer);
+      socket.emit("call:answer",{callId,description:p.localDescription});setState("connected");
+    }catch{cleanup(true)}
+  };
+  const answer=async({callId,description}:{callId:string;description:RTCSessionDescriptionInit})=>{
+    if(!call||call.callId!==callId||!pc.current)return;
+    try{
+      await pc.current.setRemoteDescription(description);
+      for(const candidate of pending.current.splice(0))await pc.current.addIceCandidate(candidate);
+      setState("connected");
+    }catch{cleanup(true)}
+  };
+  const ice=async({callId,candidate}:{callId:string;candidate:RTCIceCandidateInit})=>{
+    if(!call||call.callId!==callId)return;
+    if(pc.current?.remoteDescription){try{await pc.current.addIceCandidate(candidate)}catch{}}else pending.current.push(candidate);
+  };
   const ended=({callId}:{callId:string})=>{if(call?.callId===callId)cleanup(false)};
-  socket.on("call:outgoing",outgoing);socket.on("call:incoming",incoming);socket.on("call:accepted",accepted);socket.on("call:rejected",rejected);socket.on("call:offer",offer);socket.on("call:answer",answer);socket.on("call:ice",ice);socket.on("call:ended",ended);
-  return()=>{socket.off("call:outgoing",outgoing);socket.off("call:incoming",incoming);socket.off("call:accepted",accepted);socket.off("call:rejected",rejected);socket.off("call:offer",offer);socket.off("call:answer",answer);socket.off("call:ice",ice);socket.off("call:ended",ended)};
+  socket.on("call:outgoing",outgoing);socket.on("call:incoming",incoming);socket.on("call:accepted",accepted);
+  socket.on("call:rejected",rejected);socket.on("call:offer",offer);socket.on("call:answer",answer);
+  socket.on("call:ice",ice);socket.on("call:ended",ended);
+  return()=>{
+    socket.off("call:outgoing",outgoing);socket.off("call:incoming",incoming);socket.off("call:accepted",accepted);
+    socket.off("call:rejected",rejected);socket.off("call:offer",offer);socket.off("call:answer",answer);
+    socket.off("call:ice",ice);socket.off("call:ended",ended);
+  };
  },[socket,call,cleanup,getMedia,makePeer]);
- const accept=async()=>{if(!call)return;try{await getMedia(call.type);makePeer(call);socket?.emit("call:accept",{callId:call.callId});setState("connected")}catch{socket?.emit("call:reject",{callId:call.callId,reason:"permission"});cleanup(false)}};
+
+ const accept=async()=>{
+   if(!call)return;
+   try{await getMedia(call.type);await makePeer(call);socket?.emit("call:accept",{callId:call.callId});setState("connected")}
+   catch{socket?.emit("call:reject",{callId:call.callId,reason:"permission"});cleanup(false)}
+ };
  const reject=()=>{if(call)socket?.emit("call:reject",{callId:call.callId});cleanup(false)};
  const mute=()=>{const t=localRef.current?.getAudioTracks()[0];if(t){t.enabled=!t.enabled;setMuted(!t.enabled)}};
  const camera=()=>{const t=localRef.current?.getVideoTracks()[0];if(t){t.enabled=!t.enabled;setCameraOff(!t.enabled)}};
