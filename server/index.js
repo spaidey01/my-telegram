@@ -793,7 +793,7 @@ io.on("connection", (socket) => {
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return callback({ success: false, error: "Forbidden" });
-    if (room.type === "group" && !hasGroupPermission(room,userID,"pinMessages")) return callback({success:false,error:"Pinning is disabled"});
+    if (room.type === "group" && !hasGroupPermission(room,userID,"sendMessages")) return callback({success:false,error:"Pinning is disabled"});
 
     const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
     const index = reactions.findIndex((reaction) => reaction.emoji === safeEmoji);
