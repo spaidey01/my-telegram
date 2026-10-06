@@ -7,5 +7,9 @@ const schema = new Schema({
   message: { type: Schema.ObjectId, ref: "Message", default: null },
   data: { type: Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
+
 schema.index({ room: 1, createdAt: -1 });
+schema.index({ actor: 1, type: 1, createdAt: -1 });
+schema.index({ "data.targetUser": 1, type: 1, createdAt: -1 });
+
 export default mongoose.models.ThreadEvent || mongoose.model("ThreadEvent", schema);
