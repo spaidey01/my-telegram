@@ -470,12 +470,15 @@ test("last seen handles multi-socket presence and reconnects", async () => {
     });
 
   const observer = makeSocket(user._id);
-  const targetA = makeSocket(otherUser._id);
-  const targetB = makeSocket(otherUser._id);
+  let targetA;
+  let targetB;
 
   try {
     await waitFor(observer, "connect");
     const onlinePresence = waitFor(observer, "userPresence");
+
+    targetA = makeSocket(otherUser._id);
+    targetB = makeSocket(otherUser._id);
     await Promise.all([waitFor(targetA, "connect"), waitFor(targetB, "connect")]);
     const online = await onlinePresence;
     assert.equal(online.userID, otherUser._id.toString());
@@ -521,8 +524,8 @@ test("last seen handles multi-socket presence and reconnects", async () => {
     }
   } finally {
     observer.disconnect();
-    targetA.disconnect();
-    targetB.disconnect();
+    targetA?.disconnect();
+    targetB?.disconnect();
     await UserSchema.updateOne(
       { _id: otherUser._id },
       { $set: { status: "offline" } },
