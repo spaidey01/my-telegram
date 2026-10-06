@@ -19,6 +19,8 @@ test("call reliability client has recovery primitives",()=>{
     "call:peer-reconnecting",
     "isCaller",
     "qualityPrevious",
+    "removeEventListener(\"change\",onConnectionChange)",
+    "if(!durationTimer.current)beginDuration();",
   ]) assert.ok(overlay.includes(token),`missing reliability primitive: ${token}`);
 });
 
@@ -29,5 +31,8 @@ test("call reliability server keeps a reconnect grace window",()=>{
     'on("call:retry"',
     '"call:peer-reconnecting"',
     '"call:peer-reconnected"',
+    "retryCount: 0",
+    "restart = false",
+    "if (restart && !isCaller) return;",
   ]) assert.ok(server.includes(token),`missing server recovery primitive: ${token}`);
 });
