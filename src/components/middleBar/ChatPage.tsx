@@ -178,7 +178,7 @@ const ChatPage = () => {
           : null,
       }));
     },
-    [messages, selectedRoom, setter]
+    [selectedRoom, setter]
   );
 
   // Register an event listener for the "pinMessage" event from the server

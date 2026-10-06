@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { IoClose, IoSearch } from "react-icons/io5";
-import { scrollToMessage } from "@/utils";
 import useGlobalStore from "@/stores/globalStore";
 import useUserStore from "@/stores/userStore";
 

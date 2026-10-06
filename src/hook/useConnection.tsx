@@ -305,7 +305,7 @@ const useConnection = ({
     });
 
     socket.on("updateOnlineUsers", (onlineUsers) => setter({ onlineUsers }));
-    socket.on("profileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
+    socket.on("userProfileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
       if (updatedUser._id === userId) userDataUpdater(updatedUser);
 
       setRooms((prevRooms) =>

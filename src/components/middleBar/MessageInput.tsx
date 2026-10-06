@@ -189,7 +189,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
   useEffect(() => () => {
     activeTask.current?.cancel();
     queue.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
-  }, []);
+  }, [queue]);
 
   useEffect(() => {
     if (roomRef.current === undefined) {

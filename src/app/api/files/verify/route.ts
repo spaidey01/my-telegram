@@ -103,9 +103,12 @@ export async function POST(req: Request) {
     const purpose = body?.purpose === "sticker" ? "sticker" : "file";
     const contentType = typeof body?.contentType === "string" ? body.contentType.toLowerCase() : "";
     const ownerPrefix = key.split("/")[1];
+    const keyPattern = purpose === "sticker"
+      ? /^stickers\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/
+      : /^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/;
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
     if (purpose === "sticker" && !new Set(["image/png", "image/webp", "image/gif"]).has(contentType)) return NextResponse.json({ message: "Sticker type not allowed" }, { status: 415 });
-    if (!/^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key) || ownerPrefix !== userId) {
+    if (!keyPattern.test(key) || ownerPrefix !== userId) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
@@ -148,7 +151,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "File verification failed" }, { status: 503 });
     }
 
-    const verifiedKey = `${key.split("/")[0]}/${userId}/${randomUUID()}`;
+    const verifiedKey = `${purpose === "sticker" ? "stickers" : key.split("/")[0]}/${userId}/${randomUUID()}`;
     try {
       await s3().send(new CopyObjectCommand({
         Bucket: bucket,

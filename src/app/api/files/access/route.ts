@@ -8,6 +8,7 @@ import RoomSchema from "@/schemas/roomSchema";
 import MessageSchema from "@/schemas/messageSchema";
 import StickerSchema from "@/schemas/stickerSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
+import { canViewPrivacy } from "@/utils/privacy";
 
 const s3 = () => new S3Client({
   region: process.env.S3_REGION || "us-east-1",
@@ -20,7 +21,7 @@ const s3 = () => new S3Client({
 });
 
 const validKey = (key: string) =>
-  /^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key);
+  /^(images|voices|files|stickers)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key);
 
 export async function GET(req: Request) {
   try {
@@ -60,9 +61,9 @@ export async function GET(req: Request) {
         canAccess = Boolean(await RoomSchema.exists({ _id: { $in: roomIds }, participants: userId }));
       }
       if (roomRef && !Array.isArray(roomRef)) canAccess = true;
-      // Profile pictures are visible to every signed-in user.
       if (!canAccess && key.startsWith("images/")) {
-        canAccess = Boolean(await UserSchema.exists({ avatar: accessUrl }));
+        const owner = await UserSchema.findOne({ avatar: accessUrl }).select("_id").lean() as { _id: { toString(): string } } | null;
+        canAccess = Boolean(owner && await canViewPrivacy(owner._id.toString(), userId, "profilePhoto"));
       }
     }
 
