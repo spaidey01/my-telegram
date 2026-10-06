@@ -55,6 +55,10 @@ const ChatPage = () => {
   const selectionRoomID = useGlobalStore((state) => state.selectionRoomID);
   const clearMessageSelection = useGlobalStore((state) => state.clearMessageSelection);
 
+  useEffect(() => {
+    if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();
+  }, [selectionRoomID, selectedRoom?._id, clearMessageSelection]);
+
   // Avatar, name and _id information from room or user information (in private mode)
   const {
     avatar = "",
@@ -217,6 +221,9 @@ const ChatPage = () => {
       className="relative h-dvh flex flex-col chatBackground w-full "
     >
       {/* Chat Header */}
+      {selectionMode ? (
+        <MultiSelectToolbar messages={messages} roomID={selectedRoom?._id || ""} />
+      ) : (
       <div
         id="chatContentHeader"
         className="sticky top-0  flex items-center justify-between h-17 p-2  w-full border-b border-white/5 bg-leftBarBg"
@@ -327,6 +334,7 @@ const ChatPage = () => {
           />
         </div>
       </div>
+      )}
 
       {/* Chat Message */}
       <Suspense
