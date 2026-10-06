@@ -6,6 +6,7 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
 import { rateLimit } from "@/utils/rateLimit";
+import { sanitizeUserForViewer } from "@/utils/privacy";
 
 const getAuth = async () => {
   const token = (await cookies()).get("token")?.value;
@@ -80,10 +81,13 @@ export const GET = async (req: Request) => {
       .lean();
     const roomById = new Map(rooms.map((room) => [String(room._id), room]));
 
-    return Response.json({
-      results: messages.map((message) => ({ ...message, room: roomById.get(String(message.roomID)) || null })),
-      count: messages.length,
-    });
+    const results = await Promise.all(messages.map(async (message) => ({
+      ...message,
+      sender: message.sender ? await sanitizeUserForViewer(message.sender, auth.sub) : message.sender,
+      room: roomById.get(String(message.roomID)) || null,
+    })));
+
+    return Response.json({ results, count: results.length });
   } catch (error) {
     console.error("messages/search:", error);
     return Response.json({ message: "Unknown error, try later." }, { status: 500 });
