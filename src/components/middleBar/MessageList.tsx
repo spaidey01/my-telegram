@@ -1,4 +1,4 @@
-import { useMemo, memo } from "react";
+import React, { useMemo, memo } from "react";
 import { dateString } from "@/utils";
 import Message from "./Message";
 import MessageModel from "@/models/message";
@@ -48,7 +48,7 @@ const MessageList = ({
           dates.find((date) => date.usedBy === data._id)?.date || null;
 
         return (
-          <>
+          <React.Fragment key={data._id}>
             {data._id === firstUnreadId && (
               <div
                 data-unread-divider="true"
@@ -88,7 +88,7 @@ const MessageList = ({
               {...data}
             />
             </div>
-          </>
+          </React.Fragment>
         );
       })
     ) : (
