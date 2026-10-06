@@ -575,7 +575,7 @@ io.on("connection", (socket) => {
     try {
       if (!isValidId(roomID) || typeof link !== "string" || link.length > 500) return;
       const room = await RoomSchema.findOne({ _id: roomID, link: link.trim() });
-      if (!room || room.type === "private" || !room.link) {
+      if (!room || room.type === "private" || !room.link || room.visibility === "private") {
         socket.emit("joinRoomError", { message: "This room is not publicly joinable" });
         return;
       }
@@ -789,6 +789,7 @@ io.on("connection", (socket) => {
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     if (!room || !msg) return callback({ success: false, error: "Forbidden" });
+    if (room.type === "group" && !hasGroupPermission(room,userID,"pinMessages")) return callback({success:false,error:"Pinning is disabled"});
 
     const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
     const index = reactions.findIndex((reaction) => reaction.emoji === safeEmoji);
@@ -1006,6 +1007,7 @@ io.on("connection", (socket) => {
     if (targetSocketId) io.to(targetSocketId).emit("call:rejected", { callId, reason });
     if (c.timer) clearTimeout(c.timer);
     if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
+    await recordCallHistory(c, "rejected");
     await deleteActiveCall(callId);
     callback({ success: true });
   });
@@ -1589,6 +1591,7 @@ io.on("connection", (socket) => {
         const currentSocketId = isCaller ? active.callerSocketId : active.calleeSocketId;
         if (currentSocketId !== socket.id) return;
         io.to(peerSocketId).emit("call:ended", { callId, reason: "disconnected" });
+        await recordCallHistory(active, active.acceptedAt ? "completed" : "cancelled");
         await deleteActiveCall(callId);
         })();
       }, CALL_RECONNECT_GRACE_MS);
