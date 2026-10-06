@@ -1206,3 +1206,52 @@ test("attachment messages enforce verified-file ownership", async () => {
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
+
+
+test("voice messages enforce verified-file ownership", async () => {
+  const room = await RoomSchema.create({
+    name: "Voice Ownership",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const ownKey = `voices/${user._id.toString()}/00000000-0000-4000-8000-000000000011`;
+  const foreignKey = `voices/${otherUser._id.toString()}/00000000-0000-4000-8000-000000000012`;
+  await FileSchema.create([
+    { key: ownKey, owner: user._id, contentType: "audio/webm" },
+    { key: foreignKey, owner: otherUser._id, contentType: "audio/webm" },
+  ]);
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+    await new Promise((resolve) => { socket.emit("joining", room._id.toString()); socket.once("joining", resolve); });
+
+    const send = (src, tempId) =>
+      new Promise((resolve) => socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "",
+        voiceData: { src, duration: 4, playedBy: [] },
+        tempId,
+      }, resolve));
+
+    const own = await send(`/api/files/access?key=${encodeURIComponent(ownKey)}`, "voice-own-" + Date.now());
+    assert.equal(own.success, true);
+    assert.equal((await MessageSchema.findById(own._id).lean()).voiceData.src, `/api/files/access?key=${encodeURIComponent(ownKey)}`);
+
+    const foreign = await send(`/api/files/access?key=${encodeURIComponent(foreignKey)}`, "voice-foreign-" + Date.now());
+    assert.equal(foreign.success, true);
+    assert.equal((await MessageSchema.findById(foreign._id).lean()).voiceData, null);
+  } finally {
+    socket.disconnect();
+    await FileSchema.deleteMany({ key: { $in: [ownKey, foreignKey] } });
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
