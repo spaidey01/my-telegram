@@ -9,7 +9,10 @@ export interface MessageSelectionState {
   selectionRoomID: string | null;
   selectionMode: boolean;
   pendingMessageJumpId: string | null;
+  threadEvents: ThreadEvent[];
 }
+
+export interface ThreadEvent { _id: string; type: "mention" | "reaction" | "call" | "system"; room: string; message?: string; actor: string; data?: { targetUser?: string; username?: string; emoji?: string }; createdAt: string; }
 
 export interface GlobalStoreProps {
   selectedRoom: null | Room;
@@ -45,6 +48,7 @@ interface Updater {
   pruneMessageSelection: (roomID: string, messageIDs: string[]) => void;
   replaceMessageSelection: (roomID: string, oldMessageID: string, newMessageID: string) => void;
   setPendingMessageJump: (messageID: string | null) => void;
+  addThreadEvent: (event: ThreadEvent) => void;
 }
 
 const emptySelection = EMPTY_MESSAGE_SELECTION;
@@ -62,6 +66,7 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
   createRoomType: null,
   ...emptySelection,
   pendingMessageJumpId: null,
+  threadEvents: [],
 
   updater(
     key: keyof GlobalStoreProps,
@@ -98,6 +103,10 @@ const useGlobalStore = create<GlobalStoreProps & Updater>((set) => ({
 
   setPendingMessageJump(messageID) {
     set({ pendingMessageJumpId: messageID });
+  },
+
+  addThreadEvent(event) {
+    set((state) => ({ threadEvents: [event, ...state.threadEvents].slice(0, 100) }));
   },
 
 }));
