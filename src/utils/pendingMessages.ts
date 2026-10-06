@@ -7,6 +7,35 @@ export interface PendingMessage extends Message {
 }
 
 const PENDING_MESSAGES_KEY = "telegram_pending_messages";
+const DB_NAME = "stargram-offline";
+const DB_VERSION = 1;
+const STORE = "outgoingMessages";
+
+const openOfflineDB = () => new Promise<IDBDatabase | null>((resolve) => {
+  if (typeof indexedDB === "undefined") return resolve(null);
+  const request = indexedDB.open(DB_NAME, DB_VERSION);
+  request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE, { keyPath: "tempId" }); };
+  request.onsuccess = () => resolve(request.result);
+  request.onerror = () => resolve(null);
+});
+
+const mirrorToIndexedDB = (messages: PendingMessage[]) => {
+  void openOfflineDB().then((db) => {
+    if (!db) return;
+    const tx = db.transaction(STORE, "readwrite");
+    for (const message of messages) tx.objectStore(STORE).put(message);
+    tx.oncomplete = () => db.close();
+  });
+};
+
+const removeFromIndexedDB = (tempId: string) => {
+  void openOfflineDB().then((db) => {
+    if (!db) return;
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(tempId);
+    tx.oncomplete = () => db.close();
+  });
+};
 
 export const pendingMessagesService = {
   // Stored pending messages in localStorage
@@ -15,6 +44,8 @@ export const pendingMessagesService = {
       const existing = pendingMessagesService.getAllPendingMessages();
       existing[roomId] = messages;
       localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(existing));
+    mirrorToIndexedDB(existing[roomId] || []);
+      mirrorToIndexedDB(messages);
     } catch (error) {
       console.error("Error saving pending messages:", error);
     }
@@ -54,6 +85,9 @@ export const pendingMessagesService = {
           delete existing[roomId];
         }
         localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(existing));
+        removeFromIndexedDB(tempId);
+        removeFromIndexedDB(tempId);
+        for (const message of existing[roomId] || []) mirrorToIndexedDB([message]);
       }
     } catch (error) {
       console.error("Error removing pending message:", error);
