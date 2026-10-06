@@ -26,6 +26,7 @@ import useModalStore from "@/stores/modalStore";
 import Modal from "../modules/ui/Modal";
 import { scrollToMessage } from "@/utils";
 import ProfileGradients from "../modules/ProfileGradients";
+import MultiSelectToolbar from "./MultiSelectToolbar";
 
 const ChatBox = lazy(() => import("./ChatBox"));
 
@@ -50,6 +51,9 @@ const ChatPage = () => {
   const [replayData, setReplayData] = useState<string | null>(null);
   const [editData, setEditData] = useState<MessageModel | null>(null);
   const { messages, type, participants } = selectedRoom!;
+  const selectionMode = useGlobalStore((state) => state.selectionMode);
+  const selectionRoomID = useGlobalStore((state) => state.selectionRoomID);
+  const clearMessageSelection = useGlobalStore((state) => state.clearMessageSelection);
 
   // Avatar, name and _id information from room or user information (in private mode)
   const {
@@ -80,7 +84,7 @@ const ChatPage = () => {
     return { avatar: "", name: "", _id: "", lastName: "" };
   }, [myID, participants, selectedRoom, type]);
 
-  // Calculate the replay message based on replayData (which is the message ID)
+  useEffect(() => {\n    if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();\n  }, [selectionRoomID, selectedRoom?._id, clearMessageSelection]);\n\n  // Calculate the replay message based on replayData (which is the message ID)
   const replayDataMsg = useMemo(() => {
     return messages?.find((msg) => msg._id === replayData);
   }, [messages, replayData]);
