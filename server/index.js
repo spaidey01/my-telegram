@@ -872,12 +872,18 @@ io.on("connection", (socket) => {
     const c = activeCalls.get(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
-    if (c.caller === userID) c.callerSocketId = socket.id;
-    if (c.callee === userID) c.calleeSocketId = socket.id;
-    const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
-    io.sockets.sockets.get(targetSocketId)?.emit("call:peer-reconnected", { callId });
-    socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type });
-    callback({ success: true });
+    const wasCaller = c.caller === userID;
+    if (wasCaller) c.callerSocketId = socket.id;
+    else c.calleeSocketId = socket.id;
+    const callerSocket = io.sockets.sockets.get(c.callerSocketId);
+    const calleeSocket = io.sockets.sockets.get(c.calleeSocketId);
+    if (!callerSocket || !calleeSocket) {
+      socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: false });
+      return callback({ success: true, ready: false });
+    }
+    callerSocket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: true });
+    if (!wasCaller) calleeSocket.emit("call:peer-reconnected", { callId });
+    callback({ success: true, ready: true });
   });
 
   on("call:retry", async ({ callId }, callback = () => {}) => {
@@ -892,8 +898,12 @@ io.on("connection", (socket) => {
 
   on("call:offer", async ({ callId, description }) => {
     const c = activeCalls.get(callId);
-    if (!c || c.caller !== userID || socket.id !== c.callerSocketId || !description?.sdp || !c.calleeSocketId) return;
-    io.sockets.sockets.get(c.calleeSocketId)?.emit("call:offer", { callId, description });
+    if (!c || !description?.sdp) return;
+    const isCaller = c.caller === userID && socket.id === c.callerSocketId;
+    const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
+    if (!isCaller && !isCallee) return;
+    const targetSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
+    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:offer", { callId, description, restart: true });
   });
 
   on("call:answer", async ({ callId, description }) => {
