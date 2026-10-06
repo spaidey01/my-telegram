@@ -119,6 +119,7 @@ export async function POST(req: Request) {
     }
     await UserStickerPackSchema.create({ user: current.id, packId: pack._id });
     const populated = await StickerPackSchema.findById(pack._id).populate("stickers").lean() as unknown as PackRecord | null;
+    if (!populated) return NextResponse.json({ message: "Pack creation failed" }, { status: 500 });
     return NextResponse.json(serializePack(populated, new Set([String(pack._id)])), { status: 201 });
   } catch (error) {
     console.error("stickers/packs POST:", error);
