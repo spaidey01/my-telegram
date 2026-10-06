@@ -10,7 +10,8 @@
     "server": "node ./server",
     "lint": "eslint .",
     "db:cleanup-legacy-room-messages": "node ./scripts/cleanup-legacy-room-messages.mjs",
-    "test:integration": "node --test tests/socket.integration.test.mjs"
+    "test:integration": "node --test tests/socket.integration.test.mjs",
+    "test:turn": "node --test tests/turn-credentials.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",

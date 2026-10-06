@@ -1,0 +1,17 @@
+services:
+  coturn:
+    image: coturn/coturn:4.18.0
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - -n
+      - --log-file=stdout
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
+      - --realm=${TURN_REALM}
+      - --stale-nonce=600
+      - --no-multicast-peers
+      - --no-loopback-peers
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49200}

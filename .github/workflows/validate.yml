@@ -47,6 +47,25 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
       - run: node --check server/index.js
+
+      - name: Start real coturn and verify REST authentication
+        env:
+          TURN_SECRET: ci-turn-shared-secret-0123456789
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coturn
+          turnserver -n --log-file=stdout             --use-auth-secret             --static-auth-secret="$TURN_SECRET"             --realm=ci.turn.stargram.local             --fingerprint             --no-tls             --no-dtls             --no-multicast-peers             --no-loopback-peers             --min-port=49160             --max-port=49200             > /tmp/coturn.log 2>&1 &
+          for i in $(seq 1 20); do
+            if turnutils_uclient -W "$TURN_SECRET" -p 3478 -y 127.0.0.1 >/tmp/turn-client.log 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/coturn.log
+          cat /tmp/turn-client.log
+          exit 1
+
+      - run: npm run test:turn
       - run: npm run test:integration
         env:
           MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_test
