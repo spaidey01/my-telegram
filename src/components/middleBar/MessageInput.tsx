@@ -18,7 +18,7 @@ import { v4 as uuidv4 } from "uuid";
 import { pendingMessagesService, PendingMessage } from "@/utils/pendingMessages";
 import { isMobile } from "@/utils/isMobile";
 import AttachmentUploadQueue, { validateAttachmentFiles, QueueItem } from "./AttachmentUploadQueue";
-import { MAX_FILE_SIZE, uploadFileWithRetry } from "@/utils/file/UploadFile";
+import { uploadFileWithRetry } from "@/utils/file/UploadFile";
 
 interface Props {
   replayData?: Partial<Message>;
