@@ -114,6 +114,10 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
   const updateModalMsgData = (e: React.MouseEvent) => {
     if (selectionMode) {
       e.preventDefault();
+      if (longPressTriggered.current) {
+        longPressTriggered.current = false;
+        return;
+      }
       toggleMessageSelection(roomID, _id);
       return;
     }
@@ -127,6 +131,10 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
       pin,
     }));
   };
+
+  useEffect(() => () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!isFromMe && !seen.some((id) => id === myId) && isInViewport && rooms) {
