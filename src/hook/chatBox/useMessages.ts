@@ -25,6 +25,7 @@ const useMessages = ({
   playRingSound,
 }: useMessagesProps) => {
   useEffect(() => {
+    const pruneMessageSelection = useGlobalStore.getState().pruneMessageSelection;
     const handleNewMessage = (newMsg: Message) => {
       if (newMsg.roomID === roomID) {
         playRingSound();
@@ -42,6 +43,7 @@ const useMessages = ({
         const updatedMessages = (prev.selectedRoom?.messages || []).filter(
           (msg) => msg._id !== msgID
         );
+        pruneMessageSelection(roomID, updatedMessages.map((msg) => msg._id));
         return {
           selectedRoom: {
             ...prev.selectedRoom!,
