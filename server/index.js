@@ -14,6 +14,7 @@ import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import CallSchema from "../src/schemas/callSchema.js";
 import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
+import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
 import SessionSchema from "../src/schemas/sessionSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
@@ -264,6 +265,49 @@ const isAdmin = (room, userID) => {
 };
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
+const createThreadMentionEvents = async (actorID, roomID, messageID, usernames) => {
+  const names = [...new Set((usernames || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean))];
+  if (!names.length) return;
+  const users = await UserSchema.find({ username: { $in: names } }).select("_id username").lean();
+  for (const target of users) {
+    if (String(target._id) === String(actorID)) continue;
+    const event = await ThreadEventSchema.create({
+      actor: actorID,
+      type: "mention",
+      room: roomID,
+      message: messageID,
+      data: { targetUser: String(target._id), username: target.username },
+    });
+    io.to(`presence:${target._id}`).emit("thread:event", {
+      _id: String(event._id),
+      type: "mention",
+      room: String(roomID),
+      message: String(messageID),
+      actor: String(actorID),
+      data: event.data,
+      createdAt: event.createdAt,
+    });
+  }
+};
+const createThreadReactionEvent = async (actorID, roomID, messageID, targetUserID, emoji) => {
+  if (!targetUserID || String(targetUserID) === String(actorID)) return;
+  const event = await ThreadEventSchema.create({
+    actor: actorID,
+    type: "reaction",
+    room: roomID,
+    message: messageID,
+    data: { targetUser: String(targetUserID), emoji: String(emoji) },
+  });
+  io.to(`presence:${targetUserID}`).emit("thread:event", {
+    _id: String(event._id),
+    type: "reaction",
+    room: String(roomID),
+    message: String(messageID),
+    actor: String(actorID),
+    data: event.data,
+    createdAt: event.createdAt,
+  });
+};
 const recordCallHistory = async (call, status, endedAt = new Date()) => {
   if (!call?.callId) return;
   await CallSchema.updateOne(
@@ -473,6 +517,7 @@ io.on("connection", (socket) => {
       };
 
       const newMsg = await MessageSchema.create(msgData);
+      await createThreadMentionEvents(userID, roomID, newMsg._id, msgData.mentions);
 
       if (isValidId(replayData?.targetID)) {
         const target = await MessageSchema.findOne({ _id: replayData.targetID, roomID, hideFor: { $ne: userID } })
@@ -816,6 +861,8 @@ io.on("connection", (socket) => {
     }
 
     msg.reactions = reactions;
+    const reactionTargetUser = String(msg.sender);
+    await createThreadReactionEvent(userID, roomID, msgID, reactionTargetUser, safeEmoji);
     await msg.save();
     const payload = {
       msgID,
