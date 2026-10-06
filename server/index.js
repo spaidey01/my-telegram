@@ -482,7 +482,7 @@ io.on("connection", (socket) => {
     }
 
     const source = await MessageSchema.findOne({ _id: msgID, roomID: sourceRoomID, hideFor: { $ne: userID } })
-      .populate("sender", "name username avatar _id")
+      .populate("sender", "name username _id")
       .lean();
     if (!source) return callback({ success: false, error: "Message not found" });
 
@@ -514,7 +514,7 @@ io.on("connection", (socket) => {
     );
 
     const populated = await MessageSchema.findById(forwarded._id)
-      .populate("sender", "name username avatar _id")
+      .populate("sender", "name username _id")
       .lean();
 
     io.to(targetRoomID).emit("newMessage", populated);
@@ -865,7 +865,7 @@ io.on("connection", (socket) => {
       const messages = await MessageSchema.find({ roomID: roomData._id, hideFor: { $nin: [userID] } })
         .sort({ createdAt: -1, _id: -1 })
         .limit(50)
-        .populate("sender", "name username avatar _id")
+        .populate("sender", "name username _id")
         .lean();
 
       roomData.messages = messages.reverse();
@@ -988,7 +988,13 @@ io.on("connection", (socket) => {
 
       const memberRooms = await RoomSchema.find({ participants: userID }).select("_id").lean();
       for (const room of memberRooms) {
-        io.to(room._id.toString()).emit("userProfileUpdated", updated);
+        const roomSockets = await io.in(room._id.toString()).fetchSockets();
+        await Promise.all(roomSockets.map(async (viewerSocket) => {
+          viewerSocket.emit(
+            "userProfileUpdated",
+            await sanitizeUserForViewer(updated, viewerSocket.data.userId),
+          );
+        }));
       }
     } catch (error) {
       console.error("updateUserData:", error);
