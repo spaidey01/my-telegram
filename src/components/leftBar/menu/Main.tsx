@@ -13,6 +13,7 @@ import { LuUsers } from "react-icons/lu";
 import { RiUser3Line } from "react-icons/ri";
 import { HiOutlineSpeakerphone } from "react-icons/hi";
 import { MdOutlineLockClock } from "react-icons/md";
+import { MdSchedule } from "react-icons/md";
 
 interface Props {
   updateRoute: (route: string) => void;
@@ -168,6 +169,12 @@ const Main = ({ closeMenu, updateRoute, isOpen }: Props) => {
           icon={<CiBookmark />}
           title="Saved Messages"
           onClick={openSavedMessages}
+        />
+
+        <MenuItem
+          icon={<MdSchedule />}
+          title="Scheduled Messages"
+          onClick={() => { closeMenu(); updateRoute("scheduled"); }}
         />
 
         <MenuItem
