@@ -25,6 +25,7 @@ export interface GlobalStoreProps {
   selectedMessageIds: string[];
   selectionRoomID: string | null;
   selectionMode: boolean;
+  pendingMessageJumpId: string | null;
 }
 
 interface Updater {
