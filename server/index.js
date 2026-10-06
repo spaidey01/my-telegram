@@ -207,16 +207,20 @@ io.use(async (socket, next) => {
   }
 });
 
-io.on("connection", async (socket) => {
+io.on("connection", (socket) => {
   const userID = getUserId(socket);
   const presenceRoom = `presence:${userID}`;
   socket.data.userId = userID;
   socket.join(presenceRoom);
   const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean();
-  onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
-  const currentUser = await UserSchema.findById(userID).select("lastSeenAt").lean();
-  await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
-  io.emit("userPresence", { userID, status: "online", lastSeenAt: currentUser?.lastSeenAt ?? null });
+  onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id);
+
+  const initializePresence = async () => {
+    const currentUser = await UserSchema.findById(userID).select("lastSeenAt").lean();
+    await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
+    io.emit("userPresence", { userID, status: "online", lastSeenAt: currentUser?.lastSeenAt ?? null });
+  };
+  void initializePresence();
 
   const broadcastOnlineUsers = () => {
     const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
