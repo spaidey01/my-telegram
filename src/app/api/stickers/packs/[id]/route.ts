@@ -13,7 +13,7 @@ const getAuth = async () => {
   const decoded = token ? tokenDecoder(token) : false;
   if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") return null;
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean();
+  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null;
   return user ? String(user._id) : null;
 };
 
