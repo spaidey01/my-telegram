@@ -11,7 +11,6 @@ import useSockets from "@/stores/useSockets";
 import VoiceMessagePlayer from "./voice/VoiceMessagePlayer";
 import { IoMdCheckmark } from "react-icons/io";
 import useModalStore from "@/stores/modalStore";
-import useGlobalStore from "@/stores/globalStore";
 import ProfileGradients from "../modules/ProfileGradients";
 import { IoTimeOutline } from "react-icons/io5";
 import { TbExclamationCircle } from "react-icons/tb";
