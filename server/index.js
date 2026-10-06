@@ -207,18 +207,24 @@ io.use(async (socket, next) => {
   }
 });
 
-io.on("connection", (socket) => {
+io.on("connection", async (socket) => {
   const userID = getUserId(socket);
+  const presenceRoom = `presence:${userID}`;
+  socket.data.userId = userID;
+  socket.join(presenceRoom);
   const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean();
   onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
+  const currentUser = await UserSchema.findById(userID).select("lastSeenAt").lean();
   await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
-  io.emit("userPresence", { userID, status: "online", lastSeenAt: null });
+  io.emit("userPresence", { userID, status: "online", lastSeenAt: currentUser?.lastSeenAt ?? null });
 
-  const broadcastOnlineUsers = () => {
-    const ids = [...onlineUsers.keys()].map((userID) => ({ userID }));
+  const broadcastOnlineUsers = async () => {
+    const sockets = await io.fetchSockets();
+    const ids = [...new Set(sockets.map((remoteSocket) => remoteSocket.data?.userId).filter(Boolean))]
+      .map((id) => ({ userID: id }));
     io.emit("updateOnlineUsers", ids);
   };
-  broadcastOnlineUsers();
+  await broadcastOnlineUsers();
 
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
@@ -1083,7 +1089,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", async () => {
     clearInterval(sessionCheckTimer);
     const typingRooms = [...typingByRoom.entries()];
     for (const [roomID, members] of typingRooms) {
@@ -1101,8 +1107,12 @@ io.on("connection", (socket) => {
     }
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
-    if (!sockets?.size) {
-      onlineUsers.delete(userID);
+    if (!sockets?.size) onlineUsers.delete(userID);
+
+    // The presence room is shared through the Socket.IO adapter, so this check
+    // remains correct when the same user is connected to another server node.
+    const remainingSockets = await io.in(presenceRoom).fetchSockets();
+    if (remainingSockets.length === 0) {
       const lastSeenAt = new Date();
       await UserSchema.updateOne(
         { _id: userID },
@@ -1110,7 +1120,8 @@ io.on("connection", (socket) => {
       );
       io.emit("userPresence", { userID, status: "offline", lastSeenAt });
     }
-    broadcastOnlineUsers();
+
+    await broadcastOnlineUsers();
   });
 });
 
