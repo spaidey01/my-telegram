@@ -17,8 +17,6 @@ const getAuth = async () => {
   return user ? String(user._id) : null;
 };
 
-const normalizeIds = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id)))].slice(0, 100) : [];
-
 export async function GET() {
   const userId = await getAuth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
