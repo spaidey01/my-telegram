@@ -2,7 +2,7 @@ import Room from "@/models/room";
 import User from "@/models/user";
 import { Socket } from "socket.io-client";
 import { create } from "zustand";
-import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection } from "@/utils/messageSelection";
+import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "@/utils/messageSelection";
 
 export interface MessageSelectionState {
   selectedMessageIds: string[];
@@ -41,6 +41,7 @@ interface Updater {
   selectAllMessages: (roomID: string, messageIDs: string[]) => void;
   clearMessageSelection: () => void;
   pruneMessageSelection: (roomID: string, messageIDs: string[]) => void;
+  replaceMessageSelection: (roomID: string, oldMessageID: string, newMessageID: string) => void;
 }
 
 const emptySelection = EMPTY_MESSAGE_SELECTION;
