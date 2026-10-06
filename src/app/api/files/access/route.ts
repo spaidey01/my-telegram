@@ -62,7 +62,7 @@ export async function GET(req: Request) {
       }
       if (roomRef && !Array.isArray(roomRef)) canAccess = true;
       if (!canAccess && key.startsWith("images/")) {
-        const owner = await UserSchema.findOne({ avatar: accessUrl }).select("_id").lean();
+        const owner = await UserSchema.findOne({ avatar: accessUrl }).select("_id").lean() as { _id: { toString(): string } } | null;
         canAccess = Boolean(owner && await canViewPrivacy(owner._id.toString(), userId, "profilePhoto"));
       }
     }
