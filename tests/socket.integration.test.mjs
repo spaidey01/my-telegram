@@ -8,7 +8,7 @@ import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
-import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection } from "../src/utils/messageSelection.js";
+import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
 process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
 process.env.secretKey ||= "integration-test-secret-012345678901234567890123";
