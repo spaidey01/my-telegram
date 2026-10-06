@@ -79,6 +79,8 @@ const onlineUsers = new Map();
 const typingByRoom = new Map();
 const activeCalls = new Map();
 const CALL_RING_TIMEOUT_MS = 30_000;
+const CALL_RECONNECT_GRACE_MS = 20_000;
+const CALL_RETRY_LIMIT = 2;
 const CALL_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const eventBuckets = new Map();
 const MAX_EVENT_BUCKETS = 50_000;
@@ -866,6 +868,28 @@ io.on("connection", (socket) => {
     callback({ success: true });
   });
 
+  on("call:reconnect", async ({ callId }, callback = () => {}) => {
+    const c = activeCalls.get(callId);
+    if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
+    if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
+    if (c.caller === userID) c.callerSocketId = socket.id;
+    if (c.callee === userID) c.calleeSocketId = socket.id;
+    const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
+    io.sockets.sockets.get(targetSocketId)?.emit("call:peer-reconnected", { callId });
+    socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type });
+    callback({ success: true });
+  });
+
+  on("call:retry", async ({ callId }, callback = () => {}) => {
+    const c = activeCalls.get(callId);
+    if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
+    if (c.retryCount >= CALL_RETRY_LIMIT) return callback({ success: false, error: "Retry limit reached" });
+    c.retryCount += 1;
+    const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
+    io.sockets.sockets.get(targetSocketId)?.emit("call:retry", { callId, attempt: c.retryCount });
+    callback({ success: true, attempt: c.retryCount });
+  });
+
   on("call:offer", async ({ callId, description }) => {
     const c = activeCalls.get(callId);
     if (!c || c.caller !== userID || socket.id !== c.callerSocketId || !description?.sdp || !c.calleeSocketId) return;
@@ -1317,14 +1341,29 @@ io.on("connection", (socket) => {
       if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
     }
     for (const [callId, c] of activeCalls) {
-      if (c.caller === userID || c.callee === userID) {
-        const target = c.caller === userID ? c.callee : c.caller;
-        for (const sid of onlineUsers.get(target) || []) {
-          io.sockets.sockets.get(sid)?.emit("call:ended", { callId, reason: "disconnected" });
-        }
-        if (c.timer) clearTimeout(c.timer);
-        activeCalls.delete(callId);
+      const isCaller = c.caller === userID && c.callerSocketId === socket.id;
+      const isCallee = c.callee === userID && c.calleeSocketId === socket.id;
+      if (!isCaller && !isCallee) continue;
+      const replacementSocketId = [...(onlineUsers.get(userID) || [])].find((id) => id !== socket.id);
+      if (replacementSocketId) {
+        if (isCaller) c.callerSocketId = replacementSocketId;
+        if (isCallee) c.calleeSocketId = replacementSocketId;
+        const peerSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
+        io.sockets.sockets.get(peerSocketId)?.emit("call:peer-reconnecting", { callId });
+        continue;
       }
+      const peerSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
+      io.sockets.sockets.get(peerSocketId)?.emit("call:peer-reconnecting", { callId });
+      if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
+      c.reconnectTimer = setTimeout(() => {
+        const active = activeCalls.get(callId);
+        if (!active) return;
+        const currentSocketId = isCaller ? active.callerSocketId : active.calleeSocketId;
+        if (currentSocketId !== socket.id) return;
+        io.sockets.sockets.get(peerSocketId)?.emit("call:ended", { callId, reason: "disconnected" });
+        activeCalls.delete(callId);
+      }, CALL_RECONNECT_GRACE_MS);
+      c.reconnectTimer.unref?.();
     }
     const sockets = onlineUsers.get(userID);
     sockets?.delete(socket.id);
