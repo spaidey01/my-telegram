@@ -12,6 +12,9 @@ import FileSchema from "../src/schemas/fileSchema.js";
 import StickerSchema from "../src/schemas/stickerSchema.js";
 import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
+import CallSchema from "../src/schemas/callSchema.js";
+import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
+import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 
@@ -237,6 +240,7 @@ const sanitizeStickerData = async (data, userID) => {
 };
 
 await connectToDB();
+setInterval(() => { void processScheduledMessages(); }, 5000).unref();
 
 const getUserId = (socket) => socket.userId;
 
@@ -250,6 +254,65 @@ const isMember = async (roomID, userID) => {
 
 const isAdmin = (room, userID) =>
   !!room && (room.creator?.toString() === userID || room.admins?.some((id) => id.toString() === userID));
+const GROUP_PERMISSION_KEYS = ["sendMessages","sendMedia","sendStickers","sendLinks","addMembers","pinMessages","changeInfo","manageMembers"];
+const hasGroupPermission = (room, userID, key) => {
+  if (!room || room.type !== "group") return true;
+  if (isAdmin(room, userID)) return true;
+  if (room.bannedUsers?.some((id) => id.toString() === userID)) return false;
+  if (room.restrictedUsers?.some((id) => id.toString() === userID)) return false;
+  if (room.mutedUsers?.some((id) => id.toString() === userID) && key === "sendMessages") return false;
+  const member = room.memberPermissions?.get?.(userID) || room.memberPermissions?.[userID] || {};
+  if (typeof member[key] === "boolean") return member[key];
+  return room.groupPermissions?.[key] !== false;
+};
+const channelCanPost = (room, userID) => room?.type !== "channel" || isAdmin(room, userID);
+const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\\s)@([a-zA-Z0-9_]{3,20})\\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase())];
+const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\\s)#[\\p{L}\\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase())];
+const recordCallHistory = async (call, status, endedAt = new Date()) => {
+  if (!call?.callId) return;
+  await CallSchema.updateOne(
+    { callId: call.callId },
+    { $setOnInsert: {
+      callId: call.callId, caller: call.caller, receiver: call.callee, roomID: call.roomID,
+      type: call.type, status, startedAt: new Date(call.createdAt), answeredAt: call.acceptedAt ? new Date(call.acceptedAt) : null, endedAt
+    } },
+    { upsert: true },
+  );
+};
+const processScheduledMessages = async () => {
+  const now = new Date();
+  const jobs = await ScheduledMessageSchema.find({ status: "pending", scheduledFor: { $lte: now } }).sort({ scheduledFor: 1 }).limit(25).lean();
+  for (const job of jobs) {
+    const claimed = await ScheduledMessageSchema.findOneAndUpdate(
+      { _id: job._id, status: "pending" },
+      { $set: { status: "processing" } },
+      { new: true },
+    );
+    if (!claimed) continue;
+    try {
+      const room = await isMember(claimed.room.toString(), claimed.sender.toString());
+      if (!room || (room.type === "channel" && !isAdmin(room, claimed.sender.toString()))) throw new Error("Forbidden");
+      const p = claimed.payload || {};
+      const textValue = typeof p.message === "string" ? p.message.slice(0,10000) : "";
+      const msg = await MessageSchema.create({
+        sender: claimed.sender, roomID: claimed.room, message: textValue, seen: [], hideFor: [],
+        isEdited: false, status: "sent", kind: room.type === "channel" ? "post" : "message",
+        mentions: parseMentionsServer(textValue), hashtags: parseHashtagsServer(textValue),
+        voiceData: await sanitizeVoiceData(p.voiceData, claimed.sender.toString()),
+        attachmentData: await sanitizeAttachmentData(p.attachmentData, claimed.sender.toString()),
+        stickerData: await sanitizeStickerData(p.stickerData, claimed.sender.toString()),
+      });
+      await RoomSchema.updateOne({ _id: claimed.room }, { $set: { lastMessageId: msg._id, lastMessageAt: msg.createdAt } });
+      const populated = await MessageSchema.findById(msg._id).populate("sender","name username avatar _id").lean();
+      await emitVisibleMessage(claimed.room.toString(),"newMessage",populated);
+      await emitVisibleMessage(claimed.room.toString(),"updateLastMsgData",{roomID:claimed.room.toString(),msgData:populated});
+      await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"sent",sentAt:new Date()}});
+    } catch (error) {
+      await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"failed",error:String(error?.message||error).slice(0,500)}});
+    }
+  }
+};
+
 
 const isMessageInRoom = async (msgID, roomID) => {
   if (!isValidId(msgID) || !isValidId(roomID)) return null;
@@ -360,6 +423,8 @@ io.on("connection", (socket) => {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
       if (room.type === "channel" && !isAdmin(room, userID)) return callback({ success: false, error: "Forbidden" });
+      if (room.type === "group" && !hasGroupPermission(room, userID, "sendMessages")) return callback({ success: false, error: "You cannot send messages in this group" });
+      if (room.type === "group" && room.restrictedUsers?.some((id) => id.toString() === userID)) return callback({ success: false, error: "You are restricted" });
       if (room.type === "private") {
         const recipientID = room.participants.map((id) => id.toString()).find((id) => id !== userID);
         if (recipientID && !(await canViewPrivacy(recipientID, userID, "messages"))) {
@@ -367,6 +432,9 @@ io.on("connection", (socket) => {
         }
       }
       if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
+      if (room.type === "group" && attachmentData && !hasGroupPermission(room,userID,"sendMedia")) return callback({success:false,error:"Media sending is disabled"});
+      if (room.type === "group" && stickerData && !hasGroupPermission(room,userID,"sendStickers")) return callback({success:false,error:"Sticker sending is disabled"});
+      if (room.type === "group" && /https?:\\/\\//i.test(message) && !hasGroupPermission(room,userID,"sendLinks")) return callback({success:false,error:"Links are disabled"});
 
       let scopedTempId;
       if (tempId !== undefined && tempId !== null) {
@@ -390,6 +458,9 @@ io.on("connection", (socket) => {
         createdAt: Date.now(),
         tempId: scopedTempId,
         status: "sent",
+        kind: room.type === "channel" ? "post" : "message",
+        mentions: parseMentionsServer(message),
+        hashtags: parseHashtagsServer(message),
       };
 
       const newMsg = await MessageSchema.create(msgData);
@@ -481,6 +552,9 @@ io.on("connection", (socket) => {
           attachmentData: await sanitizeAttachmentData(message.attachmentData, userID),
           stickerData: await sanitizeStickerData(message.stickerData, userID),
           status: "sent",
+          kind: newRoom.type === "channel" ? "post" : "message",
+          mentions: parseMentionsServer(message.message),
+          hashtags: parseHashtagsServer(message.message),
         });
         newRoom.lastMessageId = newMsg._id;
         newRoom.lastMessageAt = newMsg.createdAt;
@@ -888,6 +962,7 @@ io.on("connection", (socket) => {
       const calleeSockets = await io.in(`presence:${active.callee}`).fetchSockets();
       const ids = new Set([active.callerSocketId, ...calleeSockets.map((connectedSocket) => connectedSocket.id)]);
       for (const socketID of ids) io.to(socketID).emit("call:ended", { callId, reason: "timeout" });
+      await recordCallHistory(active, "missed");
       await deleteActiveCall(callId);
       })();
     }, CALL_RING_TIMEOUT_MS);
@@ -1001,8 +1076,77 @@ io.on("connection", (socket) => {
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
     if (targetSocketId) io.to(targetSocketId).emit("call:ended", { callId, reason: "ended" });
     if (c.timer) clearTimeout(c.timer);
+    await recordCallHistory(c, c.acceptedAt ? "completed" : "cancelled");
     await deleteActiveCall(callId);
     callback({ success: true });
+  });
+
+
+  on("group:leave", async ({ roomID }, callback = () => {}) => {
+    const room = await isMember(roomID,userID);
+    if (!room || room.type !== "group") return callback({success:false,error:"Forbidden"});
+    if (room.creator?.toString() === userID) return callback({success:false,error:"Transfer ownership before leaving"});
+    room.participants = room.participants.filter(id=>id.toString()!==userID);
+    room.admins = room.admins.filter(id=>id.toString()!==userID);
+    await room.save();
+    await io.in(`presence:${userID}`).socketsLeave(roomID);
+    io.to(roomID).emit("group:member:left",{roomID,userID});
+    callback({success:true});
+  });
+  on("group:member:add", async ({ roomID, memberID }, callback = () => {}) => {
+    const room = await isMember(roomID,userID);
+    if (!room || room.type !== "group" || !isAdmin(room,userID) || !hasGroupPermission(room,userID,"addMembers") || !isValidId(memberID)) return callback({success:false,error:"Forbidden"});
+    if (room.bannedUsers?.some(id=>id.toString()===memberID)) return callback({success:false,error:"Member is banned"});
+    if (!await UserSchema.exists({_id:memberID})) return callback({success:false,error:"User not found"});
+    if (!room.participants.some(id=>id.toString()===memberID)) room.participants.push(memberID);
+    await room.save(); await io.in(`presence:${memberID}`).socketsJoin(roomID); io.to(roomID).emit("group:member:added",{roomID,memberID}); callback({success:true});
+  });
+  on("group:admin", async ({ roomID, memberID, action }, callback = () => {}) => {
+    const room=await isMember(roomID,userID);
+    if(!room||room.type!=="group"||room.creator?.toString()!==userID||!["promote","demote"].includes(action)||!isValidId(memberID)||!room.participants.some(id=>id.toString()===memberID)) return callback({success:false,error:"Forbidden"});
+    if(action==="promote"&&!room.admins.some(id=>id.toString()===memberID)) room.admins.push(memberID);
+    if(action==="demote") room.admins=room.admins.filter(id=>id.toString()!==memberID);
+    await room.save(); io.to(roomID).emit("group:admin",{roomID,memberID,action}); callback({success:true});
+  });
+  on("group:transferOwnership", async ({ roomID, memberID }, callback = () => {}) => {
+    const room=await isMember(roomID,userID);
+    if(!room||room.type!=="group"||room.creator?.toString()!==userID||!isValidId(memberID)||!room.participants.some(id=>id.toString()===memberID)) return callback({success:false,error:"Forbidden"});
+    room.creator=memberID; if(!room.admins.some(id=>id.toString()===memberID)) room.admins.push(memberID); await room.save(); io.to(roomID).emit("group:ownership",{roomID,memberID}); callback({success:true});
+  });
+  on("group:permissions", async ({ roomID, memberID, permissions, group }, callback = () => {}) => {
+    const room=await isMember(roomID,userID);
+    if(!room||room.type!=="group"||!isAdmin(room,userID)||!hasGroupPermission(room,userID,"manageMembers")) return callback({success:false,error:"Forbidden"});
+    const clean={}; for(const key of GROUP_PERMISSION_KEYS) if(typeof permissions?.[key]==="boolean") clean[key]=permissions[key];
+    if(group===true){ room.groupPermissions={...(room.groupPermissions?.toObject?.()||room.groupPermissions||{}),...clean}; }
+    else if(isValidId(memberID)){ room.memberPermissions.set(memberID,clean); }
+    else return callback({success:false,error:"Invalid memberID"});
+    await room.save(); io.to(roomID).emit("group:permissions",{roomID,memberID:memberID||null,permissions:clean,group:Boolean(group)}); callback({success:true});
+  });
+  on("group:moderation", async ({ roomID, memberID, action }, callback = () => {}) => {
+    const room=await isMember(roomID,userID);
+    if(!room||room.type!=="group"||!isAdmin(room,userID)||!isValidId(memberID)||memberID===room.creator?.toString()||!room.participants.some(id=>id.toString()===memberID)) return callback({success:false,error:"Forbidden"});
+    for(const field of ["bannedUsers","restrictedUsers","mutedUsers"]) room[field]=room[field].filter(id=>id.toString()!==memberID);
+    if(action==="ban") room.bannedUsers.push(memberID);
+    else if(action==="restrict") room.restrictedUsers.push(memberID);
+    else if(action==="mute") room.mutedUsers.push(memberID);
+    else if(action!=="unban") return callback({success:false,error:"Invalid action"});
+    await room.save(); io.to(roomID).emit("group:moderation",{roomID,memberID,action}); callback({success:true});
+  });
+  on("channel:leave", async ({ roomID }, callback = () => {}) => {
+    const room=await isMember(roomID,userID); if(!room||room.type!=="channel"||room.creator?.toString()===userID)return callback({success:false,error:"Forbidden"});
+    room.participants=room.participants.filter(id=>id.toString()!==userID); room.admins=room.admins.filter(id=>id.toString()!==userID); await room.save(); await io.in(`presence:${userID}`).socketsLeave(roomID); io.to(roomID).emit("channel:subscriberRemoved",{roomID,userID}); callback({success:true});
+  });
+  on("channel:subscriber:remove", async ({ roomID, memberID }, callback = () => {}) => {
+    const room=await isMember(roomID,userID); if(!room||room.type!=="channel"||!isAdmin(room,userID)||!isValidId(memberID))return callback({success:false,error:"Forbidden"});
+    room.participants=room.participants.filter(id=>id.toString()!==memberID); room.admins=room.admins.filter(id=>id.toString()!==memberID); await room.save(); await io.in(`presence:${memberID}`).socketsLeave(roomID); io.to(roomID).emit("channel:subscriberRemoved",{roomID,userID:memberID}); callback({success:true});
+  });
+  on("channel:visibility", async ({ roomID, visibility }, callback = () => {}) => {
+    const room=await isMember(roomID,userID); if(!room||room.type!=="channel"||!isAdmin(room,userID)||!["private","public"].includes(visibility))return callback({success:false,error:"Forbidden"});
+    room.visibility=visibility; await room.save(); io.to(roomID).emit("channel:visibility",{roomID,visibility}); callback({success:true});
+  });
+  on("group:reactions", async ({ roomID, emojis }, callback = () => {}) => {
+    const room=await isMember(roomID,userID); if(!room||!["group","channel"].includes(room.type)||!isAdmin(room,userID)||!Array.isArray(emojis)||emojis.length>50)return callback({success:false,error:"Forbidden"});
+    room.allowedReactions=[...new Set(emojis.filter(x=>typeof x==="string"&&x.trim().length<=16).map(x=>x.trim()))]; await room.save(); io.to(roomID).emit("group:reactions",{roomID,emojis:room.allowedReactions}); callback({success:true,emojis:room.allowedReactions});
   });
 
   on("getRooms", async () => {
