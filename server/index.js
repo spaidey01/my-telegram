@@ -213,7 +213,7 @@ io.on("connection", (socket) => {
   socket.data.userId = userID;
   socket.join(presenceRoom);
   const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean();
-  onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id);
+  onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
 
   const initializePresence = async () => {
     const currentUser = await UserSchema.findById(userID).select("lastSeenAt").lean();
