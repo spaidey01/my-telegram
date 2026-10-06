@@ -25,8 +25,8 @@ export async function GET(req: Request) {
   }
 
   await connectToDB();
-  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).lean();
-  const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean() : null;
+  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).lean().then((value)=>value);
+  const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean().then((value)=>value) : null;
   if (session) await SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
   if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
