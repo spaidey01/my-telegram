@@ -852,19 +852,25 @@ io.on("connection", (socket) => {
 
     const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
     const index = reactions.findIndex((reaction) => reaction.emoji === safeEmoji);
+    let reactionAdded = false;
     if (index === -1) {
       reactions.push({ emoji: safeEmoji, userIds: [userID] });
+      reactionAdded = true;
     } else {
       const userIndex = reactions[index].userIds.findIndex((id) => id.toString() === userID);
-      if (userIndex === -1) reactions[index].userIds.push(userID);
-      else reactions[index].userIds.splice(userIndex, 1);
+      if (userIndex === -1) {
+        reactions[index].userIds.push(userID);
+        reactionAdded = true;
+      } else reactions[index].userIds.splice(userIndex, 1);
       if (!reactions[index].userIds.length) reactions.splice(index, 1);
     }
 
     msg.reactions = reactions;
-    const reactionTargetUser = String(msg.sender);
-    await createThreadReactionEvent(userID, roomID, msgID, reactionTargetUser, safeEmoji);
     await msg.save();
+    if (reactionAdded) {
+      const reactionTargetUser = String(msg.sender);
+      await createThreadReactionEvent(userID, roomID, msgID, reactionTargetUser, safeEmoji);
+    }
     const payload = {
       msgID,
       roomID,
