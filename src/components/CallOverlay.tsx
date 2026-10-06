@@ -6,7 +6,7 @@ import useSockets from "@/stores/useSockets";
 type CallType="audio"|"video";
 type CallState="idle"|"calling"|"incoming"|"connecting"|"connected"|"reconnecting"|"failed";
 type Quality="excellent"|"good"|"poor"|"unknown";
-type CallInfo={callId:string;roomID:string;type:CallType;name:string;avatar?:string};
+type CallInfo={callId:string;roomID:string;type:CallType;name:string;avatar?:string;isCaller:boolean};
 type TurnConfigResponse={iceServers:RTCIceServer[];ttl:number|null;expiresAt:number|null;mode:"ephemeral"|"static"};
 
 const STUN_FALLBACK:RTCIceServer={urls:"stun:stun.l.google.com:19302"};
