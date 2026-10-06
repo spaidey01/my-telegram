@@ -38,6 +38,9 @@ const VoiceMessageRecorder = ({
   const [timer, setTimer] = useState(0);
   const [voiceBlob, setVoiceBlob] = useState<Blob | null>(null);
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const uploadTaskRef = useRef<{ cancel: () => void } | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -531,7 +534,10 @@ const VoiceMessageRecorder = ({
 
           setAudioURL(url);
           setVoiceBlob(audioBlob);
-          await uploadVoice(file, audioBlob);
+          setAudioURL(url);
+          setVoiceBlob(audioBlob);
+          setTimer(timerRef.current);
+          setIsLoading(false);
         }
         audioChunksRef.current = [];
       };
