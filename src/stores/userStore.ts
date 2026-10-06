@@ -28,6 +28,13 @@ const useUserStore = create<UserStore>((set) => ({
   biography: "",
   status: "offline",
   lastSeenAt: null,
+  privacySettings: {
+    lastSeen: "everyone",
+    profilePhoto: "everyone",
+    phone: "everyone",
+    calls: "everyone",
+    messages: "everyone",
+  },
   updatedAt: "",
   roomMessageTrack: [],
   isInitialSet: false,
