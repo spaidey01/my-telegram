@@ -108,7 +108,6 @@ const VoiceMessagePlayer = memo(({ _id, voiceDataProp, msgData, isFromMe, myId, 
       </button>
       {isDownloaded && <button type="button" aria-label="پاک کردن cache" onClick={(e) => { e.stopPropagation(); void clearVoiceCache(_id); }} className="hidden" />}
       {isCurrent && <span className="sr-only">{currentTime}</span>}
-      <audio ref={audioRef} preload="metadata" className="hidden" />
     </div>
   );
 });
