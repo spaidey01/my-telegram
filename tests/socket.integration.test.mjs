@@ -8,6 +8,7 @@ import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
+import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection } from "../src/utils/messageSelection.js";
 
 process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/my_telegram_test";
 process.env.secretKey ||= "integration-test-secret-012345678901234567890123";
@@ -473,6 +474,110 @@ test("room read marker rejects non-members and invalid target messages", async (
 });
 
 
+
+test("multi-select state supports select, deselect, select all, prune deleted and rejects cross-room selection", () => {
+  const roomA = "room-a";
+  const roomB = "room-b";
+  let state = enterMessageSelection(roomA, "m1");
+  assert.deepEqual(state.selectedMessageIds, ["m1"]);
+  state = toggleMessageSelection(state, roomA, "m2");
+  assert.deepEqual(state.selectedMessageIds, ["m1", "m2"]);
+  state = toggleMessageSelection(state, roomA, "m1");
+  assert.deepEqual(state.selectedMessageIds, ["m2"]);
+
+  const blocked = toggleMessageSelection(state, roomB, "m3");
+  assert.deepEqual(blocked, state);
+
+  state = selectAllMessages(roomA, ["m1", "m2", "m2", "m3"]);
+  assert.deepEqual(state.selectedMessageIds, ["m1", "m2", "m3"]);
+
+  state = pruneMessageSelection(state, roomA, ["m1", "m3"]);
+  assert.deepEqual(state.selectedMessageIds, ["m1", "m3"]);
+
+  state = pruneMessageSelection(state, roomA, []);
+  assert.deepEqual(state, EMPTY_MESSAGE_SELECTION);
+});
+
+test("multi-select server actions cannot cross rooms", async () => {
+  const sourceRoom = await RoomSchema.create({
+    name: "Multi Select Source",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const otherRoom = await RoomSchema.create({
+    name: "Multi Select Other",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+    const message = await MessageSchema.create({
+      sender: user._id,
+      message: "multi-select source",
+      roomID: sourceRoom._id,
+      seen: [],
+      hideFor: [],
+    });
+
+    socket.emit("pinMessage", message._id.toString(), otherRoom._id.toString(), false, true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(Boolean((await MessageSchema.findById(message._id)).pinnedAt), false);
+
+    const crossRoomForward = await new Promise((resolve) => {
+      socket.emit(
+        "forwardMessage",
+        {
+          msgID: message._id.toString(),
+          sourceRoomID: otherRoom._id.toString(),
+          targetRoomID: sourceRoom._id.toString(),
+        },
+        resolve,
+      );
+    });
+    assert.equal(crossRoomForward.success, false);
+
+    const crossRoomDelete = waitFor(socket, "error");
+    socket.emit("deleteMsg", {
+      forAll: true,
+      msgID: message._id.toString(),
+      roomID: otherRoom._id.toString(),
+    });
+    assert.equal((await crossRoomDelete).message, "Forbidden");
+    assert.ok(await MessageSchema.exists({ _id: message._id }));
+
+    socket.emit("pinMessage", message._id.toString(), sourceRoom._id.toString(), false, true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.ok((await MessageSchema.findById(message._id)).pinnedAt);
+
+    socket.emit("deleteMsg", {
+      forAll: true,
+      msgID: message._id.toString(),
+      roomID: sourceRoom._id.toString(),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(await MessageSchema.exists({ _id: message._id }), null);
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: { $in: [sourceRoom._id, otherRoom._id] } });
+    await RoomSchema.deleteMany({ _id: { $in: [sourceRoom._id, otherRoom._id] } });
+  }
+});
 
 test("privacy permissions enforce everyone, contacts and nobody for every field", async () => {
   const room = await RoomSchema.create({
