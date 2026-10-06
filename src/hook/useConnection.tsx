@@ -1,7 +1,7 @@
 import Loading from "@/components/modules/ui/Loading";
 import Room from "@/models/room";
 import User from "@/models/user";
-import { GlobalStoreProps } from "@/stores/globalStore";
+import { GlobalStoreProps, ThreadEvent } from "@/stores/globalStore";
 import { UserStoreUpdater } from "@/stores/userStore";
 import { SocketsProps } from "@/stores/useSockets";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
@@ -324,7 +324,7 @@ const useConnection = ({
     socket.on("channel:role", onChannelRole);
     socket.on("channel:role:remove", onChannelRoleRemove);
 
-    socket.on("thread:event", (event) => {
+    socket.on("thread:event", (event: ThreadEvent) => {
       if (!event || typeof event._id !== "string" || typeof event.type !== "string") return;
       setter((prev) => ({
         threadEvents: [
@@ -513,6 +513,7 @@ const useConnection = ({
         "updateRoomData",
         "channel:role",
         "channel:role:remove",
+        "thread:event",
         "newMessageIdUpdate",
       ].forEach((event) => socket.off(event));
     };
