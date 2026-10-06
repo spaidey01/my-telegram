@@ -547,12 +547,15 @@ test("privacy permissions enforce everyone, contacts and nobody for every field"
     );
 
     const hiddenPresencePromise = waitForUserPresence(observer, otherUser._id.toString());
+    const hiddenOnlineListPromise = waitFor(observer, "updateOnlineUsers");
     const hiddenReconnect = makeSocket(otherUser._id);
     try {
       await waitFor(hiddenReconnect, "connect");
       const hiddenPresence = await hiddenPresencePromise;
+      const hiddenOnlineList = await hiddenOnlineListPromise;
       assert.equal(hiddenPresence.status, "offline");
       assert.equal(hiddenPresence.lastSeenAt, null);
+      assert.equal(hiddenOnlineList.some((entry) => entry.userID === otherUser._id.toString()), false);
     } finally {
       hiddenReconnect.disconnect();
     }
