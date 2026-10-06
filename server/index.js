@@ -78,12 +78,63 @@ export { io };
 const onlineUsers = new Map();
 const typingByRoom = new Map();
 const activeCalls = new Map();
+const CALL_REDIS_SET = "stargram:active-call-ids";
+const CALL_REDIS_PREFIX = "stargram:active-call:";
 const CALL_RING_TIMEOUT_MS = 30_000;
 const CALL_RECONNECT_GRACE_MS = 20_000;
 const CALL_RETRY_LIMIT = 2;
 const CALL_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const eventBuckets = new Map();
 const MAX_EVENT_BUCKETS = 50_000;
+
+const callRedisKey = (callId) => `${CALL_REDIS_PREFIX}${callId}`;
+const serializeCall = (call) => {
+  const { timer, reconnectTimer, ...stored } = call;
+  return stored;
+};
+const getActiveCall = async (callId) => {
+  if (!redisUrl) return activeCalls.get(callId) || null;
+  try {
+    const raw = await redisPubClient.get(callRedisKey(callId));
+    if (!raw) { activeCalls.delete(callId); return null; }
+    const remote = JSON.parse(raw);
+    const local = activeCalls.get(callId);
+    return { ...remote, timer: local?.timer ?? null, reconnectTimer: local?.reconnectTimer ?? null };
+  } catch (error) {
+    console.error("Redis call-state read failure:", error);
+    return activeCalls.get(callId) || null;
+  }
+};
+const listActiveCalls = async () => {
+  if (!redisUrl) return [...activeCalls.values()];
+  try {
+    const ids = await redisPubClient.sMembers(CALL_REDIS_SET);
+    if (!ids.length) return [];
+    const values = await redisPubClient.mGet(ids.map(callRedisKey));
+    const calls = [];
+    for (let i = 0; i < values.length; i += 1) {
+      if (!values[i]) { await redisPubClient.sRem(CALL_REDIS_SET, ids[i]); continue; }
+      try { calls.push(JSON.parse(values[i])); }
+      catch { await redisPubClient.del(callRedisKey(ids[i])); await redisPubClient.sRem(CALL_REDIS_SET, ids[i]); }
+    }
+    return calls;
+  } catch (error) {
+    console.error("Redis call-state list failure:", error);
+    return [...activeCalls.values()];
+  }
+};
+const setActiveCall = async (callId, call, ttlMs = null) => {
+  activeCalls.set(callId, call);
+  if (!redisUrl) return;
+  await redisPubClient.set(callRedisKey(callId), JSON.stringify(serializeCall(call)), ttlMs ? { PX: ttlMs } : {});
+  await redisPubClient.sAdd(CALL_REDIS_SET, callId);
+};
+const deleteActiveCall = async (callId) => {
+  activeCalls.delete(callId);
+  if (!redisUrl) return;
+  await redisPubClient.del(callRedisKey(callId));
+  await redisPubClient.sRem(CALL_REDIS_SET, callId);
+};
 
 const allowEvent = async (userID, event, limit, windowMs) => {
   if (redisUrl) {
@@ -792,7 +843,7 @@ io.on("connection", (socket) => {
     if (!(await canViewPrivacy(targetUserID, userID, "calls"))) {
       return callback({ success: false, error: "Calls are restricted by this user" });
     }
-    if ([...activeCalls.values()].some((c) => c.caller === targetUserID || c.callee === targetUserID)) {
+    if ((await listActiveCalls()).some((c) => c.caller === targetUserID || c.callee === targetUserID)) {
       return callback({ success: false, error: "User is busy" });
     }
 
@@ -821,16 +872,16 @@ io.on("connection", (socket) => {
     };
 
     call.timer = setTimeout(() => {
-      const active = activeCalls.get(callId);
+      const active = await getActiveCall(callId);
       if (!active) return;
       const ids = new Set([active.callerSocketId, ...(onlineUsers.get(active.callee) || [])]);
       for (const socketID of ids) {
         io.sockets.sockets.get(socketID)?.emit("call:ended", { callId, reason: "timeout" });
       }
-      activeCalls.delete(callId);
+      await deleteActiveCall(callId);
     }, CALL_RING_TIMEOUT_MS);
     call.timer.unref?.();
-    activeCalls.set(callId, call);
+    await setActiveCall(callId, call, CALL_RING_TIMEOUT_MS);
 
     for (const sid of targetSockets) {
       io.sockets.sockets.get(sid)?.emit("call:incoming", { callId, roomID, type, from: visibleCaller });
@@ -846,14 +897,14 @@ io.on("connection", (socket) => {
   });
 
   on("call:accept", async ({ callId }, callback = () => {}) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || c.callee !== userID) return callback({ success: false, error: "Call not found" });
     c.calleeSocketId = socket.id;
     if (c.timer) clearTimeout(c.timer);
 
     const callerSocket = io.sockets.sockets.get(c.callerSocketId);
     if (!callerSocket) {
-      activeCalls.delete(callId);
+      await deleteActiveCall(callId);
       return callback({ success: false, error: "Caller disconnected" });
     }
     callerSocket.emit("call:accepted", { callId, roomID: c.roomID, type: c.type });
@@ -861,18 +912,18 @@ io.on("connection", (socket) => {
   });
 
   on("call:reject", async ({ callId, reason = "rejected" }, callback = () => {}) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
     if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:rejected", { callId, reason });
     if (c.timer) clearTimeout(c.timer);
     if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
-    activeCalls.delete(callId);
+    await deleteActiveCall(callId);
     callback({ success: true });
   });
 
   on("call:reconnect", async ({ callId }, callback = () => {}) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
     const wasCaller = c.caller === userID;
@@ -890,7 +941,7 @@ io.on("connection", (socket) => {
   });
 
   on("call:retry", async ({ callId }, callback = () => {}) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     if (c.retryCount >= CALL_RETRY_LIMIT) return callback({ success: false, error: "Retry limit reached" });
     c.retryCount += 1;
@@ -900,7 +951,7 @@ io.on("connection", (socket) => {
   });
 
   on("call:offer", async ({ callId, description, restart = false }) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || !description?.sdp) return;
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
@@ -913,13 +964,13 @@ io.on("connection", (socket) => {
   });
 
   on("call:answer", async ({ callId, description }) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || c.callee !== userID || socket.id !== c.calleeSocketId || !description?.sdp) return;
     io.sockets.sockets.get(c.callerSocketId)?.emit("call:answer", { callId, description });
   });
 
   on("call:ice", async ({ callId, candidate }) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || !candidate) return;
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
@@ -929,12 +980,12 @@ io.on("connection", (socket) => {
   });
 
   on("call:end", async ({ callId }, callback = () => {}) => {
-    const c = activeCalls.get(callId);
+    const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
     if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:ended", { callId, reason: "ended" });
     if (c.timer) clearTimeout(c.timer);
-    activeCalls.delete(callId);
+    await deleteActiveCall(callId);
     callback({ success: true });
   });
 
@@ -1356,7 +1407,7 @@ io.on("connection", (socket) => {
     for (const [roomID, members] of typingRooms) {
       if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
     }
-    for (const [callId, c] of activeCalls) {
+    for (const c of await listActiveCalls()) {\n      const callId = c.callId;
       const isCaller = c.caller === userID && c.callerSocketId === socket.id;
       const isCallee = c.callee === userID && c.calleeSocketId === socket.id;
       if (!isCaller && !isCallee) continue;
@@ -1372,12 +1423,12 @@ io.on("connection", (socket) => {
       io.sockets.sockets.get(peerSocketId)?.emit("call:peer-reconnecting", { callId });
       if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
       c.reconnectTimer = setTimeout(() => {
-        const active = activeCalls.get(callId);
+        const active = await getActiveCall(callId);
         if (!active) return;
         const currentSocketId = isCaller ? active.callerSocketId : active.calleeSocketId;
         if (currentSocketId !== socket.id) return;
         io.sockets.sockets.get(peerSocketId)?.emit("call:ended", { callId, reason: "disconnected" });
-        activeCalls.delete(callId);
+        await deleteActiveCall(callId);
       }, CALL_RECONNECT_GRACE_MS);
       c.reconnectTimer.unref?.();
     }
