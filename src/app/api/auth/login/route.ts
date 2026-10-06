@@ -39,7 +39,13 @@ export const POST = async (req: Request) => {
       if (!twoFactorOk) return Response.json({ message: "Two-factor authentication required", requires2FA: true }, { status: 401 });
       if (recovery) await UserSchema.updateOne({ _id: userData._id }, { $pull: { twoFactorBackupCodes: recovery } });
     }
-    const token = tokenGenerator(userData._id.toString(), 7, userData.sessionVersion ?? 0);
+    const session = await SessionSchema.create({
+      user: userData._id,
+      device: typeof body?.device === "string" ? body.device.slice(0,120) : "Web browser",
+      ip: getRequestIp(req),
+      userAgent: req.headers.get("user-agent") || "unknown",
+    });
+    const token = tokenGenerator(userData._id.toString(), 7, userData.sessionVersion ?? 0, session._id.toString());
     (await cookies()).set("token", token, {
       httpOnly: true,
       path: "/",
@@ -48,13 +54,7 @@ export const POST = async (req: Request) => {
       secure: process.env.NODE_ENV === "production",
     });
 
-    await SessionSchema.create({
-      user: userData._id,
-      device: typeof body?.device === "string" ? body.device.slice(0,120) : "Web browser",
-      ip: getRequestIp(req),
-      userAgent: req.headers.get("user-agent") || "unknown",
-    });
-    const safeUser = userData.toObject();
+        const safeUser = userData.toObject();
     delete safeUser.password;
     return Response.json(safeUser, { status: 200 });
   } catch (err) {
