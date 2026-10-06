@@ -11,6 +11,13 @@ export const schema = new Schema(
     type: { type: String, enum: ["private"], default: "private" },
     status: { type: String, enum: ["online", "offline"], default: "offline" },
     lastSeenAt: { type: Date, default: null },
+    privacySettings: {
+      lastSeen: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
+      profilePhoto: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
+      phone: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
+      calls: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
+      messages: { type: String, enum: ["everyone", "contacts", "nobody"], default: "everyone" },
+    },
     password: { type: String, required: true, select: false },
     sessionVersion: { type: Number, default: 0, min: 0 },
     roomMessageTrack: { type: [{ roomId: String, scrollPos: Number }], default: [] },
