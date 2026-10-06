@@ -324,6 +324,16 @@ const useConnection = ({
     socket.on("channel:role", onChannelRole);
     socket.on("channel:role:remove", onChannelRoleRemove);
 
+    socket.on("thread:event", (event) => {
+      if (!event || typeof event._id !== "string" || typeof event.type !== "string") return;
+      setter((prev) => ({
+        threadEvents: [
+          event,
+          ...prev.threadEvents.filter((item) => item._id !== event._id),
+        ].slice(0, 100),
+      }));
+    });
+
     socket.on("updateOnlineUsers", (onlineUsers) => setter({ onlineUsers }));
     socket.on("userProfileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
       if (updatedUser._id === userId) userDataUpdater(updatedUser);
