@@ -48,6 +48,9 @@ export default function VoiceMessageRecorder({ replayData, closeEdit, closeRepla
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const previewUrlRef = useRef("");
   const roomRef = useRef<string | undefined>(selectedRoom?._id);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const waveformFrameRef = useRef<number | null>(null);
 
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -68,6 +71,39 @@ export default function VoiceMessageRecorder({ replayData, closeEdit, closeRepla
     setDuration(0);
     durationRef.current = 0;
     setState("idle");
+  }, []);
+
+  const stopWaveform = useCallback(() => {
+    if (waveformFrameRef.current !== null) cancelAnimationFrame(waveformFrameRef.current);
+    waveformFrameRef.current = null;
+    analyserRef.current = null;
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+  }, []);
+
+  const startWaveform = useCallback((stream: MediaStream) => {
+    try {
+      const context = new AudioContext();
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      analyserRef.current = analyser;
+      audioContextRef.current = context;
+      const draw = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(data);
+        setWaveform(Array.from({ length: BAR_COUNT }, (_, index) => {
+          const value = data[Math.min(data.length - 1, Math.floor(index * data.length / BAR_COUNT))] / 255;
+          return Math.max(0.12, Math.min(1, value));
+        }));
+        waveformFrameRef.current = requestAnimationFrame(draw);
+      };
+      draw();
+    } catch {
+      setWaveform(Array.from({ length: BAR_COUNT }, () => 0.2));
+    }
   }, []);
 
   const startRecording = useCallback(async () => {
@@ -153,7 +189,7 @@ export default function VoiceMessageRecorder({ replayData, closeEdit, closeRepla
       setState("idle");
       toaster("error", "دسترسی میکروفون داده نشد یا میکروفون در دسترس نیست.");
     }
-  }, [state, stopStream]);
+  }, [state, startWaveform, stopStream, stopWaveform]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
