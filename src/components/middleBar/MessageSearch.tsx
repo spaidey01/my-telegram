@@ -26,7 +26,8 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^()|[\]\\]/g, "\\$&"
 
 const MessageSearch = ({ roomId, onClose }: Props) => {
   const { rooms } = useUserStore((state) => state);
-  const { selectedRoom, setter } = useGlobalStore((state) => state);
+  const { selectedRoom, setter, setPendingMessageJump } = useGlobalStore((state) => state);
+  const [allRooms, setAllRooms] = useState(false);
   const [query, setQuery] = useState("");
   const [senderId, setSenderId] = useState("");
   const [from, setFrom] = useState("");
@@ -54,7 +55,8 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
       setLoading(true);
       setError("");
       try {
-        const params = new URLSearchParams({ query: query.trim(), roomId });
+        const params = new URLSearchParams({ query: query.trim() });
+        if (!allRooms) params.set("roomId", roomId);
         if (senderId) params.set("senderId", senderId);
         if (from) params.set("from", from);
         if (to) params.set("to", to);
@@ -72,7 +74,7 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, roomId, senderId, from, to]);
+  }, [query, roomId, senderId, from, to, allRooms]);
 
   const highlight = (text: string) => {
     if (!query.trim()) return text;
@@ -93,8 +95,8 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
     const targetRoom = rooms.find((room) => room._id === result.roomID);
     if (!targetRoom) return;
     setter({ selectedRoom: targetRoom, isRoomDetailsShown: false });
+    setPendingMessageJump(result._id);
     onClose();
-    setTimeout(() => scrollToMessage(result._id), 500);
   };
 
   return (
@@ -105,6 +107,7 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
         <button type="button" onClick={onClose} title="Close"><IoClose className="size-6" /></button>
       </div>
       <div className="flex gap-2 overflow-x-auto px-2 pb-2">
+        <button type="button" onClick={() => setAllRooms((value) => !value)} className="rounded bg-white/10 px-2 py-1 text-sm whitespace-nowrap">{allRooms ? "All chats" : "This chat"}</button>
         <select value={senderId} onChange={(event) => setSenderId(event.target.value)} className="rounded bg-white/10 px-2 py-1 text-sm">
           <option value="">All senders</option>
           {participants.map((participant) => <option key={participant._id} value={participant._id}>{participant.name || participant._id}</option>)}
