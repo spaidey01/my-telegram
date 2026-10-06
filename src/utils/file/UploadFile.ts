@@ -123,5 +123,13 @@ const createUploadTask = (file: File, onProgress?: (progress: number) => void): 
   return { promise, cancel: () => { controller.abort(); currentXhr?.abort(); } };
 };
 
-export { checkNetworkConnectivity, MAX_FILE_SIZE };
+const uploadFileWithRetry = async (
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<{ success: boolean; error?: string; downloadUrl?: string }> => {
+  const task = createUploadTask(file, onProgress);
+  return task.promise;
+};
+
+export { checkNetworkConnectivity, MAX_FILE_SIZE, createUploadTask };
 export default uploadFileWithRetry;
