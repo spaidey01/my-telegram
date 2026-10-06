@@ -14,7 +14,6 @@ import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import CallSchema from "../src/schemas/callSchema.js";
 import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
-import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
 import SessionSchema from "../src/schemas/sessionSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
