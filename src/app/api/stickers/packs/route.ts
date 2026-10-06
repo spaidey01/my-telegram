@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import mongoose from "mongoose";
 import tokenDecoder from "@/utils/TokenDecoder";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
