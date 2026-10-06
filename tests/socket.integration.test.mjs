@@ -603,6 +603,62 @@ test("multi-select server actions cannot cross rooms", async () => {
   }
 });
 
+test("message search uses the dedicated text index and respects room visibility filters", async () => {
+  const indexes = MessageSchema.schema.indexes();
+  assert.ok(indexes.some(([fields]) => fields.message === "text"));
+
+  const room = await RoomSchema.create({
+    name: "Message Search Index",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const hiddenRoom = await RoomSchema.create({
+    name: "Message Search Hidden Room",
+    type: "group",
+    creator: otherUser._id,
+    admins: [otherUser._id],
+    participants: [otherUser._id, thirdUser._id],
+  });
+
+  try {
+    await MessageSchema.create([
+      { sender: user._id, message: "unique search phrase alpha", roomID: room._id, seen: [], hideFor: [] },
+      { sender: user._id, message: "unique search phrase hidden", roomID: room._id, seen: [], hideFor: [otherUser._id] },
+      { sender: otherUser._id, message: "unique search phrase foreign", roomID: hiddenRoom._id, seen: [], hideFor: [] },
+    ]);
+
+    const visible = await MessageSchema.find({
+      $text: { $search: "unique search phrase" },
+      roomID: room._id,
+      hideFor: { $ne: user._id },
+    }).lean();
+
+    assert.equal(visible.length, 1);
+    assert.equal(visible[0].message, "unique search phrase alpha");
+
+    const senderFiltered = await MessageSchema.find({
+      $text: { $search: "unique search phrase" },
+      roomID: room._id,
+      sender: otherUser._id,
+      hideFor: { $ne: user._id },
+    }).lean();
+    assert.equal(senderFiltered.length, 0);
+
+    const dateFiltered = await MessageSchema.find({
+      $text: { $search: "unique search phrase" },
+      roomID: room._id,
+      createdAt: { $gte: new Date(Date.now() + 24 * 60 * 60 * 1000) },
+      hideFor: { $ne: user._id },
+    }).lean();
+    assert.equal(dateFiltered.length, 0);
+  } finally {
+    await MessageSchema.deleteMany({ roomID: { $in: [room._id, hiddenRoom._id] } });
+    await RoomSchema.deleteMany({ _id: { $in: [room._id, hiddenRoom._id] } });
+  }
+});
+
 test("bulk message delete removes selected messages in one operation and enforces authorization", async () => {
   const room = await RoomSchema.create({
     name: "Bulk Delete Integration",
