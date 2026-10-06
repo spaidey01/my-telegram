@@ -8,6 +8,9 @@ import UserSchema from "../src/schemas/userSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import FileSchema from "../src/schemas/fileSchema.js";
+import StickerSchema from "../src/schemas/stickerSchema.js";
+import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
+import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
@@ -1252,6 +1255,79 @@ test("voice messages enforce verified-file ownership", async () => {
     socket.disconnect();
     await FileSchema.deleteMany({ key: { $in: [ownKey, foreignKey] } });
     await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+test("sticker messages require an installed or owned pack and persist full sticker data", async () => {
+  const room = await RoomSchema.create({
+    name: "Sticker Integration",
+    type: "private",
+    creator: user._id,
+    admins: [user._id, otherUser._id],
+    participants: [user._id, otherUser._id],
+  });
+  const stickerKey = `stickers/${user._id.toString()}/00000000-0000-4000-8000-000000000021`;
+  const pack = await StickerPackSchema.create({
+    name: "integration_pack",
+    title: "Integration Pack",
+    owner: user._id,
+    thumbnail: `/api/files/access?key=${encodeURIComponent(stickerKey)}`,
+    stickers: [],
+  });
+  const sticker = await StickerSchema.create({
+    packId: pack._id,
+    file: `/api/files/access?key=${encodeURIComponent(stickerKey)}`,
+    mimeType: "image/png",
+    emoji: "🔥",
+    sortOrder: 0,
+  });
+  pack.stickers = [sticker._id];
+  await pack.save();
+  await FileSchema.create({ key: stickerKey, owner: user._id, contentType: "image/png" });
+
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+    await new Promise((resolve) => { socket.emit("joining", room._id.toString()); socket.once("joining", resolve); });
+
+    const denied = await new Promise((resolve) => socket.emit("newMessage", {
+      roomID: room._id.toString(),
+      message: "",
+      stickerData: { stickerId: sticker._id.toString(), packId: pack._id.toString() },
+      tempId: "sticker-denied-" + Date.now(),
+    }, resolve));
+    assert.equal(denied.success, false);
+    assert.equal(denied.error, "Invalid sticker");
+
+    await UserStickerPackSchema.create({ user: otherUser._id, packId: pack._id });
+    const sent = await new Promise((resolve) => socket.emit("newMessage", {
+      roomID: room._id.toString(),
+      message: "",
+      stickerData: { stickerId: sticker._id.toString(), packId: pack._id.toString() },
+      tempId: "sticker-sent-" + Date.now(),
+    }, resolve));
+    assert.equal(sent.success, true);
+
+    const saved = await MessageSchema.findById(sent._id).lean();
+    assert.equal(String(saved.stickerData.stickerId), sticker._id.toString());
+    assert.equal(String(saved.stickerData.packId), pack._id.toString());
+    assert.equal(saved.stickerData.file, sticker.file);
+    assert.equal(saved.stickerData.emoji, "🔥");
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await UserStickerPackSchema.deleteMany({ packId: pack._id });
+    await StickerSchema.deleteMany({ packId: pack._id });
+    await StickerPackSchema.deleteOne({ _id: pack._id });
+    await FileSchema.deleteOne({ key: stickerKey });
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
