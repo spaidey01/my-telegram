@@ -17,6 +17,8 @@ test("call reliability client has recovery primitives",()=>{
     "PERMISSION_DENIED",
     "setInterval(()=>setSeconds",
     "call:peer-reconnecting",
+    "isCaller",
+    "qualityPrevious",
   ]) assert.ok(overlay.includes(token),`missing reliability primitive: ${token}`);
 });
 
