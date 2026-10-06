@@ -107,8 +107,9 @@ const ChatPage = () => {
 
   // Define an event handler for returning (back) from the room
   const handleBack = useCallback(() => {
+    clearMessageSelection();
     setter({ selectedRoom: null, isRoomDetailsShown: false });
-  }, [setter]);
+  }, [clearMessageSelection, setter]);
 
   // Event handler for receiving pinned message
   const handlePinMessage = useCallback(
