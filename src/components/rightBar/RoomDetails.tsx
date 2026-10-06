@@ -34,6 +34,7 @@ const RoomDetails = ({
   const [notifications, setNotifications] = useState(true);
   const [groupMembers, setGroupMembers] = useState<User[]>([]);
   const [isViewerOpen, setIsViewerOpen] = useState(false);
+  const [presence, setPresence] = useState({ status: roomData?.status ?? "offline", lastSeenAt: roomData?.lastSeenAt ?? null });
   const {
     setter,
     isRoomDetailsShown,
@@ -46,6 +47,10 @@ const RoomDetails = ({
   const roomSocket = useSockets((state) => state.rooms);
 
   const { _id: myID, rooms } = myData;
+
+  useEffect(() => {
+    setPresence({ status: roomData?.status ?? "offline", lastSeenAt: roomData?.lastSeenAt ?? null });
+  }, [roomData?.status, roomData?.lastSeenAt, roomData?._id]);
   // const selectedRoomData: any = RoomDetailsData ?? selectedRoom;
   const { participants, type, _id: roomID } = { ...selectedRoomData };
 
@@ -83,11 +88,17 @@ const RoomDetails = ({
         setIsLoading(false);
       }
     }
+    const handlePresence = ({ userID, status, lastSeenAt }: { userID: string; status: "online" | "offline"; lastSeenAt: string | null }) => {
+      if (userID !== _id) return;
+      setPresence({ status, lastSeenAt });
+    };
+    roomSocket.on("userPresence", handlePresence);
     return () => {
       setGroupMembers([]);
       roomSocket.off("getRoomMembers");
+      roomSocket.off("userPresence", handlePresence);
     };
-  }, [roomSocket, roomID, isRoomDetailsShown, type]);
+  }, [roomSocket, roomID, isRoomDetailsShown, type, _id]);
 
   const copyText = async () => {
     const valueToCopy = (username && "@" + username) || link;
@@ -174,10 +185,10 @@ const RoomDetails = ({
 
             <div className="text-sm text-darkGray font-vazirBold line-clamp-1 whitespace-normal text-nowrap">
               {type === "private" ? (
-                onlineUsers.some((data) => {
-                  if (data.userID == _id) return true;
-                }) ? (
+                presence.status === "online" ? (
                   <span className="text-lightBlue">Online</span>
+                ) : presence.lastSeenAt ? (
+                  <>last seen {new Date(presence.lastSeenAt).toLocaleString("fa-IR", { dateStyle: "medium", timeStyle: "short" })}</>
                 ) : (
                   "last seen recently"
                 )
