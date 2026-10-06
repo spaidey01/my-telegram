@@ -27,6 +27,8 @@ const MessageList = ({
   setReplayData,
   pinMessage,
 }: MessageListProps) => {
+  const firstUnreadId = messages?.find((msg) => msg.sender?._id !== myID && !msg.seen?.includes(myID))?._id;
+
   const messageContent = useMemo(() => {
     const dates: MsgDate[] = [];
     return messages?.length ? (
@@ -46,8 +48,17 @@ const MessageList = ({
           dates.find((date) => date.usedBy === data._id)?.date || null;
 
         return (
-          <div
-            className={`${data._id} highLightedMessage`}
+          <>
+            {data._id === firstUnreadId && (
+              <div
+                data-unread-divider="true"
+                className="sticky top-1 z-10 mx-auto my-2 w-fit rounded-full bg-lightBlue/20 px-3 py-1 text-xs text-lightBlue backdrop-blur"
+              >
+                پیام‌های خوانده‌نشده
+              </div>
+            )}
+            <div
+              className={`${data._id} highLightedMessage`}
             key={data._id}
             ref={index === messages.length - 1 ? lastMsgRef : null}
           >
@@ -76,7 +87,8 @@ const MessageList = ({
               }
               {...data}
             />
-          </div>
+            </div>
+          </>
         );
       })
     ) : (
@@ -89,6 +101,7 @@ const MessageList = ({
   }, [
     messages,
     myID,
+    firstUnreadId,
     type,
     lastMsgRef,
     setEditData,
