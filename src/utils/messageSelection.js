@@ -1,8 +1,8 @@
-export const EMPTY_MESSAGE_SELECTION = Object.freeze({
+export const EMPTY_MESSAGE_SELECTION = {
   selectedMessageIds: [],
   selectionRoomID: null,
   selectionMode: false,
-});
+};
 
 export const enterMessageSelection = (roomID, messageID) => ({
   selectedMessageIds: [messageID],
