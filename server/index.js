@@ -870,12 +870,13 @@ io.on("connection", (socket) => {
       timer: null,
       reconnectTimer: null,
       retryCount: 0,
+      acceptedAt: null,
     };
 
     call.timer = setTimeout(() => {
       void (async () => {
       const active = await getActiveCall(callId);
-      if (!active) return;
+      if (!active || active.acceptedAt) return;
       const calleeSockets = await io.in(`presence:${active.callee}`).fetchSockets();
       const ids = new Set([active.callerSocketId, ...calleeSockets.map((connectedSocket) => connectedSocket.id)]);
       for (const socketID of ids) io.to(socketID).emit("call:ended", { callId, reason: "timeout" });
@@ -902,6 +903,7 @@ io.on("connection", (socket) => {
     const c = await getActiveCall(callId);
     if (!c || c.callee !== userID) return callback({ success: false, error: "Call not found" });
     c.calleeSocketId = socket.id;
+    c.acceptedAt = Date.now();
     if (c.timer) clearTimeout(c.timer);
     await setActiveCall(callId, c);
 
