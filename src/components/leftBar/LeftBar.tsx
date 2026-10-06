@@ -65,11 +65,9 @@ const LeftBar = () => {
   }, []);
 
   useEffect(() => {
-    document.addEventListener("click", () => (interactUser.current = true));
-
-    return () => {
-      document.addEventListener("click", () => (interactUser.current = true));
-    };
+    const markInteracted = () => { interactUser.current = true; };
+    document.addEventListener("click", markInteracted);
+    return () => document.removeEventListener("click", markInteracted);
   }, []);
 
   const playRingSound = useCallback(() => {
