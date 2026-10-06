@@ -43,6 +43,7 @@ export default function CallOverlay(){
  const durationTimer=useRef<ReturnType<typeof setInterval>|null>(null);
  const restartCount=useRef(0);
  const retrying=useRef(false);
+ const restoring=useRef(false);
  const lv=useRef<HTMLVideoElement|null>(null);
  const rv=useRef<HTMLVideoElement|null>(null);
  const ra=useRef<HTMLAudioElement|null>(null);
@@ -195,11 +196,11 @@ export default function CallOverlay(){
     if(!call||call.callId!==callId)return;
     if(pc.current?.remoteDescription){try{await pc.current.addIceCandidate(candidate);}catch{}}else pending.current.push(candidate);
   };
-  const reconnect=({callId,ready}:{callId:string;ready?:boolean})=>{if(call?.callId!==callId)return;if(!ready){setState("reconnecting");return;}if(call.isCaller)void restartIce("اتصال برگشت؛ در حال بازسازی تماس...");else setState("reconnecting");};
+  const reconnect=async({callId,ready}:{callId:string;ready?:boolean})=>{if(call?.callId!==callId)return;if(!ready){setState("reconnecting");return;}if(!call.isCaller){setState("reconnecting");return;}try{const stream=localRef.current||await getMedia(call.type);const p=pc.current||await makePeer(call);stream.getTracks().forEach(t=>{if(!p.getSenders().some(s=>s.track===t))p.addTrack(t,stream);});const offer=await p.createOffer({iceRestart:true});await p.setLocalDescription(offer);socket.emit("call:offer",{callId,description:p.localDescription,restart:true});setState("connecting");}catch{setState("failed");setError("بازیابی تماس ممکن نشد.");}};
   const peerReconnecting=({callId}:{callId:string})=>{if(call?.callId===callId){setState("reconnecting");if(call.isCaller)void restartIce("طرف مقابل دوباره متصل شد؛ در حال بازسازی تماس...");}};
   const retry=({callId}:{callId:string})=>{if(call?.callId===callId&&call.isCaller)void restartIce("طرف مقابل در حال تلاش مجدد برای اتصال است.");};
   const ended=({callId,reason}:{callId:string;reason?:string})=>{if(call?.callId===callId){setError(reason==="timeout"?"پاسخی دریافت نشد.":reason==="disconnected"?"تماس به‌دلیل قطع اتصال پایان یافت.":"تماس پایان یافت.");cleanup(false);}};
-  const onConnect=()=>{const saved=readPersistedCall();if(saved&&!call){setCall(saved);setState("reconnecting");socket.emit("call:reconnect",{callId:saved.callId});}};
+  const onConnect=()=>{const saved=readPersistedCall();if(saved&&!call){restoring.current=true;setCall(saved);setState("reconnecting");}};
   socket.on("call:outgoing",outgoing);socket.on("call:incoming",incoming);socket.on("call:accepted",accepted);socket.on("call:rejected",rejected);
   socket.on("call:offer",offer);socket.on("call:answer",answer);socket.on("call:ice",ice);socket.on("call:reconnected",reconnect);
   socket.on("call:peer-reconnecting",peerReconnecting);
