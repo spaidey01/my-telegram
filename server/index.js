@@ -876,10 +876,9 @@ io.on("connection", (socket) => {
       void (async () => {
       const active = await getActiveCall(callId);
       if (!active) return;
-      const ids = new Set([active.callerSocketId, ...(onlineUsers.get(active.callee) || [])]);
-      for (const socketID of ids) {
-        io.sockets.sockets.get(socketID)?.emit("call:ended", { callId, reason: "timeout" });
-      }
+      const calleeSockets = await io.in(`presence:${active.callee}`).fetchSockets();
+      const ids = new Set([active.callerSocketId, ...calleeSockets.map((connectedSocket) => connectedSocket.id)]);
+      for (const socketID of ids) io.to(socketID).emit("call:ended", { callId, reason: "timeout" });
       await deleteActiveCall(callId);
       })();
     }, CALL_RING_TIMEOUT_MS);
@@ -906,12 +905,12 @@ io.on("connection", (socket) => {
     if (c.timer) clearTimeout(c.timer);
     await setActiveCall(callId, c);
 
-    const callerSocket = io.sockets.sockets.get(c.callerSocketId);
-    if (!callerSocket) {
+    const callerSockets = await io.in(c.callerSocketId).fetchSockets();
+    if (!callerSockets.length) {
       await deleteActiveCall(callId);
       return callback({ success: false, error: "Caller disconnected" });
     }
-    callerSocket.emit("call:accepted", { callId, roomID: c.roomID, type: c.type });
+    io.to(c.callerSocketId).emit("call:accepted", { callId, roomID: c.roomID, type: c.type });
     callback({ success: true });
   });
 
@@ -919,7 +918,7 @@ io.on("connection", (socket) => {
     const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
-    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:rejected", { callId, reason });
+    if (targetSocketId) io.to(targetSocketId).emit("call:rejected", { callId, reason });
     if (c.timer) clearTimeout(c.timer);
     if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
     await deleteActiveCall(callId);
@@ -933,16 +932,16 @@ io.on("connection", (socket) => {
     const wasCaller = c.caller === userID;
     if (wasCaller) c.callerSocketId = socket.id;
     else c.calleeSocketId = socket.id;
-    const callerSocket = io.sockets.sockets.get(c.callerSocketId);
-    const calleeSocket = io.sockets.sockets.get(c.calleeSocketId);
-    if (!callerSocket || !calleeSocket) {
+    const callerSockets = await io.in(c.callerSocketId).fetchSockets();
+    const calleeSockets = await io.in(c.calleeSocketId).fetchSockets();
+    if (!callerSockets.length || !calleeSockets.length) {
       await setActiveCall(callId, c, CALL_RECONNECT_GRACE_MS);
       socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: false });
       return callback({ success: true, ready: false });
     }
     await setActiveCall(callId, c);
-    callerSocket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: true });
-    if (!wasCaller) calleeSocket.emit("call:peer-reconnected", { callId });
+    io.to(c.callerSocketId).emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: true });
+    if (!wasCaller) io.to(c.calleeSocketId).emit("call:peer-reconnected", { callId });
     callback({ success: true, ready: true });
   });
 
@@ -953,7 +952,7 @@ io.on("connection", (socket) => {
     c.retryCount += 1;
     await setActiveCall(callId, c);
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
-    io.sockets.sockets.get(targetSocketId)?.emit("call:retry", { callId, attempt: c.retryCount });
+    io.to(targetSocketId).emit("call:retry", { callId, attempt: c.retryCount });
     callback({ success: true, attempt: c.retryCount });
   });
 
@@ -967,13 +966,13 @@ io.on("connection", (socket) => {
     // when both peers detect the same network transition at once.
     if (restart && !isCaller) return;
     const targetSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
-    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:offer", { callId, description, restart });
+    if (targetSocketId) io.to(targetSocketId).emit("call:offer", { callId, description, restart });
   });
 
   on("call:answer", async ({ callId, description }) => {
     const c = await getActiveCall(callId);
     if (!c || c.callee !== userID || socket.id !== c.calleeSocketId || !description?.sdp) return;
-    io.sockets.sockets.get(c.callerSocketId)?.emit("call:answer", { callId, description });
+    io.to(c.callerSocketId).emit("call:answer", { callId, description });
   });
 
   on("call:ice", async ({ callId, candidate }) => {
@@ -983,14 +982,14 @@ io.on("connection", (socket) => {
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
     if (!isCaller && !isCallee) return;
     const targetSocketId = isCaller ? c.calleeSocketId : c.callerSocketId;
-    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:ice", { callId, candidate });
+    if (targetSocketId) io.to(targetSocketId).emit("call:ice", { callId, candidate });
   });
 
   on("call:end", async ({ callId }, callback = () => {}) => {
     const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
-    if (targetSocketId) io.sockets.sockets.get(targetSocketId)?.emit("call:ended", { callId, reason: "ended" });
+    if (targetSocketId) io.to(targetSocketId).emit("call:ended", { callId, reason: "ended" });
     if (c.timer) clearTimeout(c.timer);
     await deleteActiveCall(callId);
     callback({ success: true });
