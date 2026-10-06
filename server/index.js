@@ -263,7 +263,7 @@ io.on("connection", (socket) => {
       const newMsg = await MessageSchema.create(msgData);
 
       if (isValidId(replayData?.targetID)) {
-        const target = await MessageSchema.findOne({ _id: replayData.targetID, roomID })
+        const target = await MessageSchema.findOne({ _id: replayData.targetID, roomID, hideFor: { $ne: userID } })
           .populate("sender", "username")
           .exec();
         if (target) {
@@ -796,7 +796,7 @@ io.on("connection", (socket) => {
     if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return socket.emit("error", { message: "Forbidden" });
     msg.pinnedAt = msg.pinnedAt ? null : Date.now();
     await msg.save();
-    io.to(roomID).emit("pinMessage", id);
+    io.to(roomID).emit("pinMessage", { msgID: id, roomID, pinnedAt: msg.pinnedAt ? msg.pinnedAt.toISOString() : null });
     if (isLastMessage) io.to(roomID).emit("updateLastMsgData", { msgData: msg, roomID });
   });
 
