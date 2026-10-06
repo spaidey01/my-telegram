@@ -119,11 +119,50 @@ const useMessages = ({
       );
     };
 
+    const handleRoomRead = ({
+      roomID: readRoomID,
+      messageID,
+      readBy,
+      readTime,
+      unreadCount,
+    }: {
+      roomID: string;
+      messageID: string;
+      readBy: string;
+      readTime: Date;
+      unreadCount: number;
+    }) => {
+      if (readRoomID !== roomID) return;
+
+      setter((prev): Partial<GlobalStoreProps> => {
+        if (!prev.selectedRoom || prev.selectedRoom._id !== readRoomID) return {};
+        const messages = prev.selectedRoom.messages ?? [];
+        const targetIndex = messages.findIndex((msg) => msg._id === messageID);
+        const nextMessages = messages.map((msg, index) => {
+          if (targetIndex === -1 || index > targetIndex || msg.sender?._id === readBy) return msg;
+          return {
+            ...msg,
+            seen: msg.seen.includes(readBy) ? msg.seen : [...msg.seen, readBy],
+            readTime,
+          };
+        });
+
+        return {
+          selectedRoom: {
+            ...prev.selectedRoom,
+            messages: nextMessages,
+            notSeenCount: unreadCount,
+          },
+        };
+      });
+    };
+
     rooms?.on("newMessage", handleNewMessage);
     rooms?.on("deleteMsg", handleDeleteMsg);
     rooms?.on("editMessage", handleEditMessage);
     rooms?.on("newMessageIdUpdate", handleNewMessageIdUpdate);
     rooms?.on("seenMsg", handleSeenMsg);
+    rooms?.on("roomRead", handleRoomRead);
 
     return () => {
       rooms?.off("newMessage", handleNewMessage);
@@ -131,6 +170,7 @@ const useMessages = ({
       rooms?.off("editMessage", handleEditMessage);
       rooms?.off("newMessageIdUpdate", handleNewMessageIdUpdate);
       rooms?.off("seenMsg", handleSeenMsg);
+      rooms?.off("roomRead", handleRoomRead);
     };
   }, [rooms, roomID, myID, setter, playRingSound]);
 };
