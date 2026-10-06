@@ -5,6 +5,8 @@ Stage 13 hardens Stargram WebRTC calls around transient failures.
 ## Implemented
 
 - Reconnect after Socket.IO transport interruption.
+- Distributed active-call state in Redis when `REDIS_URL` is configured, with local Map fallback only for non-production mode.
+- Cluster-safe signaling through Socket.IO adapter routing and cross-node socket lookup.
 - Server-side reconnect grace window: 20 seconds.
 - ICE restart using `createOffer({ iceRestart: true })`.
 - Automatic ICE restart on `disconnected` / `failed` ICE or peer states.
@@ -19,7 +21,7 @@ Stage 13 hardens Stargram WebRTC calls around transient failures.
 
 ## Recovery model
 
-A normal Socket.IO disconnect no longer immediately terminates an active call. The server keeps the call for a short grace period and updates the socket endpoint when the user reconnects.
+A normal Socket.IO disconnect no longer immediately terminates an active call. Active-call metadata is shared through Redis in distributed deployments, while the Socket.IO Redis adapter routes signaling packets to sockets on other nodes. The server keeps the call for a short grace period and updates the socket endpoint when the user reconnects.
 
 The browser also persists the active call identity locally. On socket reconnection it asks the server to restore the call binding and triggers ICE recovery.
 
