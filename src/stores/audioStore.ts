@@ -21,6 +21,7 @@ interface Updater {
   downloadedAudios: DownloadedAudio[];
   setter: (partialState: Partial<Updater> | ((state: Updater) => Partial<Updater>)) => void;
   setAudioElement: (audio: HTMLAudioElement) => void;
+  ensureAudioElement: () => HTMLAudioElement | null;
   setVoiceDataAndPlay: (voice: Voice & Message, src?: string) => Promise<void>;
   toggleAudioPlayback: () => void;
   seekAudio: (time: number) => void;
@@ -40,7 +41,7 @@ const useAudio = create<Updater>((set, get) => ({
   updater: (key, value) => set((state) => ({ ...state, [key]: value })),
   setter: (partialState) => set(partialState),
 
-  setAudioElement: (audio) => {
+  ensureAudioElement: () => {\n    const existing = get().audioElem;\n    if (existing) return existing;\n    if (typeof document === "undefined") return null;\n    const audio = document.createElement("audio");\n    audio.preload = "metadata";\n    audio.style.display = "none";\n    document.body.appendChild(audio);\n    get().setAudioElement(audio);\n    return audio;\n  },\n\n  setAudioElement: (audio) => {
     set({ audioElem: audio });
     audio.onended = () => set({ isPlaying: false, currentTime: 0 });
     audio.ontimeupdate = () => set({ currentTime: audio.currentTime });
