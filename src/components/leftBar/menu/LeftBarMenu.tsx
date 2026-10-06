@@ -4,6 +4,7 @@ import Settings from "./Settings";
 import EditInfo from "./EditInfo";
 import EditUsername from "./EditUsername";
 import SecuritySettings from "./SecuritySettings";
+import ScheduledMessages from "./ScheduledMessages";
 
 interface Props {
   isOpen: boolean;
@@ -63,6 +64,10 @@ const LeftBarMenu = ({ closeMenu, isOpen, onRouteChanged }: Props) => {
       }
       case "/settings/security": {
         setActiveRoute(<SecuritySettings getBack={getBack} />);
+        break;
+      }
+      case "/scheduled": {
+        setActiveRoute(<ScheduledMessages getBack={getBack} />);
         break;
       }
     }
