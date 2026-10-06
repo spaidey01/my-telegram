@@ -350,7 +350,8 @@ const VoiceMessageRecorder = ({
         const uploadTask = createUploadTask(voiceFile, (progress) => {
             // Ensure progress is visible for at least 2 seconds minimum
             const elapsedTime = Date.now() - startTime;
-            const adjustedProgress = Math.min(progress, 95);\n            setUploadProgress(adjustedProgress);
+            const adjustedProgress = Math.min(progress, 95);
+            setUploadProgress(adjustedProgress);
 
             // If upload is too fast, artificially slow it down
             if (elapsedTime < minUploadTime && progress < 100) {
