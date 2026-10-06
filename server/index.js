@@ -10,6 +10,7 @@ import LocationSchema from "../src/schemas/locationSchema.js";
 import UserSchema from "../src/schemas/userSchema.js";
 import FileSchema from "../src/schemas/fileSchema.js";
 import connectToDB from "../src/db/index.js";
+import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
@@ -185,6 +186,18 @@ const isMessageInRoom = async (msgID, roomID) => {
 };
 
 const publicUserFields = "name username avatar _id status lastSeenAt";
+
+const broadcastPresence = async (targetUserID, status, lastSeenAt) => {
+  const sockets = await io.fetchSockets();
+  await Promise.all(sockets.map(async (viewerSocket) => {
+    const visible = await canViewPrivacy(targetUserID, viewerSocket.data.userId, "lastSeen");
+    viewerSocket.emit("userPresence", {
+      userID: targetUserID,
+      status: visible ? status : "offline",
+      lastSeenAt: visible ? lastSeenAt : null,
+    });
+  }));
+};
 const findLatestVisibleMessage = (roomID) =>
   MessageSchema.findOne({ roomID }).sort({ createdAt: -1, _id: -1 }).lean();
 
@@ -218,7 +231,7 @@ io.on("connection", (socket) => {
   const initializePresence = async () => {
     const currentUser = await UserSchema.findById(userID).select("lastSeenAt").lean();
     await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
-    io.emit("userPresence", { userID, status: "online", lastSeenAt: currentUser?.lastSeenAt ?? null });
+    await broadcastPresence(userID, "online", currentUser?.lastSeenAt ?? null);
   };
   void initializePresence();
 
@@ -247,6 +260,12 @@ io.on("connection", (socket) => {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
       if (room.type === "channel" && !isAdmin(room, userID)) return callback({ success: false, error: "Forbidden" });
+      if (room.type === "private") {
+        const recipientID = room.participants.map((id) => id.toString()).find((id) => id !== userID);
+        if (recipientID && !(await canViewPrivacy(recipientID, userID, "messages"))) {
+          return callback({ success: false, error: "Messages are restricted by this user" });
+        }
+      }
       if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
 
       let scopedTempId;
@@ -646,6 +665,9 @@ io.on("connection", (socket) => {
       return callback({ success: false, error: "Forbidden" });
     }
     if (targetUserID === userID) return callback({ success: false, error: "Invalid target" });
+    if (!(await canViewPrivacy(targetUserID, userID, "calls"))) {
+      return callback({ success: false, error: "Calls are restricted by this user" });
+    }
     if ([...activeCalls.values()].some((c) => c.caller === targetUserID || c.callee === targetUserID)) {
       return callback({ success: false, error: "User is busy" });
     }
@@ -655,6 +677,8 @@ io.on("connection", (socket) => {
       UserSchema.findById(targetUserID).select("name username avatar _id status lastSeenAt").lean(),
     ]);
     if (!caller || !target) return callback({ success: false, error: "User not found" });
+    const visibleCaller = await sanitizeUserForViewer(caller, targetUserID);
+    const visibleTarget = await sanitizeUserForViewer(target, userID);
 
     const targetSockets = [...(onlineUsers.get(targetUserID) || [])];
     if (!targetSockets.length) return callback({ success: false, error: "User is offline" });
@@ -683,14 +707,14 @@ io.on("connection", (socket) => {
     activeCalls.set(callId, call);
 
     for (const sid of targetSockets) {
-      io.sockets.sockets.get(sid)?.emit("call:incoming", { callId, roomID, type, from: caller });
+      io.sockets.sockets.get(sid)?.emit("call:incoming", { callId, roomID, type, from: visibleCaller });
     }
     socket.emit("call:outgoing", {
       callId,
       roomID,
       type,
-      name: target.name || "User",
-      avatar: target.avatar || "",
+      name: visibleTarget.name || "User",
+      avatar: visibleTarget.avatar || "",
     });
     callback({ success: true });
   });
@@ -768,9 +792,10 @@ io.on("connection", (socket) => {
     )];
 
     const privateUsers = participantIds.length
-      ? await UserSchema.find({ _id: { $in: participantIds } }).select("name username avatar _id status lastSeenAt").lean()
+      ? await UserSchema.find({ _id: { $in: participantIds } }).select("name username avatar phone _id status lastSeenAt").lean()
       : [];
-    const usersById = new Map(privateUsers.map((user) => [user._id.toString(), user]));
+    const visiblePrivateUsers = await Promise.all(privateUsers.map((user) => sanitizeUserForViewer(user, userID, { includePhone: true })));
+    const usersById = new Map(visiblePrivateUsers.map((user) => [user._id.toString(), user]));
 
     const latestMessages = rawRooms.length
       ? await MessageSchema.aggregate([
@@ -788,7 +813,8 @@ io.on("connection", (socket) => {
     const senderUsers = senderIds.length
       ? await UserSchema.find({ _id: { $in: senderIds } }).select("name username avatar _id status lastSeenAt").lean()
       : [];
-    const senderById = new Map(senderUsers.map((user) => [user._id.toString(), user]));
+    const visibleSenderUsers = await Promise.all(senderUsers.map((user) => sanitizeUserForViewer(user, userID)));
+    const senderById = new Map(visibleSenderUsers.map((user) => [user._id.toString(), user]));
     const lastMessagesByRoom = new Map(
       latestMessageDocs.map((message) => [
         message.roomID.toString(),
@@ -845,9 +871,12 @@ io.on("connection", (socket) => {
       roomData.messages = messages.reverse();
       socket.join(roomData._id.toString());
       if (roomData.type === "private") {
-        roomData.participants = await UserSchema.find({ _id: { $in: roomData.participants } })
-          .select("name lastName username avatar biography type status _id")
+        const privateParticipants = await UserSchema.find({ _id: { $in: roomData.participants } })
+          .select("name lastName username avatar phone biography type status lastSeenAt _id")
           .lean();
+        roomData.participants = await Promise.all(privateParticipants.map((participant) =>
+          sanitizeUserForViewer(participant, userID, { includePhone: true })
+        ));
       }
       socket.emit("joining", roomData);
     } catch (error) {
@@ -1043,12 +1072,11 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "getRoomMembers", 20, 60_000))) return;
     const room = await isMember(roomID, userID);
     if (!room) return socket.emit("error", { message: "Forbidden" });
-    const populated = await room.populate({ path: "participants", select: "name lastName username avatar biography type status _id" });
-    socket.emit("getRoomMembers", populated.participants.map((u) => {
-      const data = u.toObject();
-      delete data.password;
-      return data;
-    }));
+    const populated = await room.populate({ path: "participants", select: "name lastName username avatar phone biography type status lastSeenAt _id" });
+    const visibleMembers = await Promise.all(populated.participants.map((u) =>
+      sanitizeUserForViewer(u, userID, { includePhone: true })
+    ));
+    socket.emit("getRoomMembers", visibleMembers);
   });
 
   const sessionCheckTimer = setInterval(async () => {
@@ -1120,7 +1148,7 @@ io.on("connection", (socket) => {
         { _id: userID },
         { $set: { status: "offline", lastSeenAt } },
       );
-      io.emit("userPresence", { userID, status: "offline", lastSeenAt });
+      await broadcastPresence(userID, "offline", lastSeenAt);
     }
 
     broadcastOnlineUsers();
