@@ -457,6 +457,80 @@ io.on("connection", (socket) => {
     ]);
   });
 
+  on("messages:delete", async ({ roomID, messageIDs, forAll = false }, callback = () => {}) => {
+    if (!(await allowEvent(userID, "messages:delete", 10, 60_000))) {
+      return callback({ success: false, error: "Rate limit exceeded", deletedIds: [] });
+    }
+    if (!isValidId(roomID) || !Array.isArray(messageIDs) || !messageIDs.length || messageIDs.length > 100) {
+      return callback({ success: false, error: "Invalid bulk delete request", deletedIds: [] });
+    }
+
+    const ids = [...new Set(messageIDs.filter(isValidId))];
+    if (ids.length !== messageIDs.length || !ids.length) {
+      return callback({ success: false, error: "Invalid message IDs", deletedIds: [] });
+    }
+
+    const room = await isMember(roomID, userID);
+    if (!room) return callback({ success: false, error: "Forbidden", deletedIds: [] });
+
+    const messages = await MessageSchema.find({
+      _id: { $in: ids },
+      roomID,
+      hideFor: { $ne: userID },
+    }).select("_id sender").lean();
+
+    if (messages.length !== ids.length) {
+      return callback({ success: false, error: "One or more messages are unavailable", deletedIds: [] });
+    }
+
+    const admin = isAdmin(room, userID);
+    if (forAll) {
+      const canDeleteAll = room.type !== "private" && admin;
+      if (!canDeleteAll && messages.some((message) => message.sender.toString() !== userID)) {
+        return callback({ success: false, error: "Forbidden", deletedIds: [] });
+      }
+
+      await MessageSchema.deleteMany({
+        roomID,
+        _id: { $in: ids },
+      });
+    } else {
+      await MessageSchema.updateMany(
+        { roomID, _id: { $in: ids }, hideFor: { $ne: userID } },
+        { $addToSet: { hideFor: userID } },
+      );
+    }
+
+    const replacementLast = await MessageSchema.findOne({
+      roomID,
+      hideFor: { $nin: [userID] },
+    }).sort({ createdAt: -1, _id: -1 }).lean();
+
+    await RoomSchema.updateOne(
+      { _id: roomID },
+      {
+        $set: {
+          lastMessageId: replacementLast?._id || null,
+          lastMessageAt: replacementLast?.createdAt || null,
+        },
+      },
+    );
+
+    const payload = { roomID, messageIDs: ids, forAll: Boolean(forAll) };
+    if (forAll) {
+      io.to(roomID).emit("messages:deleted", payload);
+    } else {
+      socket.emit("messages:deleted", payload);
+    }
+
+    callback({
+      success: true,
+      deletedIds: ids,
+      forAll: Boolean(forAll),
+      lastMessageId: replacementLast?._id?.toString() || null,
+    });
+  });
+
   on("deleteMsg", async ({ forAll, msgID, roomID }) => {
     if (!(await allowEvent(userID, "deleteMsg", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
