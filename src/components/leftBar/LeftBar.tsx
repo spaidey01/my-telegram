@@ -21,6 +21,8 @@ import RoomFolders from "./RoomFolders";
 import useConnection from "@/hook/useConnection";
 import Message from "@/models/message";
 import NotificationPermission from "@/utils/NotificationPermission";
+import CallHistory from "./CallHistory";
+import { FiPhoneCall } from "react-icons/fi";
 
 const CreateRoomBtn = lazy(() => import("@/components/leftBar/CreateRoomBtn"));
 const LeftBarMenu = lazy(() => import("@/components/leftBar/menu/LeftBarMenu"));
@@ -31,6 +33,7 @@ const LeftBar = () => {
   const [filterBy, setFilterBy] = useState("all");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isLeftBarMenuOpen, setIsLeftBarMenuOpen] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
   const [leftBarActiveRoute, setLeftBarActiveRoute] = useState("/");
   const ringAudioRef = useRef<HTMLAudioElement>(null);
 
@@ -173,6 +176,7 @@ const LeftBar = () => {
         {isPageLoaded && showCreateRoomBtn && <CreateRoomBtn />}
         {isSearchOpen && <SearchPage closeSearch={handleCloseSearch} />}
 
+        {showCallHistory && <CallHistory onClose={() => setShowCallHistory(false)} />}
         {leftBarActiveRoute !== "/settings" && (
           <div
             data-aos-duration="400"
@@ -193,11 +197,10 @@ const LeftBar = () => {
                   />
                   <h1 className="font-vazirBold mt-0.5">{status}</h1>
                 </div>
-                <BiSearch
-                  size={22}
-                  onClick={handleOpenSearch}
-                  className="cursor-pointer text-white/90 mt-3"
-                />
+                <div className="flex items-center gap-3">
+                  <FiPhoneCall size={20} onClick={() => setShowCallHistory(true)} className="cursor-pointer text-white/90 mt-3" title="Call history" />
+                  <BiSearch size={22} onClick={handleOpenSearch} className="cursor-pointer text-white/90 mt-3" />
+                </div>
               </div>
               <RoomFolders updateFilterBy={setFilterBy} />
             </div>
