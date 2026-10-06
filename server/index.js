@@ -17,6 +17,7 @@ import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
 import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
+import { GROUP_PERMISSION_KEYS, hasGroupPermission, channelCanPost } from "./security/permissions.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
@@ -254,17 +255,27 @@ const isMember = async (roomID, userID) => {
 
 const isAdmin = (room, userID) =>
   !!room && (room.creator?.toString() === userID || room.admins?.some((id) => id.toString() === userID));
-import { GROUP_PERMISSION_KEYS, hasGroupPermission, channelCanPost } from "./security/permissions.js";
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const recordCallHistory = async (call, status, endedAt = new Date()) => {
   if (!call?.callId) return;
   await CallSchema.updateOne(
     { callId: call.callId },
-    { $setOnInsert: {
-      callId: call.callId, caller: call.caller, receiver: call.callee, roomID: call.roomID,
-      type: call.type, status, startedAt: new Date(call.createdAt), answeredAt: call.acceptedAt ? new Date(call.acceptedAt) : null, endedAt
-    } },
+    {
+      $set: {
+        caller: call.caller,
+        receiver: call.callee,
+        roomID: call.roomID,
+        type: call.type,
+        status,
+        endedAt,
+      },
+      $setOnInsert: {
+        callId: call.callId,
+        startedAt: new Date(call.createdAt),
+        answeredAt: call.acceptedAt ? new Date(call.acceptedAt) : null,
+      },
+    },
     { upsert: true },
   );
 };
