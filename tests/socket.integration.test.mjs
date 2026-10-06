@@ -28,6 +28,22 @@ const waitFor = (socket, event, timeout = 5000) =>
     });
   });
 
+const waitForUserPresence = (socket, userID, timeout = 5000) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off("userPresence", onPresence);
+      reject(new Error("Timed out waiting for userPresence:" + userID));
+    }, timeout);
+    const onPresence = (payload) => {
+      if (payload?.userID !== userID) return;
+      clearTimeout(timer);
+      socket.off("userPresence", onPresence);
+      resolve(payload);
+    };
+    socket.on("userPresence", onPresence);
+  });
+
+
 const waitForServer = () =>
   new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("Socket server did not start")), 10000);
@@ -475,7 +491,7 @@ test("last seen handles multi-socket presence and reconnects", async () => {
 
   try {
     await waitFor(observer, "connect");
-    const onlinePresence = waitFor(observer, "userPresence");
+    const onlinePresence = waitForUserPresence(observer, otherUser._id.toString());
 
     targetA = makeSocket(otherUser._id);
     targetB = makeSocket(otherUser._id);
@@ -494,7 +510,7 @@ test("last seen handles multi-socket presence and reconnects", async () => {
     assert.equal(stillOnline.status, "online");
     assert.equal(stillOnline.lastSeenAt, null);
 
-    const offlinePresence = waitFor(observer, "userPresence");
+    const offlinePresence = waitForUserPresence(observer, otherUser._id.toString());
     targetB.disconnect();
     const offline = await offlinePresence;
     assert.equal(offline.userID, otherUser._id.toString());
@@ -506,7 +522,7 @@ test("last seen handles multi-socket presence and reconnects", async () => {
     assert.equal(offlineUser.status, "offline");
     assert.ok(offlineUser.lastSeenAt);
 
-    const reconnectPresence = waitFor(observer, "userPresence");
+    const reconnectPresence = waitForUserPresence(observer, otherUser._id.toString());
     const targetReconnect = makeSocket(otherUser._id);
     try {
       await waitFor(targetReconnect, "connect");
