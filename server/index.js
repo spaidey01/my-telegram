@@ -185,7 +185,26 @@ const isMessageInRoom = async (msgID, roomID) => {
   return MessageSchema.findOne({ _id: msgID, roomID });
 };
 
-const publicUserFields = "name username _id status lastSeenAt";
+const publicUserFields = "name username avatar _id status lastSeenAt";
+
+const emitVisibleMessage = async (roomID, event, payload) => {
+  const sockets = await io.in(roomID).fetchSockets();
+  await Promise.all(sockets.map(async (viewerSocket) => {
+    const visiblePayload = { ...payload };
+    if (visiblePayload.sender && typeof visiblePayload.sender === "object") {
+      visiblePayload.sender = await sanitizeUserForViewer(visiblePayload.sender, viewerSocket.data.userId);
+    }
+    viewerSocket.emit(event, visiblePayload);
+  }));
+};
+
+const sanitizeMessagesForViewer = async (messages, viewerUserID) =>
+  Promise.all(messages.map(async (message) => ({
+    ...message,
+    sender: message.sender && typeof message.sender === "object"
+      ? await sanitizeUserForViewer(message.sender, viewerUserID)
+      : message.sender,
+  })));
 
 const broadcastPresence = async (targetUserID, status, lastSeenAt) => {
   const sockets = await io.fetchSockets();
@@ -321,13 +340,13 @@ io.on("connection", (socket) => {
       );
 
       const populatedMsg = await MessageSchema.findById(newMsg._id)
-        .populate("sender", "name username _id")
+        .populate("sender", "name username avatar _id")
         .lean();
 
-      socket.to(roomID).emit("newMessage", populatedMsg);
+      await emitVisibleMessage(roomID, "newMessage", populatedMsg);
       socket.emit("newMessageIdUpdate", { tempId, _id: newMsg._id });
-      io.to(roomID).emit("lastMsgUpdate", populatedMsg);
-      io.to(roomID).emit("updateLastMsgData", { msgData: populatedMsg, roomID });
+      await emitVisibleMessage(roomID, "lastMsgUpdate", populatedMsg);
+      await emitVisibleMessage(roomID, "updateLastMsgData", { msgData: populatedMsg, roomID });
       callback({ success: true, _id: newMsg._id });
     } catch (error) {
       console.error("newMessage:", error);
@@ -1127,7 +1146,7 @@ io.on("connection", (socket) => {
         .limit(safeLimit)
         .populate("sender", publicUserFields)
         .lean();
-      callback({ success: true, messages: messages.reverse(), hasMore: messages.length === safeLimit });
+      callback({ success: true, messages: await sanitizeMessagesForViewer(messages.reverse(), userID), hasMore: messages.length === safeLimit });
     } catch (error) {
       console.error("loadOlderMessages:", error);
       callback({ success: false, error: "Unable to load messages" });
