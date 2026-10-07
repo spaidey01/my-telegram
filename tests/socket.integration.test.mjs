@@ -15,6 +15,7 @@ import StickerSchema from "../src/schemas/stickerSchema.js";
 import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
+import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
