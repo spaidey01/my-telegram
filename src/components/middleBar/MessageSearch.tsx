@@ -35,6 +35,10 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
@@ -60,6 +64,32 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
   }, []);
 
   useEffect(() => {
+    setPage(1);
+    setResults([]);
+    setHasMore(false);
+  }, [query, roomId, senderId, from, to, allRooms, hashtagMode]);
+
+  useEffect(() => {
+    if (!hashtagMode || query.trim().length < 1) {
+      setSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: query.trim(), limit: "8" });
+        if (!allRooms) params.set("roomId", roomId);
+        const response = await fetch("/api/messages/hashtags?" + params.toString(), { signal: controller.signal });
+        const data = await response.json();
+        if (response.ok) setSuggestions(Array.isArray(data.suggestions) ? data.suggestions : []);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setSuggestions([]);
+      }
+    }, 180);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [query, roomId, allRooms, hashtagMode]);
+
+  useEffect(() => {
     if (!query.trim()) {
       setResults([]);
       setSearched(false);
@@ -71,14 +101,20 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
       setError("");
       try {
         const params = new URLSearchParams(hashtagMode ? { hashtag: query.trim() } : { query: query.trim() });
+        params.set("page", "1");
+        params.set("limit", "50");
         if (!allRooms) params.set("roomId", roomId);
         if (senderId) params.set("senderId", senderId);
         if (from) params.set("from", from);
         if (to) params.set("to", to);
+        if (from) params.set("fromOffset", String(new Date(from + "T12:00:00").getTimezoneOffset()));
+        if (to) params.set("toOffset", String(new Date(to + "T12:00:00").getTimezoneOffset()));
         const response = await fetch("/api/messages/search?" + params.toString(), { signal: controller.signal });
         const data = await response.json();
         if (!response.ok) throw new Error(data?.message || "Search failed");
         setResults(data.results || []);
+        setHasMore(Boolean(data.hasMore));
+        setPage(1);
         setSearched(true);
       } catch (searchError) {
         setError(searchError instanceof Error ? searchError.message : "Search failed");
@@ -90,6 +126,31 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
     }, 300);
     return () => clearTimeout(timer);
   }, [query, roomId, senderId, from, to, allRooms, hashtagMode]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !query.trim()) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const params = new URLSearchParams(hashtagMode ? { hashtag: query.trim() } : { query: query.trim() });
+      if (!allRooms) params.set("roomId", roomId);
+      if (senderId) params.set("senderId", senderId);
+      if (from) { params.set("from", from); params.set("fromOffset", String(new Date(from + "T12:00:00").getTimezoneOffset())); }
+      if (to) { params.set("to", to); params.set("toOffset", String(new Date(to + "T12:00:00").getTimezoneOffset())); }
+      params.set("page", String(nextPage));
+      params.set("limit", "50");
+      const response = await fetch("/api/messages/search?" + params.toString());
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.message || "Search failed");
+      setResults((current) => [...current, ...(data.results || []).filter((item: SearchResult) => !current.some((existing) => existing._id === item._id))]);
+      setPage(nextPage);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Search failed");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const highlight = (text: string) => {
     if (!query.trim()) return text;
@@ -131,7 +192,7 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
         <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded bg-white/10 px-2 py-1 text-sm" />
         <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded bg-white/10 px-2 py-1 text-sm" />
       </div>
-      <div className="overflow-y-auto">
+      {hashtagMode && suggestions.length > 0 && (\n        <div className="flex flex-wrap gap-2 px-3 pb-2">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setQuery(suggestion); setSuggestions([]); }} className="rounded-full bg-white/10 px-3 py-1 text-sm hover:bg-white/15">#{suggestion}</button>)}</div>\n      )}\n      <div className="overflow-y-auto">
         {loading && <div className="p-4 text-center text-sm text-gray-400">Searching…</div>}
         {!loading && error && <div className="p-4 text-center text-sm text-red-300">{error}</div>}
         {!loading && !error && searched && !results.length && <div className="p-4 text-center text-sm text-gray-400">No messages found.</div>}
@@ -146,6 +207,7 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
             </div>
           </button>
         ))}
+        {hasMore && <button type="button" disabled={loadingMore} onClick={loadMore} className="w-full border-t border-white/5 px-3 py-3 text-sm text-lightBlue disabled:opacity-50">{loadingMore ? "Loading…" : "Load more"}</button>}
       </div>
     </div>
   );
