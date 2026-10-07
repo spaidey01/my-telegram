@@ -4,6 +4,7 @@ import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
+import SessionSchema from "@/schemas/sessionSchema";
 import { rateLimit } from "@/utils/rateLimit";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^()|[\]\\]/g, "\\$&").replace(/\$/g, "\\$");
@@ -25,7 +26,7 @@ export const POST = async (req: Request) => {
     if (!limit.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
     await connectToDB();
-    const session = auth && (auth as any).sid ? await SessionSchema.findOne({ _id: (auth as any).sid, user: auth.id, revokedAt: null }).select("_id").lean() : null;
+    const session = auth.sid ? await SessionSchema.findOne({ _id: auth.sid, user: auth.id, revokedAt: null }).select("_id").lean() : null;
     const sessionUser = session ? await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean() : null;
     if (!sessionUser) return Response.json({ message: "Unauthorized" }, { status: 401 });
 
