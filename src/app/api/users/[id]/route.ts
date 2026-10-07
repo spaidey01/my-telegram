@@ -5,8 +5,6 @@ import { sanitizeUserForViewer } from "@/utils/privacy";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { cookies } from "next/headers";
-import SessionSchema from "@/schemas/sessionSchema";
-import UserSchema from "@/schemas/userSchema";
 
 const secret = process.env.secretKey;
 
