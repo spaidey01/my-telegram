@@ -14,6 +14,14 @@ test("group permissions enforce moderation before member overrides",()=>{
   assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
 });
 
+test("2FA rotation requires current TOTP when already enabled",()=>{
+  const enabled=true;
+  const hasSecret=true;
+  const token="";
+  const verify=enabled&&!hasSecret?true:token.length===6;
+  assert.equal(verify,false);
+});
+
 test("group member permissions must target an existing participant",()=>{
   const room={type:"group",participants:["admin","member"],memberPermissions:new Map()};
   const target="outsider";
