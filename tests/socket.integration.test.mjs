@@ -11,6 +11,7 @@ import FileSchema from "../src/schemas/fileSchema.js";
 import StickerSchema from "../src/schemas/stickerSchema.js";
 import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
+import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
@@ -1418,5 +1419,44 @@ test("channel editor can forward through the same posting permission path", asyn
     socket.disconnect();
     await MessageSchema.deleteMany({ roomID: { $in: [sourceRoom._id, channel._id] } });
     await RoomSchema.deleteMany({ _id: { $in: [sourceRoom._id, channel._id] } });
+  }
+});
+
+
+test("scheduled message worker connects DB jobs to real messages", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Integration",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const scheduledFor = new Date(Date.now() + 250);
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "scheduled integration message" },
+    scheduledFor,
+  });
+  try {
+    const deadline = Date.now() + 9000;
+    let message = null;
+    while (Date.now() < deadline) {
+      message = await MessageSchema.findOne({
+        roomID: room._id,
+        tempId: "scheduled:" + scheduled._id.toString(),
+      }).lean();
+      if (message) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.ok(message, "scheduled worker did not create the message");
+    assert.equal(message.message, "scheduled integration message");
+    const updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+    assert.equal(updated.status, "sent");
+    assert.ok(updated.sentAt);
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
   }
 });
