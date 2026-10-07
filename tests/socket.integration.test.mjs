@@ -1526,12 +1526,12 @@ test("scheduled worker enforces group sendMessages permission at execution time"
     name: "Scheduled Permission",
     type: "group",
     creator: user._id,
-    admins: [],
-    participants: [user._id],
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
     groupPermissions: { sendMessages: false },
   });
   const scheduled = await ScheduledMessageSchema.create({
-    sender: user._id,
+    sender: otherUser._id,
     room: room._id,
     payload: { message: "must not be sent" },
     scheduledFor: new Date(Date.now() - 1000),
