@@ -1433,6 +1433,52 @@ test("channel editor can forward through the same posting permission path", asyn
 });
 
 
+test("scheduled worker recovers a job when the message already exists", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Recovery",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "already persisted" },
+    scheduledFor: new Date(Date.now() - 1000),
+    status: "processing",
+    processingAt: new Date(Date.now() - 180000),
+  });
+  const tempId = "scheduled:" + scheduled._id.toString();
+  await MessageSchema.create({
+    sender: user._id,
+    roomID: room._id,
+    message: "already persisted",
+    seen: [],
+    hideFor: [],
+    status: "sent",
+    kind: "message",
+    tempId,
+    createdAt: Date.now(),
+  });
+  try {
+    const deadline = Date.now() + 7000;
+    let updated = null;
+    while (Date.now() < deadline) {
+      updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+      if (updated?.status === "sent") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(updated?.status, "sent");
+    assert.ok(updated?.sentAt);
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id, tempId }), 1);
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
 test("scheduled message worker connects DB jobs to real messages", async () => {
   const room = await RoomSchema.create({
     name: "Scheduled Integration",
