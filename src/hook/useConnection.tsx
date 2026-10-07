@@ -105,7 +105,7 @@ const useConnection = ({
             (msg) => msg.status === "pending"
           );
 
-          for (const msg of pendingOnly) {
+          for (const msg of pendingOnly) {\n            if (msg.retryCount >= 20) continue;\n            pendingMessagesService.updatePendingMessage(roomData._id, msg.tempId, { retryCount: msg.retryCount + 1, lastAttempt: Date.now() });
             // Prepare voice data: if src is missing, try to upload from IndexedDB first
             let preparedVoiceData = msg.voiceData || null;
             if (
@@ -202,7 +202,7 @@ const useConnection = ({
                 : null,
               attachmentData: msg.attachmentData || null,
               stickerData: msg.stickerData || null,
-              tempId: msg._id,
+              tempId: msg.tempId,
             };
             if (preparedVoiceData) {
               Object.assign(payload, { voiceData: preparedVoiceData });
