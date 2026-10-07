@@ -53,6 +53,33 @@ const LeftBar = () => {
     threadEvents,
   } = useGlobalStore((state) => state);
   const interactUser = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const loadThreadEvents = async () => {
+      try {
+        const response = await fetch("/api/threads?mine=true", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const events = Array.isArray(payload?.events) ? payload.events : [];
+        if (cancelled) return;
+        setter((prev) => ({
+          threadEvents: events
+            .filter((event): event is import("@/stores/globalStore").ThreadEvent =>
+              event && typeof event._id === "string" &&
+              typeof event.type === "string" &&
+              typeof event.room === "string" &&
+              typeof event.actor === "string"
+            )
+            .slice(0, 100),
+        }));
+      } catch {
+        // Live socket events remain available if the history request fails.
+      }
+    };
+    void loadThreadEvents();
+    return () => { cancelled = true; };
+  }, [setter]);
+
 
   useEffect(() => {
     NotificationPermission();
