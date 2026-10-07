@@ -45,7 +45,9 @@ export const GET = async (req: Request) => {
     const query = (params.get("query") || "").trim();
     const hashtagParam = (params.get("hashtag") || "").trim().replace(/^#/, "").toLowerCase();
     const roomId = (params.get("roomId") || "").trim();
-    const senderId = (params.get("senderId") || "").trim();\n    const page = Math.max(Number(params.get("page")) || 1, 1);\n    const limit = Math.min(Math.max(Number(params.get("limit")) || 50, 1), 50);
+    const senderId = (params.get("senderId") || "").trim();
+    const page = Math.max(Number(params.get("page")) || 1, 1);
+    const limit = Math.min(Math.max(Number(params.get("limit")) || 50, 1), 50);
     const from = parseDate(params.get("from"));
     const to = parseDate(params.get("to"), true);
 
