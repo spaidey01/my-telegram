@@ -1117,6 +1117,7 @@ io.on("connection", (socket) => {
 
     const callerSockets = await io.in(c.callerSocketId).fetchSockets();
     if (!callerSockets.length) {
+      await recordCallHistory(c, "cancelled");
       await deleteActiveCall(callId);
       return callback({ success: false, error: "Caller disconnected" });
     }
