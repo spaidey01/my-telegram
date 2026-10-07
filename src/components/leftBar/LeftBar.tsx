@@ -1,6 +1,6 @@
 "use client";
 
-import useGlobalStore from "@/stores/globalStore";
+import useGlobalStore, { ThreadEvent } from "@/stores/globalStore";
 import useUserStore from "@/stores/userStore";
 import useSockets from "@/stores/useSockets";
 import React, {
@@ -79,10 +79,10 @@ const LeftBar = () => {
         const response = await fetch("/api/threads?mine=true", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json();
-        const events = Array.isArray(payload?.events) ? payload.events : [];
+        const events: Array<Record<string, unknown>> = Array.isArray(payload?.events) ? payload.events : [];
         if (cancelled) return;
         const normalized = events
-          .map((event) => ({
+          .map((event: Record<string, unknown>) => ({
             ...event,
             actor: typeof event?.actor === "string" ? event.actor : event?.actor?._id,
             createdAt: typeof event?.createdAt === "string" ? event.createdAt : new Date(event?.createdAt || Date.now()).toISOString(),
