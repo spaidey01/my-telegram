@@ -343,12 +343,13 @@ const recordCallHistory = async (call, status, endedAt = new Date()) => {
   );
 };
 export const processScheduledMessages = async () => {
+  const MAX_SCHEDULED_ATTEMPTS = 5;
   const now = new Date();
   const staleBefore = new Date(now.getTime() - 2 * 60 * 1000);
   const jobs = await ScheduledMessageSchema.find({
     $or: [
-      { status: "pending", scheduledFor: { $lte: now } },
-      { status: "processing", processingAt: { $lte: staleBefore } },
+      { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
+      { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
     ],
   }).sort({ scheduledFor: 1 }).limit(25).lean();
 
@@ -357,11 +358,11 @@ export const processScheduledMessages = async () => {
       {
         _id: job._id,
         $or: [
-          { status: "pending", scheduledFor: { $lte: now } },
-          { status: "processing", processingAt: { $lte: staleBefore } },
+          { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
+          { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
         ],
       },
-      { $set: { status: "processing", processingAt: new Date() } },
+      { $set: { status: "processing", processingAt: new Date() }, $inc: { attemptCount: 1 } },
       { new: true },
     );
     if (!claimed) continue;
@@ -459,25 +460,29 @@ export const processScheduledMessages = async () => {
         try {
           await reconcileDelivery(duplicate);
         } catch (recoveryError) {
+          const nextStatus = (claimed.attemptCount || 0) >= MAX_SCHEDULED_ATTEMPTS ? "failed" : "pending";
           await ScheduledMessageSchema.updateOne(
             { _id: claimed._id },
             {
               $set: {
-                status: "failed",
+                status: nextStatus,
                 error: String(recoveryError?.message || recoveryError).slice(0, 500),
                 processingAt: null,
+                scheduledFor: new Date(),
               },
             },
           );
         }
       } else {
+        const nextStatus = (claimed.attemptCount || 0) >= MAX_SCHEDULED_ATTEMPTS ? "failed" : "pending";
         await ScheduledMessageSchema.updateOne(
           { _id: claimed._id },
           {
             $set: {
-              status: "failed",
+              status: nextStatus,
               error: String(error?.message || error).slice(0, 500),
               processingAt: null,
+              scheduledFor: new Date(),
             },
           },
         );
