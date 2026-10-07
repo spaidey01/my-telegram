@@ -9,12 +9,10 @@ import { cookies } from "next/headers";
 const getUserID = async () => {
   const token = (await cookies()).get("token")?.value;
   if (!token) return null;
-  try {
-    const decoded = tokenDecoder(token);
-    return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string" ? { id: decoded.sub, sv: decoded.sv, sid: decoded.sid } : null;
-  } catch {
-    return null;
-  }
+  const decoded = tokenDecoder(token);
+  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") return null;
+  if (!mongoose.isValidObjectId(decoded.sub) || !mongoose.isValidObjectId(decoded.sid)) return null;
+  return { id: decoded.sub, sv: decoded.sv, sid: decoded.sid };
 };
 
 export const GET = async (_req: Request, context: { params: Promise<{ id: string }> }) => {
