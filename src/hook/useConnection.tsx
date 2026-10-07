@@ -1,6 +1,7 @@
 import Loading from "@/components/modules/ui/Loading";
 import Room from "@/models/room";
 import User from "@/models/user";
+import MessageModel from "@/models/message";
 import { GlobalStoreProps, ThreadEvent } from "@/stores/globalStore";
 import { UserStoreUpdater } from "@/stores/userStore";
 import { SocketsProps } from "@/stores/useSockets";
