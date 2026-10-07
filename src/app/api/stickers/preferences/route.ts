@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
@@ -28,6 +29,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  if (!isSafeBrowserRequest(req)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   const userId = await getAuth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   const limit = await rateLimit("stickers:prefs:" + userId, 60, 60_000);
