@@ -63,6 +63,17 @@ const ChatPage = () => {
   const jumpRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const handleHashtagSearch = (event: Event) => {
+      const hashtag = (event as CustomEvent<{ hashtag?: string }>).detail?.hashtag;
+      if (!hashtag) return;
+      setIsMessageSearchOpen(true);
+      window.dispatchEvent(new CustomEvent("stargram:set-search-query", { detail: { query: hashtag, hashtagMode: true } }));
+    };
+    window.addEventListener("stargram:search-hashtag", handleHashtagSearch);
+    return () => window.removeEventListener("stargram:search-hashtag", handleHashtagSearch);
+  }, []);
+
+  useEffect(() => {
     if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();
   }, [selectionRoomID, selectedRoom?._id, clearMessageSelection]);
 
