@@ -5,8 +5,10 @@ import { cookies } from "next/headers";
 import { hash } from "bcrypt";
 import tokenGenerator from "@/utils/TokenGenerator";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
+import { isSafeBrowserRequest } from "@/utils/csrf";
 
 export const POST = async (req: Request) => {
+  if (!isSafeBrowserRequest(req)) return Response.json({ message: "Forbidden" }, { status: 403 });
   const ipLimit = await rateLimit("register:ip:" + getRequestIp(req), 5, 60_000);
   if (!ipLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(ipLimit.retryAfter) } });
 
