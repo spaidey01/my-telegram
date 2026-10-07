@@ -40,7 +40,7 @@ export const GET = async (req: Request) => {
     if (roomId && !memberRoomIds.some((id) => String(id) === roomId)) return Response.json({ message: "Forbidden" }, { status: 403 });
 
     const roomFilter = roomId ? roomId : { $in: memberRoomIds };
-    const values = await MessageSchema.distinct("hashtags", { roomID: roomFilter });
+    const values = await MessageSchema.distinct("hashtags", { roomID: roomFilter, hideFor: { $ne: d.sub } });
     const suggestions = values
       .map((value) => String(value).toLowerCase())
       .filter((value) => value.startsWith(prefix))
