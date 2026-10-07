@@ -44,3 +44,10 @@ test("draft schema has a unique user-room index for one draft per room", () => {
     fields.user === 1 && fields.room === 1 && options?.unique === true
   ));
 });
+
+test("scheduled message schema contains retry and lifecycle states", async () => {
+  const { default: ScheduledSchema } = await import("../src/schemas/scheduledMessageSchema.js");
+  assert.deepEqual(ScheduledSchema.schema.path("status").enumValues, ["pending", "processing", "sent", "failed", "cancelled"]);
+  assert.ok(ScheduledSchema.schema.path("attemptCount"));
+  assert.ok(ScheduledSchema.schema.path("processingAt"));
+});
