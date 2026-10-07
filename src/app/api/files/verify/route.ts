@@ -6,6 +6,8 @@ import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, S3Client } fr
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
+import SessionSchema from "@/schemas/sessionSchema";
+import mongoose from "mongoose";
 
 const MAX_SCAN_BYTES = 25 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg","image/png","image/gif","image/webp","audio/ogg","audio/mpeg","audio/wav","audio/flac","audio/webm","audio/mp4","video/mp4","video/webm","video/quicktime","video/ogg","application/pdf","application/zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.openxmlformats-officedocument.presentationml.presentation","text/plain","text/csv","application/json"]);
@@ -89,12 +91,13 @@ export async function POST(req: Request) {
     const decoded = token ? tokenDecoder(token) : false;
     const userId = decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? String(decoded.sub) : null;
     const sessionVersion = decoded && typeof decoded === "object" && typeof decoded.sv === "number" ? decoded.sv : null;
-    if (!userId || sessionVersion === null) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!userId || sessionVersion === null || !decoded || typeof decoded !== "object" || typeof decoded.sid !== "string" || !mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(decoded.sid)) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const { default: UserSchema } = await import("@/schemas/userSchema");
     const { default: connectToDB } = await import("@/db");
     await connectToDB();
-    const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
+    const session = await SessionSchema.findOne({ _id: decoded.sid, user: userId, revokedAt: null }).select("_id").lean();
+    const activeUser = session ? await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean() : null;
     if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const limit = await rateLimit("file-verify:" + userId, 30, 60_000);
