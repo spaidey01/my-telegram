@@ -525,7 +525,7 @@ io.on("connection", (socket) => {
     try {
       const room = await isMember(roomID, userID);
       if (!room) return callback({ success: false, error: "Forbidden" });
-      if (room.type === "channel" && !channelCanPost(room, userID)) return callback({ success: false, error: "Only channel admins can post" });
+      if (room.type === "channel" && !channelCanPost(room, userID)) return callback({ success: false, error: "You cannot post in this channel" });
       if (room.type === "group" && !hasGroupPermission(room, userID, "sendMessages")) return callback({ success: false, error: "You cannot send messages in this group" });
       if (room.type === "group" && room.restrictedUsers?.some((id) => id.toString() === userID)) return callback({ success: false, error: "You are restricted" });
       if (room.type === "private") {
@@ -850,7 +850,7 @@ io.on("connection", (socket) => {
         return callback({ success: false, error: "Messages are restricted by this user" });
       }
     }
-    if (targetRoom.type === "channel" && !isAdmin(targetRoom, userID)) {
+    if (targetRoom.type === "channel" && !channelCanPost(targetRoom, userID)) {
       return callback({ success: false, error: "Forbidden" });
     }
 
