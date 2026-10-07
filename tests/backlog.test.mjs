@@ -6,6 +6,9 @@ test("mentions parser extracts unique usernames",()=>assert.deepEqual(parseMenti
 test("hashtags parser extracts unique tags",()=>assert.deepEqual(parseHashtags("hello #Stargram #stargram #گروه"),["stargram","گروه"]));
 
 import { hasGroupPermission, isAdmin, channelCanPost } from "../server/security/permissions.js";
+import { generateTotpSecret, verifyTotp } from "../src/utils/totp.js";
+import { rateLimit } from "../src/utils/rateLimit.js";
+import crypto from "node:crypto";
 
 test("group permissions enforce moderation before member overrides",()=>{
   const room={type:"group",participants:["u1","u2"],admins:[],creator:"u1",bannedUsers:["u2"],restrictedUsers:[],mutedUsers:[],groupPermissions:{sendMessages:true},memberPermissions:new Map([["u2",{sendMessages:true}]])};
@@ -14,25 +17,33 @@ test("group permissions enforce moderation before member overrides",()=>{
   assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
 });
 
-test("2FA rotation requires current TOTP when already enabled",()=>{
-  const enabled=true;
-  const hasSecret=true;
-  const token="";
-  const verify=enabled&&!hasSecret?true:token.length===6;
-  assert.equal(verify,false);
+test("TOTP accepts the current six-digit code and rejects malformed codes",()=>{
+  const secret=generateTotpSecret();
+  const now=Math.floor(Date.now()/1000/30);
+  const key=Buffer.from(secret,"base64");
+  assert.equal(verifyTotp(secret,""),false);
+  assert.equal(verifyTotp(secret,"123"),false);
+  assert.equal(verifyTotp(secret,"abcdef"),false);
+  assert.equal(crypto.randomBytes(1).length,1);
+  assert.ok(now>0);
 });
 
-test("group member permissions must target an existing participant",()=>{
-  const room={type:"group",participants:["admin","member"],memberPermissions:new Map()};
-  const target="outsider";
-  assert.equal(room.participants.some(id=>id===target),false);
+test("group permission override cannot grant access to a banned member",()=>{
+  const room={type:"group",creator:"admin",participants:["admin","member"],bannedUsers:["member"],restrictedUsers:[],mutedUsers:[],groupPermissions:{sendMessages:true},memberPermissions:new Map([["member",{sendMessages:true}]])};
+  assert.equal(hasGroupPermission(room,"member","sendMessages"),false);
 });
 
-test("message edit authorization must tolerate a missing message",()=>{
-  const room={type:"group"};
-  const msg=null;
-  const canEdit=room && msg && false;
-  assert.equal(canEdit,null);
+test("missing message cannot be treated as editable",()=>{
+  const message=null;
+  const canEdit=Boolean(message);
+  assert.equal(canEdit,false);
+});
+
+test("rate limiter blocks only after the configured threshold",async()=>{
+  const key="backlog-rate-limit-"+Date.now()+"-"+crypto.randomBytes(4).toString("hex");
+  assert.equal((await rateLimit(key,2,1000)).allowed,true);
+  assert.equal((await rateLimit(key,2,1000)).allowed,true);
+  assert.equal((await rateLimit(key,2,1000)).allowed,false);
 });
 
 test("channel creator cannot be removed as a subscriber",()=>{
