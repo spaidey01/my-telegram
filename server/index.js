@@ -388,7 +388,11 @@ export const processScheduledMessages = async () => {
           _id: claimed.room,
           $or: [
             { lastMessageAt: null },
-            { lastMessageAt: { $lte: message.createdAt } },
+            { lastMessageAt: { $lt: message.createdAt } },
+            {
+              lastMessageAt: message.createdAt,
+              lastMessageId: { $lt: message._id },
+            },
           ],
         },
         {
