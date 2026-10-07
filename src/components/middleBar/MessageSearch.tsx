@@ -117,14 +117,15 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
         setPage(1);
         setSearched(true);
       } catch (searchError) {
+        if (searchError instanceof DOMException && searchError.name === "AbortError") return;
         setError(searchError instanceof Error ? searchError.message : "Search failed");
         setResults([]);
         setSearched(true);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [query, roomId, senderId, from, to, allRooms, hashtagMode]);
 
   const loadMore = async () => {
