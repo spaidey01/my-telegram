@@ -8,6 +8,8 @@ import SessionSchema from "@/schemas/sessionSchema";
 import RoomSchema from "@/schemas/roomSchema";
 import MessageSchema from "@/schemas/messageSchema";
 import StickerSchema from "@/schemas/stickerSchema";
+import StickerPackSchema from "@/schemas/stickerPackSchema";
+import UserStickerPackSchema from "@/schemas/userStickerPackSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { canViewPrivacy } from "@/utils/privacy";
 import mongoose from "mongoose";
@@ -33,7 +35,24 @@ export async function GET(req:Request){
   const accessUrl=`/api/files/access?key=${encodeURIComponent(key)}`;
   const ownsFile=key.split("/")[1]===userId;let canAccess=ownsFile;
   if(!canAccess){
-   if(key.startsWith("stickers/"))canAccess=Boolean(await StickerSchema.exists({file:accessUrl}));
+   if(key.startsWith("stickers/")){
+    const sticker=await StickerSchema.findOne({file:accessUrl}).select("packId").lean();
+    if(sticker){
+      const pack=await StickerPackSchema.findById(sticker.packId).select("_id owner").lean();
+      const isOwner=Boolean(pack&&String(pack.owner)===userId);
+      const isInstalled=Boolean(pack&&!isOwner&&await UserStickerPackSchema.exists({user:userId,packId:pack._id}));
+      let isSharedInRoom=false;
+      if(!isOwner&&!isInstalled){
+        const stickerMessage=await MessageSchema.findOne({
+          "stickerData.file":accessUrl,
+          roomID:{$in:(await RoomSchema.find({participants:userId}).select("_id").lean()).map((room)=>room._id)},
+          hideFor:{$nin:[userId]},
+        }).select("_id").lean();
+        isSharedInRoom=Boolean(stickerMessage);
+      }
+      canAccess=isOwner||isInstalled||isSharedInRoom;
+    }
+  }
    const messageRefs=await MessageSchema.find({$or:[{"voiceData.src":accessUrl},{"attachmentData.src":accessUrl}]}).select("roomID").lean();
    const roomIds=messageRefs.map((message)=>message.roomID);
    const roomRef=await RoomSchema.findOne({avatar:accessUrl,participants:userId}).select("_id").lean();
