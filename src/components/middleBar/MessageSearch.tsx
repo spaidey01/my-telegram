@@ -28,6 +28,7 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
   const { selectedRoom, setter, setPendingMessageJump } = useGlobalStore((state) => state);
   const [allRooms, setAllRooms] = useState(false);
   const [query, setQuery] = useState("");
+  const [hashtagMode, setHashtagMode] = useState(false);
   const [senderId, setSenderId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -55,7 +56,7 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
       setLoading(true);
       setError("");
       try {
-        const params = new URLSearchParams({ query: query.trim() });
+        const params = new URLSearchParams(hashtagMode ? { hashtag: query.trim() } : { query: query.trim() });
         if (!allRooms) params.set("roomId", roomId);
         if (senderId) params.set("senderId", senderId);
         if (from) params.set("from", from);
@@ -74,7 +75,7 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [query, roomId, senderId, from, to, allRooms]);
+  }, [query, roomId, senderId, from, to, allRooms, hashtagMode]);
 
   const highlight = (text: string) => {
     if (!query.trim()) return text;
@@ -103,11 +104,12 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
     <div className="absolute inset-x-0 top-0 z-40 flex max-h-[80dvh] flex-col border-b border-white/10 bg-leftBarBg shadow-xl">
       <div className="flex items-center gap-2 p-2">
         <IoSearch className="size-5 text-gray-400" />
-        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search messages" className="min-w-0 flex-1 bg-transparent px-2 py-2 outline-none" />
+        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder={hashtagMode ? "Search hashtag…" : "Search messages"} className="min-w-0 flex-1 bg-transparent px-2 py-2 outline-none" />
         <button type="button" onClick={onClose} title="Close"><IoClose className="size-6" /></button>
       </div>
       <div className="flex gap-2 overflow-x-auto px-2 pb-2">
         <button type="button" onClick={() => setAllRooms((value) => !value)} className="rounded bg-white/10 px-2 py-1 text-sm whitespace-nowrap">{allRooms ? "All chats" : "This chat"}</button>
+        <button type="button" onClick={() => { setHashtagMode((value) => !value); setQuery(""); }} className={`rounded px-2 py-1 text-sm whitespace-nowrap ${hashtagMode ? "bg-lightBlue/30" : "bg-white/10"}`}># Hashtag</button>
         <select value={senderId} onChange={(event) => setSenderId(event.target.value)} className="rounded bg-white/10 px-2 py-1 text-sm">
           <option value="">All senders</option>
           {participants.map((participant) => <option key={participant._id} value={participant._id}>{participant.name || participant._id}</option>)}
