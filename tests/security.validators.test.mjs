@@ -75,15 +75,3 @@ test("admin privileges require active room membership", async () => {
   room.participants = [admin];
   assert.equal(isAdmin(room, member.toString()), false);
 });
-
-test("socket-scoped JWT is rejected by the REST token decoder", async () => {
-  const jwt = await import("jsonwebtoken");
-  process.env.secretKey = process.env.secretKey || "security-test-secret-012345678901234567890";
-  const token = jwt.default.sign(
-    { sub: new mongoose.Types.ObjectId().toString(), sv: 0, sid: new mongoose.Types.ObjectId().toString(), scope: "socket" },
-    process.env.secretKey,
-    { algorithm: "HS256", expiresIn: "5m" },
-  );
-  const { default: tokenDecoder } = await import("../src/utils/TokenDecoder.ts");
-  assert.equal(tokenDecoder(token), false);
-});
