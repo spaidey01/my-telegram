@@ -1,6 +1,6 @@
 "use client";
 
-import useGlobalStore from "@/stores/globalStore";
+import useGlobalStore, { ThreadEvent } from "@/stores/globalStore";
 import useUserStore from "@/stores/userStore";
 import useSockets from "@/stores/useSockets";
 import React, {
@@ -79,20 +79,49 @@ const LeftBar = () => {
         const response = await fetch("/api/threads?mine=true", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json();
-        const events: Array<Record<string, unknown>> = Array.isArray(payload?.events) ? payload.events : [];
+        const events: Array<{
+          _id?: unknown;
+          type?: unknown;
+          room?: unknown;
+          message?: unknown;
+          actor?: unknown;
+          data?: unknown;
+          createdAt?: unknown;
+          readBy?: unknown;
+        }> = Array.isArray(payload?.events) ? payload.events : [];
         if (cancelled) return;
         const normalized = events
-          .map((event: Record<string, unknown>) => ({
-            ...event,
-            actor: typeof event?.actor === "string" ? event.actor : event?.actor?._id,
-            createdAt: typeof event?.createdAt === "string" ? event.createdAt : new Date(event?.createdAt || Date.now()).toISOString(),
-          }))
-          .filter((event): event is import("@/stores/globalStore").ThreadEvent =>
-            event && typeof event._id === "string" &&
-            typeof event.type === "string" &&
-            typeof event.room === "string" &&
-            typeof event.actor === "string"
-          )
+          .map((event): ThreadEvent | null => {
+            const actor = typeof event.actor === "string"
+              ? event.actor
+              : event.actor && typeof event.actor === "object" && "_id" in event.actor
+                ? (event.actor as { _id?: unknown })._id
+                : null;
+            if (
+              typeof event._id !== "string" ||
+              typeof event.type !== "string" ||
+              !["mention", "reaction", "call", "system"].includes(event.type) ||
+              typeof event.room !== "string" ||
+              typeof actor !== "string"
+            ) return null;
+            return {
+              _id: event._id,
+              type: event.type as ThreadEvent["type"],
+              room: event.room,
+              message: typeof event.message === "string" ? event.message : undefined,
+              actor,
+              data: event.data && typeof event.data === "object"
+                ? event.data as ThreadEvent["data"]
+                : undefined,
+              createdAt: typeof event.createdAt === "string"
+                ? event.createdAt
+                : new Date(event.createdAt || Date.now()).toISOString(),
+              readBy: Array.isArray(event.readBy)
+                ? event.readBy.filter((id): id is string => typeof id === "string")
+                : [],
+            };
+          })
+          .filter((event): event is ThreadEvent => Boolean(event))
           .slice(0, 100);
         setter((prev) => {
           const merged = [...normalized, ...prev.threadEvents];
