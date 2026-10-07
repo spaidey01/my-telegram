@@ -17,15 +17,16 @@ const getAuth = async () => {
   return decoded;
 };
 
-const parseDate = (value: string | null, endOfDay = false) => {
+const parseDate = (value: string | null, endOfDay = false, timezoneOffsetMinutes = 0) => {
   if (!value?.trim()) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    if (endOfDay) date.setUTCHours(23, 59, 59, 999);
-    else date.setUTCHours(0, 0, 0, 0);
+    const [year, month, day] = value.split("-").map(Number);
+    const base = Date.UTC(year, month - 1, day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+    const date = new Date(base + timezoneOffsetMinutes * 60_000);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
-  return date;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 };
 
 export const GET = async (req: Request) => {
