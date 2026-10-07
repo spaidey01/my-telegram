@@ -5,6 +5,7 @@ import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
 import SessionSchema from "@/schemas/sessionSchema";
+import { sanitizeUserForViewer } from "@/utils/privacy";
 import { rateLimit } from "@/utils/rateLimit";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^()|[\]\\]/g, "\\$&").replace(/\$/g, "\\$");
@@ -44,7 +45,7 @@ export const POST = async (req: Request) => {
         UserSchema.find({ username: { $regex: new RegExp("^" + escapeRegExp(searchText), "i") } }).select(safeUserProjection).limit(20).lean(),
         RoomSchema.findOne({ link: { $regex: new RegExp("^" + escapeRegExp(payload) + "$", "i") } }).select("_id name avatar type link biography").lean(),
       ]);
-      const results: unknown[] = [...users];
+      const results: unknown[] = await Promise.all(users.map((user) => sanitizeUserForViewer(user, auth.id)));
       if (room) results.push(room);
       return results.length ? Response.json(results, { status: 200 }) : Response.json(null, { status: 404 });
     }
