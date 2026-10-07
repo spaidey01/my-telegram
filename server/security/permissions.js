@@ -1,6 +1,8 @@
 export const GROUP_PERMISSION_KEYS=["sendMessages","sendMedia","sendStickers","sendLinks","addMembers","pinMessages","changeInfo","manageMembers"];
 export const isAdmin=(room,userID)=>{
  if(!room)return false;
+ const isMember=room.participants?.some?.((id)=>id.toString()===userID);
+ if(!isMember)return false;
  if(room.creator?.toString()===userID)return true;
  if(room.type==="channel"){
   const role=room.channelRoles?.get?.(userID)||room.channelRoles?.[userID];
