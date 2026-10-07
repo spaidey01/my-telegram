@@ -115,3 +115,16 @@ test("sticker file access requires pack ownership, installation, or a visible sh
   assert.match(source, /hideFor/);
   assert.doesNotMatch(source, /StickerSchema\.exists\(\{file:accessUrl\}\)/);
 });
+
+
+test("presence and typing do not depend on node-local state", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(server, /const onlineUsers = new Map\(\)/);
+  assert.doesNotMatch(server, /const typingByRoom = new Map\(\)/);
+  assert.match(server, /io\.in\(presenceRoom\)\.fetchSockets\(\)/);
+  assert.match(server, /io\.in\(data\.roomID\)\.fetchSockets\(\)/);
+  assert.match(server, /io\.fetchSockets\(\)/);
+});
