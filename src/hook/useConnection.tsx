@@ -405,6 +405,38 @@ const useConnection = ({
       if (roomID === selectedRoom?._id) setter({ selectedRoom: null });
     });
 
+    socket.on("roomRead", ({ roomID, readBy, readTime }: { roomID: string; readBy: string; readTime: string }) => {
+      setRooms((prevRooms) => prevRooms.map((room) => {
+        if (room._id !== roomID) return room;
+        return {
+          ...room,
+          messages: (room.messages || []).map((message) => (
+            message.sender?._id === readBy
+              ? message
+              : { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime }
+          )),
+          lastMsgData: room.lastMsgData
+            ? { ...room.lastMsgData, seen: [...new Set([...(room.lastMsgData.seen || []), readBy])], readTime }
+            : room.lastMsgData,
+        };
+      }));
+      setter((prev) => ({
+        selectedRoom: prev.selectedRoom && prev.selectedRoom._id === roomID
+          ? {
+              ...prev.selectedRoom,
+              messages: (prev.selectedRoom.messages || []).map((message) => (
+                message.sender?._id === readBy
+                  ? message
+                  : { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime }
+              )),
+              lastMsgData: prev.selectedRoom.lastMsgData
+                ? { ...prev.selectedRoom.lastMsgData, seen: [...new Set([...(prev.selectedRoom.lastMsgData.seen || []), readBy])], readTime }
+                : prev.selectedRoom.lastMsgData,
+            }
+          : prev.selectedRoom,
+      }));
+    });
+
     socket.on("seenMsg", ({ roomID, seenBy, readTime }) => {
       setRooms((prevRooms) =>
         prevRooms.map((room) => {
@@ -510,6 +542,7 @@ const useConnection = ({
         "userProfileUpdated",
         "deleteRoom",
         "seenMsg",
+        "roomRead",
         "updateRoomData",
         "channel:role",
         "channel:role:remove",
