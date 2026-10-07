@@ -5,6 +5,7 @@ import { io as createClient } from "socket.io-client";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import UserSchema from "../src/schemas/userSchema.js";
+import SessionSchema from "../src/schemas/sessionSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import FileSchema from "../src/schemas/fileSchema.js";
@@ -25,6 +26,9 @@ let serverProcess;
 let user;
 let otherUser;
 let thirdUser;
+let userSession;
+let otherUserSession;
+let thirdUserSession;
 
 const waitFor = (socket, event, timeout = 5000) =>
   new Promise((resolve, reject) => {
@@ -92,6 +96,11 @@ before(async () => {
     password: "not-a-real-password",
     sessionVersion: 0,
   });
+  [userSession, otherUserSession, thirdUserSession] = await SessionSchema.create([
+    { user: user._id, device: "integration", ip: "127.0.0.1", userAgent: "integration-test" },
+    { user: otherUser._id, device: "integration", ip: "127.0.0.1", userAgent: "integration-test" },
+    { user: thirdUser._id, device: "integration", ip: "127.0.0.1", userAgent: "integration-test" },
+  ]);
 
   serverProcess = spawn(process.execPath, ["server/index.js"], {
     env: process.env,
@@ -104,6 +113,7 @@ before(async () => {
 after(async () => {
   if (user) {
     await RoomSchema.deleteMany({ creator: user._id });
+    await SessionSchema.deleteMany({ user: { $in: [user?._id, otherUser?._id, thirdUser?._id].filter(Boolean) } });
     await UserSchema.deleteMany({ _id: { $in: [user._id, otherUser?._id, thirdUser?._id].filter(Boolean) } });
   }
   await mongoose.disconnect();
@@ -127,7 +137,7 @@ test("socket authentication, invite-link authorization and message flow", async 
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -185,7 +195,7 @@ test("reply, edit, reaction, pin, forward and delete message flow", async () => 
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -454,7 +464,7 @@ test("room read marker rejects non-members and invalid target messages", async (
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: thirdUser._id.toString(), sv: 0, scope: "socket" },
+        { sub: thirdUser._id.toString(), sv: 0, sid: thirdUserSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
