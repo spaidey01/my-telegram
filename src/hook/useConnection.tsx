@@ -417,7 +417,7 @@ const useConnection = ({
         if (targetIndex < 0) return messages;
         return messages.map((message, index) =>
           index <= targetIndex && message.sender?._id !== readBy
-            ? { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime }
+            ? { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime: new Date(readTime) }
             : message
         );
       };
@@ -427,7 +427,7 @@ const useConnection = ({
           ...room,
           messages: applyRead(room.messages || []),
           lastMsgData: room.lastMsgData
-            ? { ...room.lastMsgData, seen: [...new Set([...(room.lastMsgData.seen || []), readBy])], readTime }
+            ? { ...room.lastMsgData, seen: [...new Set([...(room.lastMsgData.seen || []), readBy])], readTime: new Date(readTime) }
             : room.lastMsgData,
         };
       }));
@@ -437,7 +437,7 @@ const useConnection = ({
               ...prev.selectedRoom,
               messages: applyRead(prev.selectedRoom.messages || []),
               lastMsgData: prev.selectedRoom.lastMsgData
-                ? { ...prev.selectedRoom.lastMsgData, seen: [...new Set([...(prev.selectedRoom.lastMsgData.seen || []), readBy])], readTime }
+                ? { ...prev.selectedRoom.lastMsgData, seen: [...new Set([...(prev.selectedRoom.lastMsgData.seen || []), readBy])], readTime: new Date(readTime) }
                 : prev.selectedRoom.lastMsgData,
             }
           : prev.selectedRoom,
