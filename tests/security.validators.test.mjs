@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
+import DraftSchema from "../src/schemas/draftSchema.js";
 
 test("Mongo ObjectId validation rejects malformed identifiers",()=>{
   assert.equal(mongoose.isValidObjectId("abc"),false);
@@ -28,4 +29,18 @@ test("message schema enforces message length",()=>{
     message:"x".repeat(10001),
   });
   assert.ok(message.validateSync()?.errors?.message);
+});
+
+test("draft schema enforces user/room ownership fields and message length", () => {
+  const draft = new DraftSchema({ message: "x".repeat(10001) });
+  const errors = draft.validateSync()?.errors || {};
+  assert.ok(errors.user);
+  assert.ok(errors.room);
+  assert.ok(errors.message);
+});
+
+test("draft schema has a unique user-room index for one draft per room", () => {
+  assert.ok(DraftSchema.schema.indexes().some(([fields, options]) =>
+    fields.user === 1 && fields.room === 1 && options?.unique === true
+  ));
 });
