@@ -62,16 +62,20 @@ const LeftBar = () => {
         const payload = await response.json();
         const events = Array.isArray(payload?.events) ? payload.events : [];
         if (cancelled) return;
-        setter((prev) => ({
-          threadEvents: events
-            .filter((event): event is import("@/stores/globalStore").ThreadEvent =>
-              event && typeof event._id === "string" &&
-              typeof event.type === "string" &&
-              typeof event.room === "string" &&
-              typeof event.actor === "string"
-            )
-            .slice(0, 100),
-        }));
+        const normalized = events
+          .map((event) => ({
+            ...event,
+            actor: typeof event?.actor === "string" ? event.actor : event?.actor?._id,
+            createdAt: typeof event?.createdAt === "string" ? event.createdAt : new Date(event?.createdAt || Date.now()).toISOString(),
+          }))
+          .filter((event): event is import("@/stores/globalStore").ThreadEvent =>
+            event && typeof event._id === "string" &&
+            typeof event.type === "string" &&
+            typeof event.room === "string" &&
+            typeof event.actor === "string"
+          )
+          .slice(0, 100);
+        setter({ threadEvents: normalized });
       } catch {
         // Live socket events remain available if the history request fails.
       }
