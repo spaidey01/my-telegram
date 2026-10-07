@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import connectToDB from "@/db";import { sanitizeUserForViewer } from "@/utils/privacy";import ThreadEventSchema from "@/schemas/threadEventSchema";import RoomSchema from "@/schemas/roomSchema";import UserSchema from "@/schemas/userSchema";import SessionSchema from "@/schemas/sessionSchema";import tokenDecoder from "@/utils/TokenDecoder";import {cookies}from"next/headers";import mongoose from"mongoose";
 const auth=async()=>{
   const t=(await cookies()).get("token")?.value,d=t?tokenDecoder(t):false;
@@ -12,6 +13,7 @@ const auth=async()=>{
 };
 export const GET=async(req:Request)=>{const d=await auth();if(!d)return Response.json({message:"Unauthorized"},{status:401});const params=new URL(req.url).searchParams;const roomId=params.get("roomId");const mine=params.get("mine")==="true";if(mine){const events=await ThreadEventSchema.find({$or:[{"data.targetUser":d.sub},{actor:d.sub,type:{$in:["call","system"]}}]}).sort({createdAt:-1}).limit(100).populate("actor","name username avatar _id").lean();return Response.json({events:await Promise.all(events.map(async(event)=>({...event,actor:event.actor?await sanitizeUserForViewer(event.actor,d.sub):event.actor})))})}if(!mongoose.isValidObjectId(roomId))return Response.json({message:"Invalid roomId"},{status:400});if(!await RoomSchema.exists({_id:roomId,participants:d.sub}))return Response.json({message:"Forbidden"},{status:403});const events=await ThreadEventSchema.find({room:roomId,$or:[{"data.targetUser":d.sub},{type:{$in:["call","system"]}}]}).sort({createdAt:-1}).limit(100).populate("actor","name username avatar _id").lean();return Response.json({events:await Promise.all(events.map(async(event)=>({...event,actor:event.actor?await sanitizeUserForViewer(event.actor,d.sub):event.actor})))})};
 export const PATCH=async(req:Request)=>{
+  if(!isSafeBrowserRequest(req))return Response.json({message:"Forbidden"},{status:403});
   const d=await auth();
   if(!d)return Response.json({message:"Unauthorized"},{status:401});
   const body=await req.json().catch(()=>({}));
