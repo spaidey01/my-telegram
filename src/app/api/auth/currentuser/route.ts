@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
@@ -7,6 +8,7 @@ import SessionSchema from "@/schemas/sessionSchema";
 type AuthSession={_id:unknown};
 
 export const POST = async (req: Request) => {
+  if (!isSafeBrowserRequest(req)) return Response.json({ message: "Forbidden" }, { status: 403 });
   const limit = await rateLimit("currentuser:ip:" + getRequestIp(req), 60, 60_000);
   if (!limit.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
   try {
