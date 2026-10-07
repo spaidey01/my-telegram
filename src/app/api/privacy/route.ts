@@ -2,19 +2,16 @@ import { isSafeBrowserRequest } from "@/utils/csrf";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
 import { DEFAULT_PRIVACY_SETTINGS, PRIVACY_KEYS, PRIVACY_VALUES, normalizePrivacySettings } from "@/utils/privacy";
-import jwt from "jsonwebtoken";
+import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import User from "@/models/user";
 import SessionSchema from "@/schemas/sessionSchema";
 
-const secret = process.env.secretKey;
-
 const getUserID = async () => {
-  if (!secret) return null;
   const token = (await cookies()).get("token")?.value;
   if (!token) return null;
   try {
-    const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] });
+    const decoded = tokenDecoder(token);
     return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string" ? { id: decoded.sub, sv: decoded.sv, sid: decoded.sid } : null;
   } catch {
     return null;
