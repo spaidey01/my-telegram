@@ -4,6 +4,8 @@ import mongoose from "mongoose";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import DraftSchema from "../src/schemas/draftSchema.js";
+import tokenDecoder from "../src/utils/TokenDecoder.js";
+import jwt from "jsonwebtoken";
 
 test("Mongo ObjectId validation rejects malformed identifiers",()=>{
   assert.equal(mongoose.isValidObjectId("abc"),false);
@@ -50,4 +52,15 @@ test("scheduled message schema contains retry and lifecycle states", async () =>
   assert.deepEqual(ScheduledSchema.schema.path("status").enumValues, ["pending", "processing", "sent", "failed", "cancelled"]);
   assert.ok(ScheduledSchema.schema.path("attemptCount"));
   assert.ok(ScheduledSchema.schema.path("processingAt"));
+});
+
+
+test("socket-scoped JWTs are rejected by the REST token decoder", () => {
+  process.env.secretKey = "integration-security-test-secret-0123456789";
+  const socketToken = jwt.sign(
+    { sub: new mongoose.Types.ObjectId().toString(), sv: 0, sid: new mongoose.Types.ObjectId().toString(), scope: "socket" },
+    process.env.secretKey,
+    { algorithm: "HS256", expiresIn: "5m" },
+  );
+  assert.equal(tokenDecoder(socketToken), false);
 });
