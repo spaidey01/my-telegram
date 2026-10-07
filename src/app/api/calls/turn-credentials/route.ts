@@ -3,8 +3,10 @@ import { NextResponse } from "next/server";
 import tokenDecoder from "@/utils/TokenDecoder";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
+import SessionSchema from "@/schemas/sessionSchema";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 import { buildTurnIceServers } from "@/utils/turnCredentials";
+import mongoose from "mongoose";
 
 const noStoreHeaders = {
   "Cache-Control": "private, no-store, max-age=0",
@@ -26,12 +28,13 @@ export async function GET(req: Request) {
   }
 
   const decoded = tokenDecoder(token);
-  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") {
+  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string" || !mongoose.isValidObjectId(decoded.sub) || !mongoose.isValidObjectId(decoded.sid)) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
   }
 
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv })
+  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).select("_id").lean();
+  const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv })
     .select("_id sessionVersion")
     .lean();
   if (!user) {
