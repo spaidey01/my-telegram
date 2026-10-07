@@ -80,6 +80,7 @@ const LeftBar = () => {
           const unique = merged.filter((event, index, list) =>
             list.findIndex((item) => item._id === event._id) === index
           );
+          unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           return { threadEvents: unique.slice(0, 100) };
         });
       } catch {
