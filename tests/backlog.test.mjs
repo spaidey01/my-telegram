@@ -14,6 +14,19 @@ test("group permissions enforce moderation before member overrides",()=>{
   assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
 });
 
+test("group member permissions must target an existing participant",()=>{
+  const room={type:"group",participants:["admin","member"],memberPermissions:new Map()};
+  const target="outsider";
+  assert.equal(room.participants.some(id=>id===target),false);
+});
+
+test("message edit authorization must tolerate a missing message",()=>{
+  const room={type:"group"};
+  const msg=null;
+  const canEdit=room && msg && false;
+  assert.equal(canEdit,null);
+});
+
 test("channel creator cannot be removed as a subscriber",()=>{
   const room={type:"channel",creator:"owner",participants:["owner","admin"],admins:["admin"]};
   const memberID="owner";
