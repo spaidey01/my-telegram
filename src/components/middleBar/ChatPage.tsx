@@ -60,14 +60,17 @@ const ChatPage = () => {
   const pendingMessageJumpId = useGlobalStore((state) => state.pendingMessageJumpId);
   const setPendingMessageJump = useGlobalStore((state) => state.setPendingMessageJump);
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHashtagMode, setSearchHashtagMode] = useState(false);
   const jumpRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
     const handleHashtagSearch = (event: Event) => {
       const hashtag = (event as CustomEvent<{ hashtag?: string }>).detail?.hashtag;
       if (!hashtag) return;
+      setSearchHashtagMode(true);
+      setSearchQuery(hashtag);
       setIsMessageSearchOpen(true);
-      window.dispatchEvent(new CustomEvent("stargram:set-search-query", { detail: { query: hashtag, hashtagMode: true } }));
     };
     window.addEventListener("stargram:search-hashtag", handleHashtagSearch);
     return () => window.removeEventListener("stargram:search-hashtag", handleHashtagSearch);
@@ -292,7 +295,7 @@ const ChatPage = () => {
       className="relative h-dvh flex flex-col chatBackground w-full "
     >
       {isMessageSearchOpen && selectedRoom?._id && (
-        <MessageSearch roomId={selectedRoom._id} onClose={() => setIsMessageSearchOpen(false)} />
+        <MessageSearch roomId={selectedRoom._id} initialQuery={searchQuery} initialHashtagMode={searchHashtagMode} onClose={() => setIsMessageSearchOpen(false)} />
       )}
 
       {/* Chat Header */}
