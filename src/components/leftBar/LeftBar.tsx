@@ -1,6 +1,6 @@
 "use client";
 
-import useGlobalStore, { ThreadEvent } from "@/stores/globalStore";
+import useGlobalStore from "@/stores/globalStore";
 import useUserStore from "@/stores/userStore";
 import useSockets from "@/stores/useSockets";
 import React, {
