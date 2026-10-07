@@ -6,7 +6,24 @@ test("mentions parser extracts unique usernames",()=>assert.deepEqual(parseMenti
 test("hashtags parser extracts unique tags",()=>assert.deepEqual(parseHashtags("hello #Stargram #stargram #گروه"),["stargram","گروه"]));
 
 import { hasGroupPermission, isAdmin, channelCanPost } from "../server/security/permissions.js";
-import { generateTotpSecret, verifyTotp } from "../src/utils/totp.js";
+import { rateLimit } from "../src/utils/rateLimit.js";
+import crypto from "node:crypto";
+
+test("group permissions enforce moderation before member overrides",()=>{
+  const room={type:"group",participants:["u1","u2"],admins:[],creator:"u1",bannedUsers:["u2"],restrictedUsers:[],mutedUsers:[],groupPermissions:{sendMessages:true},memberPermissions:new Map([["u2",{sendMessages:true}]])};
+  assert.equal(isAdmin(room,"u1"),true);
+  assert.equal(hasGroupPermission(room,"u2","sendMessages"),false);
+  assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
+});
+
+ort test from "node:test";
+import assert from "node:assert/strict";
+import { parseMentions, parseHashtags } from "../src/utils/messageParsing.js";
+
+test("mentions parser extracts unique usernames",()=>assert.deepEqual(parseMentions("hi @Alice @alice @bob_1"),["alice","bob_1"]));
+test("hashtags parser extracts unique tags",()=>assert.deepEqual(parseHashtags("hello #Stargram #stargram #گروه"),["stargram","گروه"]));
+
+import { hasGroupPermission, isAdmin, channelCanPost } from "../server/security/permissions.js";
 import { rateLimit } from "../src/utils/rateLimit.js";
 import crypto from "node:crypto";
 
