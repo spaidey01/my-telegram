@@ -17,15 +17,21 @@ test("group permissions enforce moderation before member overrides",()=>{
   assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
 });
 
-test("TOTP accepts the current six-digit code and rejects malformed codes",()=>{
+test("TOTP accepts a real current code and rejects malformed codes",()=>{
   const secret=generateTotpSecret();
-  const now=Math.floor(Date.now()/1000/30);
-  const key=Buffer.from(secret,"base64");
+  const alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits="";
+  for(const char of secret) bits += alphabet.indexOf(char).toString(2).padStart(5,"0");
+  const key=Buffer.from(Array.from({length:Math.floor(bits.length/8)},(_,i)=>parseInt(bits.slice(i*8,i*8+8),2)));
+  const counter=Math.floor(Date.now()/1000/30);
+  const buf=Buffer.alloc(8); buf.writeBigInt64BE(BigInt(counter));
+  const digest=crypto.createHmac("sha1",key).update(buf).digest();
+  const pos=digest[digest.length-1]&15;
+  const code=String((((digest[pos]&127)<<24)|((digest[pos+1]&255)<<16)|((digest[pos+2]&255)<<8)|(digest[pos+3]&255))%1000000).padStart(6,"0");
+  assert.equal(verifyTotp(secret,code),true);
   assert.equal(verifyTotp(secret,""),false);
   assert.equal(verifyTotp(secret,"123"),false);
   assert.equal(verifyTotp(secret,"abcdef"),false);
-  assert.equal(crypto.randomBytes(1).length,1);
-  assert.ok(now>0);
 });
 
 test("group permission override cannot grant access to a banned member",()=>{
