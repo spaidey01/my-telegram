@@ -80,8 +80,6 @@ export const shutdown = async () => {
 
 export { io };
 
-const onlineUsers = new Map();
-const typingByRoom = new Map();
 const activeCalls = new Map();
 const CALL_REDIS_SET = "stargram:active-call-ids";
 const CALL_REDIS_PREFIX = "stargram:active-call:";
@@ -590,8 +588,6 @@ io.on("connection", (socket) => {
   socket.data.userId = userID;
   socket.join(presenceRoom);
   const publicUserPromise = UserSchema.findById(userID).select("name username avatar _id").lean();
-  onlineUsers.set(userID, (onlineUsers.get(userID) || new Set()).add(socket.id));
-
   const initializePresence = async () => {
     const currentUser = await UserSchema.findById(userID).select("lastSeenAt").lean();
     await UserSchema.updateOne({ _id: userID }, { $set: { status: "online" } });
@@ -1731,9 +1727,6 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "typing", 10, 10_000))) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
-    const current = typingByRoom.get(data.roomID) || new Set();
-    current.add(userID);
-    typingByRoom.set(data.roomID, current);
     const user = await publicUserPromise;
     const typingSockets = await io.in(data.roomID).fetchSockets();
     await Promise.all(typingSockets.map(async (viewerSocket) => {
@@ -1748,9 +1741,6 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "stop-typing", 20, 10_000))) return;
     const room = await isMember(data?.roomID, userID);
     if (!room) return;
-    const current = typingByRoom.get(data.roomID) || new Set();
-    current.delete(userID);
-    if (!current.size) typingByRoom.delete(data.roomID);
     const user = await publicUserPromise;
     const typingSockets = await io.in(data.roomID).fetchSockets();
     await Promise.all(typingSockets.map(async (viewerSocket) => {
@@ -1996,10 +1986,6 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", async () => {
     clearInterval(sessionCheckTimer);
-    const typingRooms = [...typingByRoom.entries()];
-    for (const [roomID, members] of typingRooms) {
-      if (members.delete(userID) && !members.size) typingByRoom.delete(roomID);
-    }
     for (const c of await listActiveCalls()) {
       const callId = c.callId;
       const isCaller = c.caller === userID && c.callerSocketId === socket.id;
@@ -2032,10 +2018,6 @@ io.on("connection", (socket) => {
       }, CALL_RECONNECT_GRACE_MS);
       c.reconnectTimer.unref?.();
     }
-    const sockets = onlineUsers.get(userID);
-    sockets?.delete(socket.id);
-    if (!sockets?.size) onlineUsers.delete(userID);
-
     // The presence room is shared through the Socket.IO adapter, so this check
     // remains correct when the same user is connected to another server node.
     const remainingSockets = await io.in(presenceRoom).fetchSockets();
