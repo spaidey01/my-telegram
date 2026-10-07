@@ -113,9 +113,7 @@ const LeftBar = () => {
               data: event.data && typeof event.data === "object"
                 ? event.data as ThreadEvent["data"]
                 : undefined,
-              createdAt: typeof event.createdAt === "string"
-                ? event.createdAt
-                : new Date(event.createdAt || Date.now()).toISOString(),
+              createdAt: typeof event.createdAt === "string" ? event.createdAt : new Date().toISOString(),
               readBy: Array.isArray(event.readBy)
                 ? event.readBy.filter((id): id is string => typeof id === "string")
                 : [],
