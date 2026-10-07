@@ -1055,31 +1055,117 @@ io.on("connection", (socket) => {
     if (!room || !msg) return callback({ success: false, error: "Forbidden" });
     if (room.type === "group" && !hasGroupPermission(room,userID,"sendMessages")) return callback({success:false,error:"Reactions are disabled"});
 
-    const reactions = Array.isArray(msg.reactions) ? msg.reactions : [];
-    const index = reactions.findIndex((reaction) => reaction.emoji === safeEmoji);
-    let reactionAdded = false;
-    if (index === -1) {
-      reactions.push({ emoji: safeEmoji, userIds: [userID] });
-      reactionAdded = true;
+    const userObjectId = new mongoose.Types.ObjectId(userID);
+    const existingReaction = (Array.isArray(msg.reactions) ? msg.reactions : [])
+      .find((reaction) => reaction.emoji === safeEmoji);
+    const alreadyReacted = Boolean(existingReaction?.userIds?.some((id) => id.toString() === userID));
+
+    let updated;
+    if (alreadyReacted) {
+      updated = await MessageSchema.findOneAndUpdate(
+        { _id: msgID, roomID, "reactions.emoji": safeEmoji },
+        [
+          {
+            $set: {
+              reactions: {
+                $filter: {
+                  input: {
+                    $map: {
+                      input: "$reactions",
+                      as: "reaction",
+                      in: {
+                        $cond: [
+                          { $eq: ["$$reaction.emoji", safeEmoji] },
+                          {
+                            $mergeObjects: [
+                              "$$reaction",
+                              {
+                                userIds: {
+                                  $filter: {
+                                    input: "$$reaction.userIds",
+                                    as: "userId",
+                                    cond: { $ne: ["$$userId", userObjectId] },
+                                  },
+                                },
+                              },
+                            ],
+                          },
+                          "$$reaction",
+                        ],
+                      },
+                    },
+                  },
+                  as: "reaction",
+                  cond: { $gt: [{ $size: "$$reaction.userIds" }, 0] },
+                },
+              },
+            },
+          },
+        ],
+        { new: true },
+      ).lean();
     } else {
-      const userIndex = reactions[index].userIds.findIndex((id) => id.toString() === userID);
-      if (userIndex === -1) {
-        reactions[index].userIds.push(userID);
-        reactionAdded = true;
-      } else reactions[index].userIds.splice(userIndex, 1);
-      if (!reactions[index].userIds.length) reactions.splice(index, 1);
+      updated = await MessageSchema.findOneAndUpdate(
+        { _id: msgID, roomID },
+        [
+          {
+            $set: {
+              reactions: {
+                $let: {
+                  vars: {
+                    matching: {
+                      $filter: {
+                        input: "$reactions",
+                        as: "reaction",
+                        cond: { $eq: ["$$reaction.emoji", safeEmoji] },
+                      },
+                    },
+                  },
+                  in: {
+                    $cond: [
+                      { $gt: [{ $size: "$$matching" }, 0] },
+                      {
+                        $map: {
+                          input: "$reactions",
+                          as: "reaction",
+                          in: {
+                            $cond: [
+                              { $eq: ["$$reaction.emoji", safeEmoji] },
+                              {
+                                $mergeObjects: [
+                                  "$$reaction",
+                                  { userIds: { $setUnion: ["$$reaction.userIds", [userObjectId]] } },
+                                ],
+                              },
+                              "$$reaction",
+                            ],
+                          },
+                        },
+                      },
+                      { $concatArrays: ["$reactions", [{ emoji: safeEmoji, userIds: [userObjectId] }]] },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        ],
+        { new: true },
+      ).lean();
     }
 
-    msg.reactions = reactions;
-    await msg.save();
+    if (!updated) return callback({ success: false, error: "Message not found" });
+
+    const reactionAdded = !alreadyReacted;
     if (reactionAdded) {
-      const reactionTargetUser = String(msg.sender);
+      const reactionTargetUser = String(updated.sender);
       await createThreadReactionEvent(userID, roomID, msgID, reactionTargetUser, safeEmoji);
     }
+
     const payload = {
       msgID,
       roomID,
-      reactions: reactions.map((reaction) => ({
+      reactions: (updated.reactions || []).map((reaction) => ({
         emoji: reaction.emoji,
         userIds: reaction.userIds.map((id) => id.toString()),
       })),
