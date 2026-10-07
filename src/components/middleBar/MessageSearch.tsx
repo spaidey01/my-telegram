@@ -193,7 +193,9 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
         <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded bg-white/10 px-2 py-1 text-sm" />
         <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded bg-white/10 px-2 py-1 text-sm" />
       </div>
-      {hashtagMode && suggestions.length > 0 && (\n        <div className="flex flex-wrap gap-2 px-3 pb-2">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setQuery(suggestion); setSuggestions([]); }} className="rounded-full bg-white/10 px-3 py-1 text-sm hover:bg-white/15">#{suggestion}</button>)}</div>\n      )}\n      <div className="overflow-y-auto">
+      {hashtagMode && suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-3 pb-2">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setQuery(suggestion); setSuggestions([]); }} className="rounded-full bg-white/10 px-3 py-1 text-sm hover:bg-white/15">#{suggestion}</button>)}</div>
+      )}\n      <div className="overflow-y-auto">
         {loading && <div className="p-4 text-center text-sm text-gray-400">Searching…</div>}
         {!loading && error && <div className="p-4 text-center text-sm text-red-300">{error}</div>}
         {!loading && !error && searched && !results.length && <div className="p-4 text-center text-sm text-gray-400">No messages found.</div>}
