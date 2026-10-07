@@ -335,39 +335,85 @@ const recordCallHistory = async (call, status, endedAt = new Date()) => {
 };
 const processScheduledMessages = async () => {
   const now = new Date();
-  const jobs = await ScheduledMessageSchema.find({ status: "pending", scheduledFor: { $lte: now } }).sort({ scheduledFor: 1 }).limit(25).lean();
+  const staleBefore = new Date(now.getTime() - 2 * 60 * 1000);
+  const jobs = await ScheduledMessageSchema.find({
+    $or: [
+      { status: "pending", scheduledFor: { $lte: now } },
+      { status: "processing", processingAt: { $lte: staleBefore } },
+    ],
+  }).sort({ scheduledFor: 1 }).limit(25).lean();
+
   for (const job of jobs) {
     const claimed = await ScheduledMessageSchema.findOneAndUpdate(
-      { _id: job._id, status: "pending" },
-      { $set: { status: "processing" } },
+      {
+        _id: job._id,
+        $or: [
+          { status: "pending", scheduledFor: { $lte: now } },
+          { status: "processing", processingAt: { $lte: staleBefore } },
+        ],
+      },
+      { $set: { status: "processing", processingAt: new Date() } },
       { new: true },
     );
     if (!claimed) continue;
+
     try {
+      const idempotencyKey = "scheduled:" + claimed._id.toString();
+      const existing = await MessageSchema.findOne({ tempId: idempotencyKey }).lean();
+      if (existing) {
+        await ScheduledMessageSchema.updateOne(
+          { _id: claimed._id },
+          { $set: { status: "sent", sentAt: existing.createdAt, processingAt: null } },
+        );
+        continue;
+      }
+
       const room = await isMember(claimed.room.toString(), claimed.sender.toString());
       if (!room || (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))) throw new Error("Forbidden");
+
       const p = claimed.payload || {};
       const textValue = typeof p.message === "string" ? p.message.slice(0,10000) : "";
       const msg = await MessageSchema.create({
-        sender: claimed.sender, roomID: claimed.room, message: textValue, seen: [], hideFor: [],
-        isEdited: false, status: "sent", kind: room.type === "channel" ? "post" : "message",
-        mentions: parseMentionsServer(textValue), hashtags: parseHashtagsServer(textValue),
+        sender: claimed.sender,
+        roomID: claimed.room,
+        message: textValue,
+        seen: [],
+        hideFor: [],
+        isEdited: false,
+        status: "sent",
+        kind: room.type === "channel" ? "post" : "message",
+        tempId: idempotencyKey,
+        mentions: parseMentionsServer(textValue),
+        hashtags: parseHashtagsServer(textValue),
         voiceData: await sanitizeVoiceData(p.voiceData, claimed.sender.toString()),
         attachmentData: await sanitizeAttachmentData(p.attachmentData, claimed.sender.toString()),
         stickerData: await sanitizeStickerData(p.stickerData, claimed.sender.toString()),
       });
+
       await createThreadMentionEvents(claimed.sender.toString(), claimed.room.toString(), msg._id, msg.mentions);
       await RoomSchema.updateOne({ _id: claimed.room }, { $set: { lastMessageId: msg._id, lastMessageAt: msg.createdAt } });
       const populated = await MessageSchema.findById(msg._id).populate("sender","name username avatar _id").lean();
       await emitVisibleMessage(claimed.room.toString(),"newMessage",populated);
       await emitVisibleMessage(claimed.room.toString(),"updateLastMsgData",{roomID:claimed.room.toString(),msgData:populated});
-      await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"sent",sentAt:new Date()}});
+      await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"sent",sentAt:new Date(),processingAt:null}});
     } catch (error) {
-      await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"failed",error:String(error?.message||error).slice(0,500)}});
+      const duplicate = error?.code === 11000
+        ? await MessageSchema.findOne({ tempId: "scheduled:" + claimed._id.toString() }).lean()
+        : null;
+      if (duplicate) {
+        await ScheduledMessageSchema.updateOne(
+          { _id: claimed._id },
+          { $set: { status: "sent", sentAt: duplicate.createdAt, processingAt: null } },
+        );
+      } else {
+        await ScheduledMessageSchema.updateOne(
+          {_id:claimed._id},
+          {$set:{status:"failed",error:String(error?.message||error).slice(0,500),processingAt:null}},
+        );
+      }
     }
   }
 };
-
 
 const isMessageInRoom = async (msgID, roomID) => {
   if (!isValidId(msgID) || !isValidId(roomID)) return null;
