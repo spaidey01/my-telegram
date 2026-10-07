@@ -1147,6 +1147,25 @@ io.on("connection", (socket) => {
     const callerSockets = await io.in(c.callerSocketId).fetchSockets();
     const calleeSockets = await io.in(c.calleeSocketId).fetchSockets();
     if (!callerSockets.length || !calleeSockets.length) {
+      if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
+      c.reconnectTimer = setTimeout(() => {
+        void (async () => {
+          const active = await getActiveCall(callId);
+          if (!active) return;
+          const callerOnline = active.callerSocketId
+            ? (await io.in(active.callerSocketId).fetchSockets()).length > 0
+            : false;
+          const calleeOnline = active.calleeSocketId
+            ? (await io.in(active.calleeSocketId).fetchSockets()).length > 0
+            : false;
+          if (callerOnline && calleeOnline) return;
+          const targetSocketId = callerOnline ? active.callerSocketId : active.calleeSocketId;
+          if (targetSocketId) io.to(targetSocketId).emit("call:ended", { callId, reason: "disconnected" });
+          await recordCallHistory(active, active.acceptedAt ? "completed" : "cancelled");
+          await deleteActiveCall(callId);
+        })();
+      }, CALL_RECONNECT_GRACE_MS);
+      c.reconnectTimer.unref?.();
       await setActiveCall(callId, c, CALL_RECONNECT_GRACE_MS);
       socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: false });
       return callback({ success: true, ready: false });
