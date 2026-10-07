@@ -427,8 +427,15 @@ const emitVisibleMessage = async (roomID, event, payload, excludeSocketId = null
   await Promise.all(sockets.map(async (viewerSocket) => {
     if (viewerSocket.id === excludeSocketId) return;
     const visiblePayload = { ...payload };
+    if (visiblePayload.msgData && Array.isArray(visiblePayload.msgData.hideFor)
+      && visiblePayload.msgData.hideFor.some((id) => String(id) === String(viewerSocket.data.userId))) {
+      visiblePayload.msgData = null;
+    }
     if (visiblePayload.sender && typeof visiblePayload.sender === "object") {
       visiblePayload.sender = await sanitizeUserForViewer(visiblePayload.sender, viewerSocket.data.userId);
+    }
+    if (visiblePayload.msgData?.sender && typeof visiblePayload.msgData.sender === "object") {
+      visiblePayload.msgData.sender = await sanitizeUserForViewer(visiblePayload.msgData.sender, viewerSocket.data.userId);
     }
     viewerSocket.emit(event, visiblePayload);
   }));
