@@ -12,8 +12,8 @@ const safeUserProjection = "name lastName username avatar biography type status 
 const getAuthenticatedUserId = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number"
-    ? { id: decoded.sub, sv: decoded.sv }
+  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string"
+    ? { id: decoded.sub, sv: decoded.sv, sid: decoded.sid }
     : null;
 };
 
@@ -25,7 +25,8 @@ export const POST = async (req: Request) => {
     if (!limit.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
     await connectToDB();
-    const sessionUser = await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean();
+    const session = auth && (auth as any).sid ? await SessionSchema.findOne({ _id: (auth as any).sid, user: auth.id, revokedAt: null }).select("_id").lean() : null;
+    const sessionUser = session ? await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean() : null;
     if (!sessionUser) return Response.json({ message: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
