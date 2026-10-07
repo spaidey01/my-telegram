@@ -405,16 +405,21 @@ const useConnection = ({
       if (roomID === selectedRoom?._id) setter({ selectedRoom: null });
     });
 
-    socket.on("roomRead", ({ roomID, readBy, readTime }: { roomID: string; readBy: string; readTime: string }) => {
+    socket.on("roomRead", ({ roomID, messageID, readBy, readTime }: { roomID: string; messageID: string; readBy: string; readTime: string }) => {
+      const applyRead = (messages: MessageModel[]) => {
+        const targetIndex = messages.findIndex((message) => message._id === messageID);
+        if (targetIndex < 0) return messages;
+        return messages.map((message, index) =>
+          index <= targetIndex && message.sender?._id !== readBy
+            ? { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime }
+            : message
+        );
+      };
       setRooms((prevRooms) => prevRooms.map((room) => {
         if (room._id !== roomID) return room;
         return {
           ...room,
-          messages: (room.messages || []).map((message) => (
-            message.sender?._id === readBy
-              ? message
-              : { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime }
-          )),
+          messages: applyRead(room.messages || []),
           lastMsgData: room.lastMsgData
             ? { ...room.lastMsgData, seen: [...new Set([...(room.lastMsgData.seen || []), readBy])], readTime }
             : room.lastMsgData,
@@ -424,11 +429,7 @@ const useConnection = ({
         selectedRoom: prev.selectedRoom && prev.selectedRoom._id === roomID
           ? {
               ...prev.selectedRoom,
-              messages: (prev.selectedRoom.messages || []).map((message) => (
-                message.sender?._id === readBy
-                  ? message
-                  : { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime }
-              )),
+              messages: applyRead(prev.selectedRoom.messages || []),
               lastMsgData: prev.selectedRoom.lastMsgData
                 ? { ...prev.selectedRoom.lastMsgData, seen: [...new Set([...(prev.selectedRoom.lastMsgData.seen || []), readBy])], readTime }
                 : prev.selectedRoom.lastMsgData,
