@@ -704,7 +704,11 @@ io.on("connection", (socket) => {
           _id: roomID,
           $or: [
             { lastMessageAt: null },
-            { lastMessageAt: { $lte: newMsg.createdAt } },
+            { lastMessageAt: { $lt: newMsg.createdAt } },
+            {
+              lastMessageAt: newMsg.createdAt,
+              lastMessageId: { $lt: newMsg._id },
+            },
           ],
         },
         { $set: { lastMessageId: newMsg._id, lastMessageAt: newMsg.createdAt } },
