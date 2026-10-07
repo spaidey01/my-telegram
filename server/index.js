@@ -1342,7 +1342,7 @@ io.on("connection", (socket) => {
     callback({ success: true });
   });
 
-  on("call:accept", async ({ callId }, callback = () => {}) => {
+  on("call:accept", async ({ callId }, callback = () => {}) => {\n    if (!(await allowEvent(userID, "call:accept", 30, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const c = await getActiveCall(callId);
     if (!c || c.callee !== userID) return callback({ success: false, error: "Call not found" });
     c.calleeSocketId = socket.id;
@@ -1360,7 +1360,7 @@ io.on("connection", (socket) => {
     callback({ success: true });
   });
 
-  on("call:reject", async ({ callId, reason = "rejected" }, callback = () => {}) => {
+  on("call:reject", async ({ callId, reason = "rejected" }, callback = () => {}) => {\n    if (!(await allowEvent(userID, "call:reject", 30, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
@@ -1372,7 +1372,7 @@ io.on("connection", (socket) => {
     callback({ success: true });
   });
 
-  on("call:reconnect", async ({ callId }, callback = () => {}) => {
+  on("call:reconnect", async ({ callId }, callback = () => {}) => {\n    if (!(await allowEvent(userID, "call:reconnect", 20, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     if (c.reconnectTimer) clearTimeout(c.reconnectTimer);
@@ -1411,7 +1411,7 @@ io.on("connection", (socket) => {
     callback({ success: true, ready: true });
   });
 
-  on("call:retry", async ({ callId }, callback = () => {}) => {
+  on("call:retry", async ({ callId }, callback = () => {}) => {\n    if (!(await allowEvent(userID, "call:retry", 10, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     if (c.retryCount >= CALL_RETRY_LIMIT) return callback({ success: false, error: "Retry limit reached" });
@@ -1422,7 +1422,7 @@ io.on("connection", (socket) => {
     callback({ success: true, attempt: c.retryCount });
   });
 
-  on("call:offer", async ({ callId, description, restart = false }) => {
+  on("call:offer", async ({ callId, description, restart = false }) => {\n    if (!(await allowEvent(userID, "call:offer", 60, 60_000))) return;
     const c = await getActiveCall(callId);
     if (!c || !description?.sdp) return;
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
@@ -1435,13 +1435,13 @@ io.on("connection", (socket) => {
     if (targetSocketId) io.to(targetSocketId).emit("call:offer", { callId, description, restart });
   });
 
-  on("call:answer", async ({ callId, description }) => {
+  on("call:answer", async ({ callId, description }) => {\n    if (!(await allowEvent(userID, "call:answer", 60, 60_000))) return;
     const c = await getActiveCall(callId);
     if (!c || c.callee !== userID || socket.id !== c.calleeSocketId || !description?.sdp) return;
     io.to(c.callerSocketId).emit("call:answer", { callId, description });
   });
 
-  on("call:ice", async ({ callId, candidate }) => {
+  on("call:ice", async ({ callId, candidate }) => {\n    if (!(await allowEvent(userID, "call:ice", 300, 60_000))) return;
     const c = await getActiveCall(callId);
     if (!c || !candidate) return;
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
@@ -1451,7 +1451,7 @@ io.on("connection", (socket) => {
     if (targetSocketId) io.to(targetSocketId).emit("call:ice", { callId, candidate });
   });
 
-  on("call:end", async ({ callId }, callback = () => {}) => {
+  on("call:end", async ({ callId }, callback = () => {}) => {\n    if (!(await allowEvent(userID, "call:end", 30, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const c = await getActiveCall(callId);
     if (!c || (c.caller !== userID && c.callee !== userID)) return callback({ success: false, error: "Call not found" });
     const targetSocketId = c.caller === userID ? c.calleeSocketId : c.callerSocketId;
