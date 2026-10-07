@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).select("_id").lean();
   const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv })
     .select("_id sessionVersion")
-    .lean();
+    .lean() : null;
   if (!user) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401, headers: noStoreHeaders });
   }
