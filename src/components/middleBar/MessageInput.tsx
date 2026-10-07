@@ -41,6 +41,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
   const queueRef = useRef<QueueItem[]>([]);
   const roomRef = useRef<string | undefined>(undefined);
   const draftTimerRef = useRef<number | null>(null);
+  const draftHydratedRef = useRef(false);
 
   const room = useGlobalStore((s) => s.selectedRoom);
   const setter = useGlobalStore((s) => s.setter);
@@ -270,16 +271,25 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
 
   useEffect(() => {
     resize();
+    draftHydratedRef.current = false;
     if (!roomId) { setText(""); return; }
     let cancelled = false;
     fetch("/api/drafts?roomId=" + encodeURIComponent(roomId))
       .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (!cancelled) setText(data?.draft?.message ?? localStorage.getItem(roomId) ?? ""); })
-      .catch(() => { if (!cancelled) setText(localStorage.getItem(roomId) || ""); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (cancelled) return;
+        setText(data?.draft?.message ?? localStorage.getItem(roomId) ?? "");
+        draftHydratedRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setText(localStorage.getItem(roomId) || "");
+        draftHydratedRef.current = true;
+      });
+    return () => { cancelled = true; draftHydratedRef.current = false; };
   }, [roomId, resize]);
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !draftHydratedRef.current) return;
     localStorage.setItem(roomId, text);
     if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
     draftTimerRef.current = window.setTimeout(() => {
