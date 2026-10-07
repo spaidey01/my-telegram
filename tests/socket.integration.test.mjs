@@ -1619,3 +1619,93 @@ test("scheduled worker does not overwrite a newer room last message during recov
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
+
+
+test("revoked session and bumped sessionVersion cannot continue using an existing socket", async () => {
+  const room = await RoomSchema.create({
+    name: "Session Revocation",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: new Date() } });
+    await UserSchema.updateOne({ _id: user._id }, { $inc: { sessionVersion: 1 } });
+
+    const result = await new Promise((resolve) => {
+      socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "must be rejected after revocation",
+        tempId: "revoked-session-" + Date.now(),
+      }, resolve);
+    });
+    assert.equal(result.success, false);
+    assert.equal(result.error, "Unauthorized");
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id }), 0);
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+    await UserSchema.updateOne({ _id: user._id }, { $set: { sessionVersion: 0 } });
+    await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: null } });
+  }
+});
+
+test("hidden message edits are not broadcast to the viewer who hid the message", async () => {
+  const room = await RoomSchema.create({
+    name: "Hidden Edit Privacy",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const senderSocket = createClient("http://127.0.0.1:3101", {
+    auth: { token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
+    transports: ["websocket"],
+  });
+  const viewerSocket = createClient("http://127.0.0.1:3101", {
+    auth: { token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, sid: otherUserSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
+    transports: ["websocket"],
+  });
+  try {
+    await Promise.all([waitFor(senderSocket, "connect"), waitFor(viewerSocket, "connect")]);
+    const join = (socket) => new Promise((resolve) => { socket.emit("joining", room._id.toString()); socket.once("joining", resolve); });
+    await Promise.all([join(senderSocket), join(viewerSocket)]);
+    const message = await MessageSchema.create({
+      sender: user._id,
+      message: "secret before hide",
+      roomID: room._id,
+      seen: [],
+      hideFor: [otherUser._id],
+    });
+
+    let leaked = false;
+    const onEdit = () => { leaked = true; };
+    viewerSocket.on("editMessage", onEdit);
+    senderSocket.emit("editMessage", {
+      msgID: message._id.toString(),
+      roomID: room._id.toString(),
+      editedMsg: "secret after hide",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    viewerSocket.off("editMessage", onEdit);
+    assert.equal(leaked, false);
+  } finally {
+    senderSocket.disconnect();
+    viewerSocket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
