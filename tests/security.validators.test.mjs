@@ -55,6 +55,16 @@ test("scheduled message schema contains retry and lifecycle states", async () =>
 });
 
 
+test("socket JWT expiry is enforced after connection", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(server, /socket\.userTokenExp/);
+  assert.match(server, /Date\.now\(\) >= socket\.userTokenExp \* 1000/);
+  assert.match(server, /socket\.disconnect\(true\)/);
+});
+
 test("socket-scoped JWTs are rejected by the REST token decoder", () => {
   process.env.secretKey = "integration-security-test-secret-0123456789";
   const socketToken = jwt.sign(
