@@ -195,7 +195,8 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
       </div>
       {hashtagMode && suggestions.length > 0 && (
         <div className="flex flex-wrap gap-2 px-3 pb-2">{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => { setQuery(suggestion); setSuggestions([]); }} className="rounded-full bg-white/10 px-3 py-1 text-sm hover:bg-white/15">#{suggestion}</button>)}</div>
-      )}\n      <div className="overflow-y-auto">
+      )}
+      <div className="overflow-y-auto">
         {loading && <div className="p-4 text-center text-sm text-gray-400">Searching…</div>}
         {!loading && error && <div className="p-4 text-center text-sm text-red-300">{error}</div>}
         {!loading && !error && searched && !results.length && <div className="p-4 text-center text-sm text-gray-400">No messages found.</div>}
