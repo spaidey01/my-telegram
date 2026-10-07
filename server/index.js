@@ -256,9 +256,11 @@ const isMember = async (roomID, userID) => {
 
 const isAdmin = (room, userID) => {
   if (!room) return false;
+  const isMember = room.participants?.some?.((id) => id.toString() === userID);
+  if (!isMember) return false;
   if (room.creator?.toString() === userID) return true;
   if (room.type === "channel") {
-    const role = room.channelRoles?.get?.(userID);
+    const role = room.channelRoles?.get?.(userID) || room.channelRoles?.[userID];
     if (role) return role === "owner" || role === "admin";
   }
   return room.admins?.some((id) => id.toString() === userID);
