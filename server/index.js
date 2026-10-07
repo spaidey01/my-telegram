@@ -1293,6 +1293,7 @@ io.on("connection", (socket) => {
     const room = await isMember(roomID,userID);
     if (!room || room.type !== "channel" || room.creator?.toString() !== userID || !isValidId(memberID)) return callback({success:false,error:"Forbidden"});
     room.channelRoles.delete(memberID);
+    room.admins = room.admins.filter(id => id.toString() !== memberID);
     await room.save();
     io.to(roomID).emit("channel:role:remove",{roomID,memberID});
     callback({success:true});
