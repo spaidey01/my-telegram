@@ -534,7 +534,7 @@ io.on("connection", (socket) => {
           return callback({ success: false, error: "Messages are restricted by this user" });
         }
       }
-      if (typeof message !== "string" || message.length > 10000 || !validatePayloadServer({ message, attachmentData, stickerData, voiceData }, 200000)) return callback({ success: false, error: "Invalid message" });
+      if (typeof message !== "string" || message.length > 10000) return callback({ success: false, error: "Invalid message" });
       if (room.type === "group" && attachmentData && !hasGroupPermission(room,userID,"sendMedia")) return callback({success:false,error:"Media sending is disabled"});
       if (room.type === "group" && stickerData && !hasGroupPermission(room,userID,"sendStickers")) return callback({success:false,error:"Sticker sending is disabled"});
       if (room.type === "group" && /https?:\/\//i.test(message) && !hasGroupPermission(room,userID,"sendLinks")) return callback({success:false,error:"Links are disabled"});
