@@ -397,9 +397,7 @@ const processScheduledMessages = async () => {
       await emitVisibleMessage(claimed.room.toString(),"updateLastMsgData",{roomID:claimed.room.toString(),msgData:populated});
       await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"sent",sentAt:new Date(),processingAt:null}});
     } catch (error) {
-      const duplicate = error?.code === 11000
-        ? await MessageSchema.findOne({ tempId: "scheduled:" + claimed._id.toString() }).lean()
-        : null;
+      const duplicate = await MessageSchema.findOne({ tempId: "scheduled:" + claimed._id.toString() }).lean();
       if (duplicate) {
         await ScheduledMessageSchema.updateOne(
           { _id: claimed._id },
