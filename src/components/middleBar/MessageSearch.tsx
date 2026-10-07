@@ -47,6 +47,17 @@ const MessageSearch = ({ roomId, onClose }: Props) => {
   }, [allRooms, rooms, selectedRoom]);
 
   useEffect(() => {
+    const handleSetSearchQuery = (event: Event) => {
+      const detail = (event as CustomEvent<{ query?: string; hashtagMode?: boolean }>).detail;
+      if (!detail?.query) return;
+      setHashtagMode(Boolean(detail.hashtagMode));
+      setQuery(detail.query);
+    };
+    window.addEventListener("stargram:set-search-query", handleSetSearchQuery);
+    return () => window.removeEventListener("stargram:set-search-query", handleSetSearchQuery);
+  }, []);
+
+  useEffect(() => {
     if (!query.trim()) {
       setResults([]);
       setSearched(false);
