@@ -268,7 +268,10 @@ const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\
 const createThreadMentionEvents = async (actorID, roomID, messageID, usernames) => {
   const names = [...new Set((usernames || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean))];
   if (!names.length) return;
-  const users = await UserSchema.find({ username: { $in: names } }).select("_id username").lean();
+  const room = await RoomSchema.findById(roomID).select("participants").lean();
+  if (!room) return;
+  const memberIds = new Set((room.participants || []).map((id) => String(id)));
+  const users = await UserSchema.find({ username: { $in: names }, _id: { $in: [...memberIds] } }).select("_id username").lean();
   for (const target of users) {
     if (String(target._id) === String(actorID)) continue;
     const event = await ThreadEventSchema.create({
