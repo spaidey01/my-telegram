@@ -242,7 +242,7 @@ const useConnection = ({
                     );
                     pendingMessagesService.removePendingMessage(
                       roomData._id,
-                      msg._id
+                      msg.tempId
                     );
                     // Cleanup saved blob if any
                     voiceBlobStorage
@@ -561,6 +561,7 @@ const useConnection = ({
 
   const initializeSocket = useCallback(async () => {
     if (socketRef.current) return;
+    await pendingMessagesService.hydrateFromIndexedDB();
     try {
       const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL, {
         auth: async (cb) => {
