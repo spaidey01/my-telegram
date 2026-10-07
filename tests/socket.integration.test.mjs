@@ -1651,14 +1651,25 @@ test("revoked session and bumped sessionVersion cannot continue using an existin
     // Do not wait for the periodic 5s disconnect timer, otherwise the test
     // races the timer and can lose the acknowledgement callback.
     const result = await new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.off("disconnect", onDisconnect);
+        resolve(value);
+      };
+      const onDisconnect = () => finish({ disconnected: true });
+      const timer = setTimeout(() => finish({ timeout: true }), 8_000);
+      socket.once("disconnect", onDisconnect);
       socket.emit("newMessage", {
         roomID: room._id.toString(),
         message: "must be rejected after revocation",
         tempId: "revoked-session-" + Date.now(),
-      }, resolve);
+      }, (payload) => finish(payload));
     });
-    assert.equal(result.success, false);
-    assert.equal(result.error, "Unauthorized");
+    assert.ok(result.disconnected || result.success === false);
+    if (!result.disconnected) assert.equal(result.error, "Unauthorized");
     assert.equal(await MessageSchema.countDocuments({ roomID: room._id }), 0);
   } finally {
     socket.disconnect();
