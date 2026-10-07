@@ -1246,7 +1246,7 @@ io.on("connection", (socket) => {
   });
   on("group:member:add", async ({ roomID, memberID }, callback = () => {}) => {
     const room = await isMember(roomID,userID);
-    if (!room || room.type !== "group" || !isAdmin(room,userID) || !hasGroupPermission(room,userID,"addMembers") || !isValidId(memberID)) return callback({success:false,error:"Forbidden"});
+    if (!room || room.type !== "group" || !hasGroupPermission(room,userID,"addMembers") || !isValidId(memberID)) return callback({success:false,error:"Forbidden"});
     if (room.bannedUsers?.some(id=>id.toString()===memberID)) return callback({success:false,error:"Member is banned"});
     if (!await UserSchema.exists({_id:memberID})) return callback({success:false,error:"User not found"});
     if (!room.participants.some(id=>id.toString()===memberID)) room.participants.push(memberID);
@@ -1278,12 +1278,12 @@ io.on("connection", (socket) => {
   });
   on("group:moderation", async ({ roomID, memberID, action }, callback = () => {}) => {
     const room=await isMember(roomID,userID);
-    if(!room||room.type!=="group"||!isAdmin(room,userID)||!isValidId(memberID)||memberID===room.creator?.toString()||!room.participants.some(id=>id.toString()===memberID)) return callback({success:false,error:"Forbidden"});
+    if(!room||room.type!=="group"||!isAdmin(room,userID)||!hasGroupPermission(room,userID,"manageMembers")||!isValidId(memberID)||memberID===room.creator?.toString()||!room.participants.some(id=>id.toString()===memberID)) return callback({success:false,error:"Forbidden"});
+    if(!["ban","restrict","mute","unban"].includes(action)) return callback({success:false,error:"Invalid action"});
     for(const field of ["bannedUsers","restrictedUsers","mutedUsers"]) room[field]=room[field].filter(id=>id.toString()!==memberID);
     if(action==="ban") room.bannedUsers.push(memberID);
     else if(action==="restrict") room.restrictedUsers.push(memberID);
     else if(action==="mute") room.mutedUsers.push(memberID);
-    else if(action!=="unban") return callback({success:false,error:"Invalid action"});
     await room.save(); io.to(roomID).emit("group:moderation",{roomID,memberID,action}); callback({success:true});
   });
 
@@ -1457,7 +1457,13 @@ io.on("connection", (socket) => {
     if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(id, roomID);
-    if (!room || !msg || (room.type !== "private" && !isAdmin(room, userID))) return callback({ success: false, error: "Forbidden" });
+    if (!room || !msg) return callback({ success: false, error: "Forbidden" });
+    if (room.type === "group" && !hasGroupPermission(room, userID, "pinMessages")) {
+      return callback({ success: false, error: "Forbidden" });
+    }
+    if (room.type === "channel" && !isAdmin(room, userID)) {
+      return callback({ success: false, error: "Forbidden" });
+    }
     msg.pinnedAt = typeof desiredPinned === "boolean"
       ? (desiredPinned ? new Date() : null)
       : (msg.pinnedAt ? null : new Date());
