@@ -1331,3 +1331,92 @@ test("sticker messages require an installed or owned pack and persist full stick
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
+
+
+test("offline retry tempId is idempotent at the socket and database boundary", async () => {
+  const room = await RoomSchema.create({
+    name: "Offline Idempotency",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const tempId = "offline-idempotent-" + Date.now();
+    const send = () => new Promise((resolve) => socket.emit("newMessage", {
+      roomID: room._id.toString(),
+      message: "offline retry",
+      tempId,
+    }, resolve));
+    const first = await send();
+    const second = await send();
+    assert.equal(first.success, true);
+    assert.equal(second.success, true);
+    assert.equal(second._id, first._id);
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id, tempId: user._id.toString() + ":" + tempId }), 1);
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("channel editor can forward through the same posting permission path", async () => {
+  const sourceRoom = await RoomSchema.create({
+    name: "Forward Source",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const channel = await RoomSchema.create({
+    name: "Forward Channel",
+    type: "channel",
+    creator: otherUser._id,
+    admins: [otherUser._id],
+    participants: [otherUser._id, user._id],
+    channelRoles: { [user._id.toString()]: "editor" },
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const source = await new Promise((resolve) => socket.emit("newMessage", {
+      roomID: sourceRoom._id.toString(),
+      message: "forwardable",
+      tempId: "forward-source-" + Date.now(),
+    }, resolve));
+    assert.equal(source.success, true);
+
+    const forwarded = await new Promise((resolve) => socket.emit("forwardMessage", {
+      msgID: source._id,
+      sourceRoomID: sourceRoom._id.toString(),
+      targetRoomID: channel._id.toString(),
+    }, resolve));
+    assert.equal(forwarded.success, true);
+    assert.equal(String(forwarded.message.roomID), channel._id.toString());
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: { $in: [sourceRoom._id, channel._id] } });
+    await RoomSchema.deleteMany({ _id: { $in: [sourceRoom._id, channel._id] } });
+  }
+});
