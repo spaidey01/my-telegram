@@ -11,6 +11,18 @@ const auth=async()=>{
   return session&&user?d:null;
 };
 export const GET=async(req:Request)=>{const d=await auth();if(!d)return Response.json({message:"Unauthorized"},{status:401});const params=new URL(req.url).searchParams;const roomId=params.get("roomId");const mine=params.get("mine")==="true";if(mine){return Response.json({events:await ThreadEventSchema.find({$or:[{"data.targetUser":d.sub},{actor:d.sub,type:{$in:["call","system"]}}]}).sort({createdAt:-1}).limit(100).populate("actor","name username avatar _id").lean()})}if(!mongoose.isValidObjectId(roomId))return Response.json({message:"Invalid roomId"},{status:400});if(!await RoomSchema.exists({_id:roomId,participants:d.sub}))return Response.json({message:"Forbidden"},{status:403});return Response.json({events:await ThreadEventSchema.find({room:roomId,$or:[{"data.targetUser":d.sub},{type:{$in:["call","system"]}}]}).sort({createdAt:-1}).limit(100).populate("actor","name username avatar _id").lean()})};
+export const PATCH=async(req:Request)=>{
+  const d=await auth();
+  if(!d)return Response.json({message:"Unauthorized"},{status:401});
+  const body=await req.json().catch(()=>({}));
+  if(body?.all!==true)return Response.json({message:"all=true is required"},{status:400});
+  const result=await ThreadEventSchema.updateMany(
+    {$or:[{"data.targetUser":d.sub},{actor:d.sub,type:{$in:["call","system"]}}]},
+    {$addToSet:{readBy:d.sub}},
+  );
+  return Response.json({ok:true,modifiedCount:result.modifiedCount});
+};
+
 export const POST=async(req:Request)=>{
   return Response.json({message:"Thread events are server-generated."},{status:405});
 };
