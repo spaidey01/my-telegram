@@ -776,7 +776,7 @@ io.on("connection", (socket) => {
     const previousMentions = new Set((msg.mentions || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean));
     const newMentions = nextMentions.filter((name) => !previousMentions.has(name));
     const updated = await MessageSchema.findOneAndUpdate(
-      { _id: msgID, roomID, sender: userID },
+      { _id: msgID, roomID },
       { message: editedMsg, isEdited: true, mentions: nextMentions, hashtags: parseHashtagsServer(editedMsg) },
       { new: true },
     ).lean();
