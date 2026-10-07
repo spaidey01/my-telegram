@@ -178,7 +178,7 @@ export default function CallOverlay(){
    if(saved){restoring.current=true;setCall(saved);setState("reconnecting");}
  },[socket,call]);
 
- useEffect(()=>{if(socket&&call&&restoring.current){restoring.current=false;socket.emit("call:reconnect",{callId:call.callId});}},[socket,call?.callId]);
+ useEffect(()=>{if(socket&&call&&restoring.current){restoring.current=false;socket.emit("call:reconnect",{callId:call.callId});}},[socket,call]);
 
  useEffect(()=>{
   if(!socket)return;
