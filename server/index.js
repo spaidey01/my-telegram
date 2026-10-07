@@ -283,13 +283,19 @@ const createThreadMentionEvents = async (actorID, roomID, messageID, usernames) 
       "data.targetUser": targetUser,
     });
     if (alreadyExists) continue;
-    const event = await ThreadEventSchema.create({
-      actor: actorID,
-      type: "mention",
-      room: roomID,
-      message: messageID,
-      data: { targetUser, username: target.username },
-    });
+    let event;
+    try {
+      event = await ThreadEventSchema.create({
+        actor: actorID,
+        type: "mention",
+        room: roomID,
+        message: messageID,
+        data: { targetUser, username: target.username },
+      });
+    } catch (error) {
+      if (error && error.code === 11000) continue;
+      throw error;
+    }
     io.to(`presence:${targetUser}`).emit("thread:event", {
       _id: String(event._id),
       type: "mention",
@@ -694,7 +700,13 @@ io.on("connection", (socket) => {
       }
 
       await RoomSchema.updateOne(
-        { _id: roomID },
+        {
+          _id: roomID,
+          $or: [
+            { lastMessageAt: null },
+            { lastMessageAt: { $lte: newMsg.createdAt } },
+          ],
+        },
         { $set: { lastMessageId: newMsg._id, lastMessageAt: newMsg.createdAt } },
       );
 
