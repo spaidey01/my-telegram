@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import { NextResponse } from "next/server";
 import net from "node:net";
 import { randomUUID } from "node:crypto";
@@ -82,6 +83,7 @@ const isMagicValid = (bytes: Uint8Array, contentType: string) => {
 };
 
 export async function POST(req: Request) {
+  if (!isSafeBrowserRequest(req)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   try {
     const token = (await cookies()).get("token")?.value;
     const decoded = token ? tokenDecoder(token) : false;
