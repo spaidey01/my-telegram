@@ -13,7 +13,7 @@ const getAuth = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
   if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") return null;
-  if (!mongoose.isValidObjectId(decoded.sub)) return null;
+  if (!mongoose.isValidObjectId(decoded.sub) || !mongoose.isValidObjectId(decoded.sid)) return null;
   return decoded;
 };
 
@@ -75,7 +75,8 @@ export const GET = async (req: Request) => {
 
     let messageQuery = MessageSchema.find(filter)
       .select("_id roomID sender message createdAt attachmentData stickerData voiceData pinnedAt")
-      .skip((page - 1) * limit)\n      .limit(limit)
+      .skip((page - 1) * limit)
+      .limit(limit)
       .populate("sender", "name username avatar _id");
     messageQuery = hashtagParam
       ? messageQuery.sort({ createdAt: -1, _id: -1 })
