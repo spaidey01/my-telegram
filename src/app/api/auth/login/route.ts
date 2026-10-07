@@ -37,7 +37,15 @@ export const POST = async (req: Request) => {
       const twoFactorOk = (totp && verifyTotp(userData.twoFactorSecret || "", totp))
         || (recovery && Array.isArray(userData.twoFactorBackupCodes) && userData.twoFactorBackupCodes.includes(recovery));
       if (!twoFactorOk) return Response.json({ message: "Two-factor authentication required", requires2FA: true }, { status: 401 });
-      if (recovery) await UserSchema.updateOne({ _id: userData._id }, { $pull: { twoFactorBackupCodes: recovery } });
+      if (recovery) {
+        const consumed = await UserSchema.updateOne(
+          { _id: userData._id, twoFactorBackupCodes: recovery },
+          { $pull: { twoFactorBackupCodes: recovery } },
+        );
+        if (consumed.modifiedCount !== 1) {
+          return Response.json({ message: "Invalid recovery code" }, { status: 401 });
+        }
+      }
     }
     const session = await SessionSchema.create({
       user: userData._id,
