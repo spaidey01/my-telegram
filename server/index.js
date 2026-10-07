@@ -612,6 +612,23 @@ io.on("connection", (socket) => {
   };
   void broadcastOnlineUsers();
 
+  const sessionCheckTimer = setInterval(async () => {
+    try {
+      const currentSession = await SessionSchema.findOne({
+        _id: socket.data.sessionId,
+        user: userID,
+        revokedAt: null,
+      }).select("_id").lean();
+      const currentUser = currentSession
+        ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean()
+        : null;
+      if (!currentUser) socket.disconnect(true);
+    } catch (error) {
+      console.error("session check:", error);
+    }
+  }, 5000);
+  sessionCheckTimer.unref?.();
+
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
   const on = (event, handler) => socket.on(event, async (...args) => {
