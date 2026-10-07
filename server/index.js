@@ -342,7 +342,7 @@ const processScheduledMessages = async () => {
     if (!claimed) continue;
     try {
       const room = await isMember(claimed.room.toString(), claimed.sender.toString());
-      if (!room || (room.type === "channel" && !isAdmin(room, claimed.sender.toString()))) throw new Error("Forbidden");
+      if (!room || (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))) throw new Error("Forbidden");
       const p = claimed.payload || {};
       const textValue = typeof p.message === "string" ? p.message.slice(0,10000) : "";
       const msg = await MessageSchema.create({
@@ -353,6 +353,7 @@ const processScheduledMessages = async () => {
         attachmentData: await sanitizeAttachmentData(p.attachmentData, claimed.sender.toString()),
         stickerData: await sanitizeStickerData(p.stickerData, claimed.sender.toString()),
       });
+      await createThreadMentionEvents(claimed.sender.toString(), claimed.room.toString(), msg._id, msg.mentions);
       await RoomSchema.updateOne({ _id: claimed.room }, { $set: { lastMessageId: msg._id, lastMessageAt: msg.createdAt } });
       const populated = await MessageSchema.findById(msg._id).populate("sender","name username avatar _id").lean();
       await emitVisibleMessage(claimed.room.toString(),"newMessage",populated);
