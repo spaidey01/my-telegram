@@ -474,13 +474,17 @@ export const processScheduledMessages = async () => {
           );
         }
       } else {
-        const nextStatus = (claimed.attemptCount || 0) >= MAX_SCHEDULED_ATTEMPTS ? "failed" : "pending";
+        const errorMessage = String(error?.message || error).slice(0, 500);
+        const permanentFailure = errorMessage === "Forbidden";
+        const nextStatus = permanentFailure || (claimed.attemptCount || 0) >= MAX_SCHEDULED_ATTEMPTS
+          ? "failed"
+          : "pending";
         await ScheduledMessageSchema.updateOne(
           { _id: claimed._id },
           {
             $set: {
               status: nextStatus,
-              error: String(error?.message || error).slice(0, 500),
+              error: errorMessage,
               processingAt: null,
               scheduledFor: new Date(),
             },
