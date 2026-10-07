@@ -13,14 +13,15 @@
     "test:integration": "node --test tests/socket.integration.test.mjs",
     "test:turn": "node --test tests/turn-credentials.test.mjs",
     "test:call-reliability": "node --test tests/call-reliability.test.mjs",
-    "test:backlog": "node --test tests/backlog.test.mjs"
+    "test:backlog": "node --test tests/backlog.test.mjs",
+    "test:security": "node --test tests/csrf.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
     "axios": "^1.7.3",
     "babel-plugin-react-compiler": "^1.0.0",
     "bcrypt": "^6.0.0",
-    "browser-image-compression": "^2.0.2",
+    "browser-image-compression": "^2.0.0",
     "dotenv": "^16.4.7",
     "emoji-picker-react": "^4.12.0",
     "jsonwebtoken": "^9.0.2",
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^3",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/aos": "^3.0.7",
     "@types/bcrypt": "^5.0.2",
