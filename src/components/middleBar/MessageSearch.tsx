@@ -18,17 +18,19 @@ interface SearchResult {
 
 interface Props {
   roomId: string;
+  initialQuery?: string;
+  initialHashtagMode?: boolean;
   onClose: () => void;
 }
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^()|[\]\\]/g, "\\$&");
 
-const MessageSearch = ({ roomId, onClose }: Props) => {
+const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, onClose }: Props) => {
   const { rooms } = useUserStore((state) => state);
   const { selectedRoom, setter, setPendingMessageJump } = useGlobalStore((state) => state);
   const [allRooms, setAllRooms] = useState(false);
-  const [query, setQuery] = useState("");
-  const [hashtagMode, setHashtagMode] = useState(false);
+  const [query, setQuery] = useState(initialQuery);
+  const [hashtagMode, setHashtagMode] = useState(initialHashtagMode);
   const [senderId, setSenderId] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
