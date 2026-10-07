@@ -9,7 +9,6 @@ export interface MessageSelectionState {
   selectionRoomID: string | null;
   selectionMode: boolean;
   pendingMessageJumpId: string | null;
-  threadEvents: ThreadEvent[];
 }
 
 export interface ThreadEvent { _id: string; type: "mention" | "reaction" | "call" | "system"; room: string; message?: string; actor: string; data?: { targetUser?: string; username?: string; emoji?: string }; createdAt: string; }
@@ -29,6 +28,7 @@ export interface GlobalStoreProps {
   selectionRoomID: string | null;
   selectionMode: boolean;
   pendingMessageJumpId: string | null;
+  threadEvents: ThreadEvent[];
 }
 
 interface Updater {
