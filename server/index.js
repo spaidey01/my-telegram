@@ -616,6 +616,10 @@ io.on("connection", (socket) => {
 
   const sessionCheckTimer = setInterval(async () => {
     try {
+      if (!socket.userTokenExp || Date.now() >= socket.userTokenExp * 1000) {
+        socket.disconnect(true);
+        return;
+      }
       const currentSession = await SessionSchema.findOne({
         _id: socket.data.sessionId,
         user: userID,
@@ -635,6 +639,12 @@ io.on("connection", (socket) => {
   // and the client always gets an answer.
   const on = (event, handler) => socket.on(event, async (...args) => {
     try {
+      if (!socket.userTokenExp || Date.now() >= socket.userTokenExp * 1000) {
+        const cb = args[args.length - 1];
+        if (typeof cb === "function") cb({ success: false, error: "Unauthorized" });
+        socket.disconnect(true);
+        return;
+      }
       const currentSession = await SessionSchema.findOne({
         _id: socket.data.sessionId,
         user: userID,
