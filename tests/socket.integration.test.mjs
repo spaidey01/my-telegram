@@ -1647,6 +1647,9 @@ test("revoked session and bumped sessionVersion cannot continue using an existin
     await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: new Date() } });
     await UserSchema.updateOne({ _id: user._id }, { $inc: { sessionVersion: 1 } });
 
+    // Exercise the per-event session check immediately after revocation.
+    // Do not wait for the periodic 5s disconnect timer, otherwise the test
+    // races the timer and can lose the acknowledgement callback.
     const result = await new Promise((resolve) => {
       socket.emit("newMessage", {
         roomID: room._id.toString(),
