@@ -494,9 +494,9 @@ export const processScheduledMessages = async () => {
     }
   }
 };
-const isMessageInRoom = async (msgID, roomID) => {
-  if (!isValidId(msgID) || !isValidId(roomID)) return null;
-  return MessageSchema.findOne({ _id: msgID, roomID });
+const isMessageInRoom = async (msgID, roomID, viewerUserID) => {
+  if (!isValidId(msgID) || !isValidId(roomID) || !isValidId(viewerUserID)) return null;
+  return MessageSchema.findOne({ _id: msgID, roomID, hideFor: { $nin: [viewerUserID] } });
 };
 
 const publicUserFields = "name username avatar _id status lastSeenAt";
@@ -528,6 +528,14 @@ const sanitizeMessagesForViewer = async (messages, viewerUserID) =>
       : message.sender,
   })));
 
+const emitVisibleMessageEdit = async (roomID, payload, message) => {
+  const sockets = await io.in(roomID).fetchSockets();
+  await Promise.all(sockets.map(async (viewerSocket) => {
+    if (Array.isArray(message?.hideFor) && message.hideFor.some((id) => String(id) === String(viewerSocket.data.userId))) return;
+    viewerSocket.emit("editMessage", payload);
+  }));
+};
+
 const broadcastPresence = async (targetUserID, status, lastSeenAt) => {
   const sockets = await io.fetchSockets();
   await Promise.all(sockets.map(async (viewerSocket) => {
@@ -556,6 +564,7 @@ io.use(async (socket, next) => {
     void SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
     socket.userId = decoded.sub.toString();
     socket.sessionVersion = decoded.sv;
+    socket.data.sessionId = decoded.sid.toString();
     socket.userTokenExp = decoded.exp;
     return next();
   } catch {
@@ -597,6 +606,20 @@ io.on("connection", (socket) => {
   // and the client always gets an answer.
   const on = (event, handler) => socket.on(event, async (...args) => {
     try {
+      const currentSession = await SessionSchema.findOne({
+        _id: socket.data.sessionId,
+        user: userID,
+        revokedAt: null,
+      }).select("_id").lean();
+      const currentUser = currentSession
+        ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean()
+        : null;
+      if (!currentUser) {
+        socket.disconnect(true);
+        const cb = args[args.length - 1];
+        if (typeof cb === "function") cb({ success: false, error: "Unauthorized" });
+        return;
+      }
       await handler(...args);
     } catch (error) {
       console.error(event + ":", error);
@@ -872,7 +895,7 @@ io.on("connection", (socket) => {
   on("deleteMsg", async ({ forAll, msgID, roomID }) => {
     if (!(await allowEvent(userID, "deleteMsg", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
-    const msg = await isMessageInRoom(msgID, roomID);
+    const msg = await isMessageInRoom(msgID, roomID, userID);
     if (!room || !msg) return socket.emit("error", { message: "Forbidden" });
 
     if (forAll) {
@@ -900,7 +923,7 @@ io.on("connection", (socket) => {
   on("editMessage", async ({ msgID, editedMsg, roomID }) => {
     if (!(await allowEvent(userID, "editMessage", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
-    const msg = await isMessageInRoom(msgID, roomID);
+    const msg = await isMessageInRoom(msgID, roomID, userID);
     const channelRole = room?.type === "channel" ? (room.channelRoles?.get?.(userID) || room.channelRoles?.[userID]) : null;
     const canEdit = room && msg && (room.type === "channel"
       ? (msg.sender.toString() === userID || channelRole === "editor" || channelRole === "moderator" || isAdmin(room,userID))
@@ -917,9 +940,9 @@ io.on("connection", (socket) => {
     ).lean();
     if (updated && newMentions.length) await createThreadMentionEvents(userID, roomID, msgID, newMentions);
     if (!updated) return;
-    io.to(roomID).emit("editMessage", { msgID, editedMsg, roomID });
-    const lastMsg = await MessageSchema.findOne({ roomID }).sort({ createdAt: -1 }).lean();
-    if (lastMsg?._id.toString() === msgID) io.to(roomID).emit("updateLastMsgData", { roomID, msgData: updated });
+    await emitVisibleMessageEdit(roomID, { msgID, editedMsg, roomID }, updated);
+    const lastMsg = await MessageSchema.findOne({ roomID, hideFor: { $nin: [userID] } }).sort({ createdAt: -1, _id: -1 }).lean();
+    if (lastMsg?._id.toString() === msgID) await emitVisibleMessage(roomID, "updateLastMsgData", { roomID, msgData: updated });
   });
 
   on("forwardMessage", async ({ msgID, sourceRoomID, targetRoomID }, callback = () => {}) => {
@@ -989,7 +1012,7 @@ io.on("connection", (socket) => {
     if (!safeEmoji || safeEmoji.length > 16) return callback({ success: false, error: "Invalid reaction" });
 
     const room = await isMember(roomID, userID);
-    const msg = await isMessageInRoom(msgID, roomID);
+    const msg = await isMessageInRoom(msgID, roomID, userID);
     if (!room || !msg) return callback({ success: false, error: "Forbidden" });
     if (room.type === "group" && !hasGroupPermission(room,userID,"sendMessages")) return callback({success:false,error:"Reactions are disabled"});
 
@@ -1086,7 +1109,7 @@ io.on("connection", (socket) => {
   on("seenMsg", async ({ msgID, roomID }) => {
     if (!(await allowEvent(userID, "seenMsg", 120, 60_000))) return;
     const room = await isMember(roomID, userID);
-    const msg = await isMessageInRoom(msgID, roomID);
+    const msg = await isMessageInRoom(msgID, roomID, userID);
     if (!room || !msg) return;
     const safeReadTime = new Date();
     await MessageSchema.updateOne({ _id: msgID }, { $addToSet: { seen: userID }, $set: { readTime: safeReadTime } });
@@ -1096,7 +1119,7 @@ io.on("connection", (socket) => {
   on("listenToVoice", async ({ voiceID, roomID }) => {
     if (!(await allowEvent(userID, "listenToVoice", 60, 60_000))) return;
     const room = await isMember(roomID, userID);
-    const targetMessage = await isMessageInRoom(voiceID, roomID);
+    const targetMessage = await isMessageInRoom(voiceID, roomID, userID);
     if (!room || !targetMessage?.voiceData) return;
     const playedBy = targetMessage.voiceData.playedBy || [];
     if (!playedBy.some((v) => v === userID || v.startsWith(userID + "_"))) {
@@ -1114,9 +1137,10 @@ io.on("connection", (socket) => {
     const playedBy = targetMessage.voiceData?.playedBy || [];
     const ids = [...new Set(playedBy.map((v) => v.split("_")[0]))];
     const users = await UserSchema.find({ _id: { $in: ids } })
-      .select("name lastName username avatar biography type status _id")
+      .select("name lastName username avatar biography type status lastSeenAt _id")
       .lean();
-    socket.emit("getVoiceMessageListeners", users.map((data) => ({
+    const visibleUsers = await Promise.all(users.map((user) => sanitizeUserForViewer(user, userID)));
+    socket.emit("getVoiceMessageListeners", visibleUsers.map((data) => ({
       ...data,
       seenTime: playedBy.find((v) => v.startsWith(data._id.toString() + "_"))?.split("_").slice(1).join("_") || null,
     })));
@@ -1537,7 +1561,7 @@ io.on("connection", (socket) => {
   on("pinMessage", async (id, roomID, isLastMessage, desiredPinned, callback = () => {}) => {
     if (!(await allowEvent(userID, "pinMessage", 60, 60_000))) return callback({ success: false, error: "Rate limit exceeded" });
     const room = await isMember(roomID, userID);
-    const msg = await isMessageInRoom(id, roomID);
+    const msg = await isMessageInRoom(id, roomID, userID);
     if (!room || !msg) return callback({ success: false, error: "Forbidden" });
     if (room.type === "group" && !hasGroupPermission(room, userID, "pinMessages")) {
       return callback({ success: false, error: "Forbidden" });
@@ -1753,16 +1777,6 @@ io.on("connection", (socket) => {
     ));
     socket.emit("getRoomMembers", visibleMembers);
   });
-
-  const sessionCheckTimer = setInterval(async () => {
-    try {
-      const active = await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean();
-      if (!active) socket.disconnect(true);
-    } catch {
-      socket.disconnect(true);
-    }
-  }, 60_000);
-  sessionCheckTimer.unref();
 
   on("loadMessageAround", async ({ roomID, messageID, limit = 50 }, callback = () => {}) => {
     if (!(await allowEvent(userID, "loadMessageAround", 30, 60_000))) {
