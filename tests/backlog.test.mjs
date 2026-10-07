@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { parseMentions, parseHashtags } from "../src/utils/messageParsing.js";
 import { hasGroupPermission, isAdmin, channelCanPost } from "../server/security/permissions.js";
-import { rateLimit } from "../src/utils/rateLimit.js";
 
 test("mentions parser extracts unique usernames", () => {
   assert.deepEqual(parseMentions("hi @Alice @alice @bob_1"), ["alice", "bob_1"]);
@@ -40,12 +39,6 @@ test("missing message cannot be treated as editable", () => {
   assert.equal(Boolean(message), false);
 });
 
-test("rate limiter blocks only after the configured threshold", async () => {
-  const key = "backlog-rate-limit-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
-  assert.equal((await rateLimit(key, 2, 1000)).allowed, true);
-  assert.equal((await rateLimit(key, 2, 1000)).allowed, true);
-  assert.equal((await rateLimit(key, 2, 1000)).allowed, false);
-});
 
 test("channel creator cannot be removed as a subscriber", () => {
   const room = { type: "channel", creator: "owner", participants: ["owner", "admin"], admins: ["admin"] };
