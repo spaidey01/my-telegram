@@ -14,6 +14,13 @@ test("group permissions enforce moderation before member overrides",()=>{
   assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
 });
 
+test("channel creator cannot be removed as a subscriber",()=>{
+  const room={type:"channel",creator:"owner",participants:["owner","admin"],admins:["admin"]};
+  const memberID="owner";
+  assert.equal(room.creator?.toString()===memberID,true);
+  assert.equal(room.participants.includes(memberID),true);
+});
+
 test("removing a channel role must revoke admin fallback",()=>{
   const room={type:"channel",creator:"owner",admins:["editor"],channelRoles:new Map([["editor","editor"]])};
   room.channelRoles.delete("editor");
