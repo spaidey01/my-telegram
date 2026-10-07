@@ -72,6 +72,7 @@ jobs:
       - run: npm run test:turn
       - run: npm run test:call-reliability
       - run: npm run test:backlog
+      - run: npm run test:security
       - run: npm run test:integration
         env:
           MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_test
