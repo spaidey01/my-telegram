@@ -264,7 +264,7 @@ const isAdmin = (room, userID) => {
   return room.admins?.some((id) => id.toString() === userID);
 };
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
-const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|\s)#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
+const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|[^\p{L}\p{N}_])#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const createThreadMentionEvents = async (actorID, roomID, messageID, usernames) => {
   const names = [...new Set((usernames || []).map((name) => String(name).trim().toLowerCase()).filter(Boolean))];
   if (!names.length) return;
