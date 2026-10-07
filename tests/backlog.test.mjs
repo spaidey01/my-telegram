@@ -14,6 +14,13 @@ test("group permissions enforce moderation before member overrides",()=>{
   assert.equal(hasGroupPermission(room,"u1","sendMessages"),true);
 });
 
+test("removing a channel role must revoke admin fallback",()=>{
+  const room={type:"channel",creator:"owner",admins:["editor"],channelRoles:new Map([["editor","editor"]])};
+  room.channelRoles.delete("editor");
+  room.admins=room.admins.filter(id=>id!=="editor");
+  assert.equal(isAdmin(room,"editor"),false);
+});
+
 test("channel posting is limited to publisher roles",()=>{
   const room={type:"channel",creator:"owner",channelRoles:new Map([["editor","editor"],["moderator","moderator"],["member","subscriber"]])};
   assert.equal(channelCanPost(room,"owner"),true);
