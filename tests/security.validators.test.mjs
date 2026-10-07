@@ -75,3 +75,18 @@ test("admin privileges require active room membership", async () => {
   room.participants = [admin];
   assert.equal(isAdmin(room, member.toString()), false);
 });
+
+
+test("reaction update uses an atomic Mongo update pipeline", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  const start = server.indexOf('on("toggleReaction"');
+  const end = server.indexOf('on("markRoomRead"', start);
+  const handler = server.slice(start, end);
+  assert.match(handler, /findOneAndUpdate/);
+  assert.match(handler, /\$setUnion/);
+  assert.doesNotMatch(handler, /msg\.reactions\s*=\s*reactions/);
+  assert.doesNotMatch(handler, /await msg\.save\(\)/);
+});
