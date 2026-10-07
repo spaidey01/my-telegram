@@ -1324,7 +1324,7 @@ io.on("connection", (socket) => {
     room.participants=room.participants.filter(id=>id.toString()!==userID); room.admins=room.admins.filter(id=>id.toString()!==userID); await room.save(); await io.in(`presence:${userID}`).socketsLeave(roomID); io.to(roomID).emit("channel:subscriberRemoved",{roomID,userID}); callback({success:true});
   });
   on("channel:subscriber:remove", async ({ roomID, memberID }, callback = () => {}) => {
-    const room=await isMember(roomID,userID); if(!room||room.type!=="channel"||!isAdmin(room,userID)||!isValidId(memberID))return callback({success:false,error:"Forbidden"});
+    const room=await isMember(roomID,userID); if(!room||room.type!=="channel"||!isAdmin(room,userID)||!isValidId(memberID)||room.creator?.toString()===memberID)return callback({success:false,error:"Forbidden"});
     room.participants=room.participants.filter(id=>id.toString()!==memberID); room.admins=room.admins.filter(id=>id.toString()!==memberID); room.channelRoles?.delete?.(memberID); await room.save(); await io.in(`presence:${memberID}`).socketsLeave(roomID); io.to(roomID).emit("channel:subscriberRemoved",{roomID,userID:memberID}); callback({success:true});
   });
   on("channel:visibility", async ({ roomID, visibility }, callback = () => {}) => {
