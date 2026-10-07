@@ -72,40 +72,6 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     input.current?.focus();
   }, [closeReplay, closeEdit, roomId, resize]);
 
-  useEffect(() => {
-    if (!rooms || !me?._id) return;
-    const retryPending = () => {
-      if (!rooms.connected) return;
-      const all = pendingMessagesService.getAllPendingMessages();
-      const now = Date.now();
-      Object.entries(all).forEach(([roomID, messages]) => {
-        messages.forEach((pending) => {
-          if (pending.retryCount >= 20 || now - pending.lastAttempt < 5000) return;
-          pendingMessagesService.updatePendingMessage(roomID, pending.tempId, {
-            retryCount: pending.retryCount + 1,
-            lastAttempt: now,
-          });
-          rooms.emit("newMessage", {
-            roomID,
-            message: pending.message || "",
-            sender: { _id: me._id, name: me.name },
-            replayData: pending.replayedTo?.msgID
-              ? { targetID: pending.replayedTo.msgID, replayedTo: pending.replayedTo }
-              : null,
-            attachmentData: pending.attachmentData || null,
-            stickerData: pending.stickerData || null,
-            tempId: pending.tempId,
-          }, (res: { success: boolean; _id?: string }) => {
-            if (res?.success) pendingMessagesService.removePendingMessage(roomID, pending.tempId);
-          });
-        });
-      });
-    };
-    retryPending();
-    const timer = window.setInterval(retryPending, 5000);
-    return () => window.clearInterval(timer);
-  }, [me?._id, me?.name, rooms]);
-
   const send = useCallback((payload: {
     roomID: string;
     message: string;
