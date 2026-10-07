@@ -1472,6 +1472,9 @@ test("scheduled worker recovers a job when the message already exists", async ()
     assert.equal(updated?.status, "sent");
     assert.ok(updated?.sentAt);
     assert.equal(await MessageSchema.countDocuments({ roomID: room._id, tempId }), 1);
+    const reconciledRoom = await RoomSchema.findById(room._id).lean();
+    assert.equal(String(reconciledRoom?.lastMessageId), String((await MessageSchema.findOne({ roomID: room._id, tempId }).lean())._id));
+    assert.ok(reconciledRoom?.lastMessageAt);
   } finally {
     await MessageSchema.deleteMany({ roomID: room._id });
     await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
@@ -1510,6 +1513,106 @@ test("scheduled message worker connects DB jobs to real messages", async () => {
     const updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
     assert.equal(updated.status, "sent");
     assert.ok(updated.sentAt);
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+test("scheduled worker enforces group sendMessages permission at execution time", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Permission",
+    type: "group",
+    creator: user._id,
+    admins: [],
+    participants: [user._id],
+    groupPermissions: { sendMessages: false },
+  });
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "must not be sent" },
+    scheduledFor: new Date(Date.now() - 1000),
+  });
+  try {
+    const deadline = Date.now() + 9000;
+    let updated = null;
+    while (Date.now() < deadline) {
+      updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+      if (updated?.status === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(updated?.status, "failed");
+    assert.equal(
+      await MessageSchema.countDocuments({
+        roomID: room._id,
+        tempId: "scheduled:" + scheduled._id.toString(),
+      }),
+      0,
+    );
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("scheduled worker does not overwrite a newer room last message during recovery", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Ordering",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "older scheduled message" },
+    scheduledFor: new Date(Date.now() - 5000),
+    status: "processing",
+    processingAt: new Date(Date.now() - 180000),
+  });
+  const scheduledTempId = "scheduled:" + scheduled._id.toString();
+  const older = await MessageSchema.create({
+    sender: user._id,
+    roomID: room._id,
+    message: "older scheduled message",
+    seen: [],
+    hideFor: [],
+    status: "sent",
+    kind: "message",
+    tempId: scheduledTempId,
+    createdAt: new Date(Date.now() - 5000),
+  });
+  const newer = await MessageSchema.create({
+    sender: user._id,
+    roomID: room._id,
+    message: "newer live message",
+    seen: [],
+    hideFor: [],
+    status: "sent",
+    kind: "message",
+    createdAt: new Date(),
+  });
+  await RoomSchema.updateOne(
+    { _id: room._id },
+    { $set: { lastMessageId: newer._id, lastMessageAt: newer.createdAt } },
+  );
+  try {
+    const deadline = Date.now() + 9000;
+    let updated = null;
+    while (Date.now() < deadline) {
+      updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+      if (updated?.status === "sent") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(updated?.status, "sent");
+    const reconciledRoom = await RoomSchema.findById(room._id).lean();
+    assert.equal(String(reconciledRoom?.lastMessageId), String(newer._id));
+    assert.notEqual(String(reconciledRoom?.lastMessageId), String(older._id));
   } finally {
     await MessageSchema.deleteMany({ roomID: room._id });
     await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
