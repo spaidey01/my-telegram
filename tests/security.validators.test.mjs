@@ -100,3 +100,18 @@ test("reaction update uses an atomic Mongo update pipeline", async () => {
   assert.doesNotMatch(handler, /msg\.reactions\s*=\s*reactions/);
   assert.doesNotMatch(handler, /await msg\.save\(\)/);
 });
+
+
+test("sticker file access requires pack ownership, installation, or a visible shared message", async () => {
+  const source = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/files/access/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /StickerPackSchema/);
+  assert.match(source, /UserStickerPackSchema/);
+  assert.match(source, /pack\.owner/);
+  assert.match(source, /user:\s*userId\s*,\s*packId:\s*pack\._id/);
+  assert.match(source, /stickerData\.file/);
+  assert.match(source, /hideFor/);
+  assert.doesNotMatch(source, /StickerSchema\.exists\(\{file:accessUrl\}\)/);
+});
