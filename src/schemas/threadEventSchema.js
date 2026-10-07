@@ -6,6 +6,7 @@ const schema = new Schema({
   room: { type: Schema.ObjectId, ref: "Room", required: true, index: true },
   message: { type: Schema.ObjectId, ref: "Message", default: null },
   data: { type: Schema.Types.Mixed, default: {} },
+  readBy: { type: [Schema.ObjectId], ref: "User", default: [] },
 }, { timestamps: true });
 
 schema.index({ room: 1, createdAt: -1 });
