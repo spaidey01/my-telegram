@@ -12,5 +12,16 @@ const schema = new Schema({
 schema.index({ room: 1, createdAt: -1 });
 schema.index({ actor: 1, type: 1, createdAt: -1 });
 schema.index({ "data.targetUser": 1, type: 1, createdAt: -1 });
+schema.index(
+  { actor: 1, type: 1, room: 1, message: 1, "data.targetUser": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      type: "mention",
+      message: { $type: "objectId" },
+      "data.targetUser": { $exists: true },
+    },
+  },
+);
 
 export default mongoose.models.ThreadEvent || mongoose.model("ThreadEvent", schema);
