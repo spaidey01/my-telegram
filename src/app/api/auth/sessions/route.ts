@@ -1,6 +1,5 @@
 import connectToDB from "@/db";
 type AuthSession={_id:unknown};
-import connectToDB from "@/db";
 import SessionSchema from "@/schemas/sessionSchema";import UserSchema from "@/schemas/userSchema";import tokenDecoder from "@/utils/TokenDecoder";import {cookies}from"next/headers";import mongoose from"mongoose";
 const auth=async()=>{const t=(await cookies()).get("token")?.value,d=t?tokenDecoder(t):false;if(!d||typeof d!=="object"||typeof d.sub!=="string"||typeof d.sv!=="number"||typeof d.sid!=="string")return null;if(!mongoose.isValidObjectId(d.sub)||!mongoose.isValidObjectId(d.sid))return null;await connectToDB();const session=await SessionSchema.findOne({_id:d.sid,user:d.sub,revokedAt:null}).lean().then((value)=>value as unknown as AuthSession|null);const user=await UserSchema.findOne({_id:d.sub,sessionVersion:d.sv}).select("_id").lean().then((value)=>value);if(session)await SessionSchema.updateOne({_id:session._id},{$set:{lastActiveAt:new Date()}});return session&&user?d:null};
 export const GET=async()=>{const d=await auth();if(!d)return Response.json({message:"Unauthorized"},{status:401});const sessions=await SessionSchema.find({user:d.sub,revokedAt:null}).sort({lastActiveAt:-1}).lean().then((value)=>value as unknown as AuthSession[]);return Response.json({sessions:sessions.map((session)=>({...session,isCurrent:String(session._id)===String(d.sid)}))})};
