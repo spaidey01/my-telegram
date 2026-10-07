@@ -642,9 +642,9 @@ io.on("connection", (socket) => {
         ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean()
         : null;
       if (!currentUser) {
-        socket.disconnect(true);
         const cb = args[args.length - 1];
         if (typeof cb === "function") cb({ success: false, error: "Unauthorized" });
+        socket.disconnect(true);
         return;
       }
       await handler(...args);
