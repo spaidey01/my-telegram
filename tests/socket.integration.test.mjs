@@ -1709,3 +1709,51 @@ test("hidden message edits are not broadcast to the viewer who hid the message",
     await RoomSchema.deleteOne({ _id: room._id });
   }
 });
+
+
+test("concurrent messages never move room lastMessage backwards", async () => {
+  const room = await RoomSchema.create({
+    name: "Message Ordering Race",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: { token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const send = (message) => new Promise((resolve) => {
+      socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message,
+        tempId: "ordering-" + message,
+      }, resolve);
+    });
+    const results = await Promise.all([send("one"), send("two"), send("three")]);
+    assert.ok(results.every((result) => result.success));
+    const messages = await MessageSchema.find({ roomID: room._id }).sort({ createdAt: 1, _id: 1 }).lean();
+    const storedRoom = await RoomSchema.findById(room._id).lean();
+    const latest = messages[messages.length - 1];
+    assert.equal(String(storedRoom?.lastMessageId), String(latest?._id));
+    assert.equal(new Date(storedRoom?.lastMessageAt || 0).getTime(), new Date(latest?.createdAt || 0).getTime());
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("mention event idempotency has a database uniqueness guard", () => {
+  const indexes = ThreadEventSchema.schema.indexes();
+  assert.ok(indexes.some(([fields, options]) =>
+    fields.actor === 1 &&
+    fields.type === 1 &&
+    fields.room === 1 &&
+    fields.message === 1 &&
+    fields["data.targetUser"] === 1 &&
+    options?.unique === true,
+  ));
+});
