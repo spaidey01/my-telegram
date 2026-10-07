@@ -45,7 +45,7 @@ export const GET = async (req: Request) => {
     const query = (params.get("query") || "").trim();
     const hashtagParam = (params.get("hashtag") || "").trim().replace(/^#/, "").toLowerCase();
     const roomId = (params.get("roomId") || "").trim();
-    const senderId = (params.get("senderId") || "").trim();
+    const senderId = (params.get("senderId") || "").trim();\n    const page = Math.max(Number(params.get("page")) || 1, 1);\n    const limit = Math.min(Math.max(Number(params.get("limit")) || 50, 1), 50);
     const from = parseDate(params.get("from"));
     const to = parseDate(params.get("to"), true);
 
@@ -75,7 +75,7 @@ export const GET = async (req: Request) => {
 
     let messageQuery = MessageSchema.find(filter)
       .select("_id roomID sender message createdAt attachmentData stickerData voiceData pinnedAt")
-      .limit(100)
+      .skip((page - 1) * limit)\n      .limit(limit)
       .populate("sender", "name username avatar _id");
     messageQuery = hashtagParam
       ? messageQuery.sort({ createdAt: -1, _id: -1 })
@@ -93,7 +93,7 @@ export const GET = async (req: Request) => {
       room: roomById.get(String(message.roomID)) || null,
     })));
 
-    return Response.json({ results, count: results.length });
+    return Response.json({ results, count: results.length, page, limit, hasMore: results.length === limit });
   } catch (error) {
     console.error("messages/search:", error);
     return Response.json({ message: "Unknown error, try later." }, { status: 500 });
