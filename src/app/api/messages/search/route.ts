@@ -42,12 +42,13 @@ export const GET = async (req: Request) => {
 
     const params = new URL(req.url).searchParams;
     const query = (params.get("query") || "").trim();
+    const hashtagParam = (params.get("hashtag") || "").trim().replace(/^#/, "").toLowerCase();
     const roomId = (params.get("roomId") || "").trim();
     const senderId = (params.get("senderId") || "").trim();
     const from = parseDate(params.get("from"));
     const to = parseDate(params.get("to"), true);
 
-    if (!query || query.length > 100) return Response.json({ message: "query is required and must be <= 100 characters" }, { status: 400 });
+    if ((!query && !hashtagParam) || query.length > 100 || hashtagParam.length > 64 || (hashtagParam && !/^[\p{L}\p{N}_]+$/u.test(hashtagParam))) return Response.json({ message: "query or hashtag is required and valid" }, { status: 400 });
     if (roomId && !mongoose.isValidObjectId(roomId)) return Response.json({ message: "Invalid roomId" }, { status: 400 });
     if (senderId && !mongoose.isValidObjectId(senderId)) return Response.json({ message: "Invalid senderId" }, { status: 400 });
     if (params.has("from") && !from) return Response.json({ message: "Invalid from date" }, { status: 400 });
@@ -61,7 +62,7 @@ export const GET = async (req: Request) => {
     const filter: Record<string, unknown> = {
       roomID: roomId ? roomId : { $in: memberRoomIds },
       hideFor: { $ne: auth.sub },
-      $text: { $search: query },
+      ...(hashtagParam ? { hashtags: hashtagParam } : { $text: { $search: query } }),
     };
     if (senderId) filter.sender = senderId;
     if (from || to) {
