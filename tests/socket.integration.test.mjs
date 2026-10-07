@@ -312,7 +312,7 @@ test("private rooms cannot be administratively modified or deleted", async () =>
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -352,7 +352,7 @@ test("server rejects non-hex public room links", async () => {
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -394,7 +394,7 @@ test("room read marker clears unread messages through the referenced message", a
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -532,7 +532,7 @@ test("multi-select server actions cannot cross rooms", async () => {
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -629,7 +629,7 @@ test("message search jump loads an older target with room authorization", async 
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -661,7 +661,7 @@ test("message search jump loads an older target with room authorization", async 
     const outsider = createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: thirdUser._id.toString(), sv: 0, scope: "socket" },
+          { sub: thirdUser._id.toString(), sv: 0, sid: thirdUserSession._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -765,7 +765,7 @@ test("bulk message delete removes selected messages in one operation and enforce
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -916,7 +916,7 @@ test("privacy permissions enforce everyone, contacts and nobody for every field"
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -1087,7 +1087,7 @@ test("last seen handles multi-socket presence and reconnects", async () => {
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -1177,7 +1177,7 @@ test("attachment messages enforce verified-file ownership", async () => {
   ]);
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
-      token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+      token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
     },
     transports: ["websocket"],
   });
@@ -1238,7 +1238,7 @@ test("voice messages enforce verified-file ownership", async () => {
   ]);
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
-      token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+      token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
     },
     transports: ["websocket"],
   });
@@ -1300,7 +1300,7 @@ test("sticker messages require an installed or owned pack and persist full stick
 
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
-      token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+      token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, sid: otherUserSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
     },
     transports: ["websocket"],
   });
@@ -1355,7 +1355,7 @@ test("offline retry tempId is idempotent at the socket and database boundary", a
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -1402,7 +1402,7 @@ test("channel editor can forward through the same posting permission path", asyn
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
