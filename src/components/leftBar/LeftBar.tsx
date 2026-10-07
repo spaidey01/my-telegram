@@ -75,7 +75,13 @@ const LeftBar = () => {
             typeof event.actor === "string"
           )
           .slice(0, 100);
-        setter({ threadEvents: normalized });
+        setter((prev) => {
+          const merged = [...normalized, ...prev.threadEvents];
+          const unique = merged.filter((event, index, list) =>
+            list.findIndex((item) => item._id === event._id) === index
+          );
+          return { threadEvents: unique.slice(0, 100) };
+        });
       } catch {
         // Live socket events remain available if the history request fails.
       }
