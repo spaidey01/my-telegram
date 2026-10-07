@@ -816,9 +816,9 @@ io.on("connection", (socket) => {
     const room = await isMember(roomID, userID);
     const msg = await isMessageInRoom(msgID, roomID);
     const channelRole = room?.type === "channel" ? (room.channelRoles?.get?.(userID) || room.channelRoles?.[userID]) : null;
-    const canEdit = room?.type === "channel"
+    const canEdit = room && msg && (room.type === "channel"
       ? (msg.sender.toString() === userID || channelRole === "editor" || channelRole === "moderator" || isAdmin(room,userID))
-      : msg.sender.toString() === userID;
+      : msg.sender.toString() === userID);
     if (!room || !msg || !canEdit || typeof editedMsg !== "string" || editedMsg.length > 10000) return socket.emit("error", { message: "Forbidden" });
 
     const nextMentions = parseMentionsServer(editedMsg);
@@ -1264,7 +1264,10 @@ io.on("connection", (socket) => {
     if(!room||room.type!=="group"||!isAdmin(room,userID)||!hasGroupPermission(room,userID,"manageMembers")) return callback({success:false,error:"Forbidden"});
     const clean={}; for(const key of GROUP_PERMISSION_KEYS) if(typeof permissions?.[key]==="boolean") clean[key]=permissions[key];
     if(group===true){ room.groupPermissions={...(room.groupPermissions?.toObject?.()||room.groupPermissions||{}),...clean}; }
-    else if(isValidId(memberID)){ room.memberPermissions.set(memberID,clean); }
+    else if(isValidId(memberID)){
+      if(!room.participants.some(id=>id.toString()===memberID)) return callback({success:false,error:"Member is not in group"});
+      room.memberPermissions.set(memberID,clean);
+    }
     else return callback({success:false,error:"Invalid memberID"});
     await room.save(); io.to(roomID).emit("group:permissions",{roomID,memberID:memberID||null,permissions:clean,group:Boolean(group)}); callback({success:true});
   });
