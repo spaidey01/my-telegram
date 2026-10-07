@@ -1769,6 +1769,9 @@ io.on("connection", (socket) => {
           .filter((id) => Boolean(id) && (validIds.has(id) || id === room.creator?.toString()))
           .slice(0, 500);
         $set.participants = participants;
+        if (Array.isArray(room.admins)) {
+          $set.admins = room.admins.filter((adminID) => participants.includes(adminID.toString()));
+        }
       }
       if (typeof $set.name === "string") $set.name = $set.name.trim().slice(0, 100);
       if (typeof $set.biography === "string") $set.biography = $set.biography.slice(0, 1000);
