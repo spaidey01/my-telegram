@@ -7,11 +7,12 @@ import { cookies } from "next/headers";
 import mongoose from "mongoose";
 import { rateLimit } from "@/utils/rateLimit";
 import { sanitizeUserForViewer } from "@/utils/privacy";
+import SessionSchema from "@/schemas/sessionSchema";
 
 const getAuth = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") return null;
+  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") return null;
   if (!mongoose.isValidObjectId(decoded.sub)) return null;
   return decoded;
 };
@@ -35,7 +36,8 @@ export const GET = async (req: Request) => {
     if (!limitResult.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limitResult.retryAfter) } });
 
     await connectToDB();
-    const sessionUser = await UserSchema.findOne({ _id: auth.sub, sessionVersion: auth.sv }).select("_id").lean();
+    const session = await SessionSchema.findOne({ _id: auth.sid, user: auth.sub, revokedAt: null }).select("_id").lean();
+    const sessionUser = session ? await UserSchema.findOne({ _id: auth.sub, sessionVersion: auth.sv }).select("_id").lean() : null;
     if (!sessionUser) return Response.json({ message: "Unauthorized" }, { status: 401 });
 
     const params = new URL(req.url).searchParams;
@@ -77,7 +79,7 @@ export const GET = async (req: Request) => {
       .lean();
 
     const rooms = await RoomSchema.find({ _id: { $in: [...new Set(messages.map((message) => String(message.roomID)))] } })
-      .select("_id name type avatar participants")
+      .select("_id name type avatar")
       .lean();
     const roomById = new Map(rooms.map((room) => [String(room._id), room]));
 
