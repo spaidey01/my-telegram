@@ -53,6 +53,25 @@ const LeftBar = () => {
     threadEvents,
   } = useGlobalStore((state) => state);
   const interactUser = useRef(false);
+  const unreadThreadEvents = useMemo(() => threadEvents.filter((event) => !event.readBy?.includes(userId)).length, [threadEvents, userId]);
+
+  const markThreadEventsRead = useCallback(async () => {
+    if (!userId || unreadThreadEvents === 0) return;
+    try {
+      const response = await fetch("/api/threads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (!response.ok) return;
+      setter((prev) => ({
+        threadEvents: prev.threadEvents.map((event) => ({
+          ...event,
+          readBy: event.readBy?.includes(userId) ? event.readBy : [...(event.readBy || []), userId],
+        })),
+      }));
+    } catch {}
+  }, [setter, unreadThreadEvents, userId]);
   useEffect(() => {
     let cancelled = false;
     const loadThreadEvents = async () => {
@@ -262,9 +281,15 @@ const LeftBar = () => {
                 </div>
                 <div className="flex items-center gap-3">
                   <FiPhoneCall size={20} onClick={() => setShowCallHistory(true)} className="cursor-pointer text-white/90 mt-3" title="Call history" />
-                  <button type="button" onClick={() => setShowThreadEvents((value) => !value)} className="relative mt-3 p-0.5 text-white/90" title="Mentions and reactions">
+                  <button type="button" onClick={() => {
+                    setShowThreadEvents((value) => {
+                      const next = !value;
+                      if (next) void markThreadEventsRead();
+                      return next;
+                    });
+                  }} className="relative mt-3 p-0.5 text-white/90" title="Mentions and reactions">
                     <FiBell size={20} />
-                    {threadEvents.length > 0 && <span className="absolute -right-1 -top-2 min-w-4 h-4 px-1 rounded-full bg-lightBlue text-black text-[9px] font-bold flex items-center justify-center">{threadEvents.length > 99 ? "99+" : threadEvents.length}</span>}
+                    {unreadThreadEvents > 0 && <span className="absolute -right-1 -top-2 min-w-4 h-4 px-1 rounded-full bg-lightBlue text-black text-[9px] font-bold flex items-center justify-center">{unreadThreadEvents > 99 ? "99+" : unreadThreadEvents}</span>}
                   </button>
                   <BiSearch size={22} onClick={handleOpenSearch} className="cursor-pointer text-white/90 mt-3" />
                 </div>
