@@ -11,7 +11,7 @@ export interface MessageSelectionState {
   pendingMessageJumpId: string | null;
 }
 
-export interface ThreadEvent { _id: string; type: "mention" | "reaction" | "call" | "system"; room: string; message?: string; actor: string; data?: { targetUser?: string; username?: string; emoji?: string }; createdAt: string; }
+export interface ThreadEvent { _id: string; type: "mention" | "reaction" | "call" | "system"; room: string; message?: string; actor: string; data?: { targetUser?: string; username?: string; emoji?: string }; createdAt: string; readBy?: string[]; }
 
 export interface GlobalStoreProps {
   selectedRoom: null | Room;
