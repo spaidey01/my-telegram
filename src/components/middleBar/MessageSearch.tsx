@@ -65,6 +65,7 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
       setSearched(false);
       return;
     }
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true);
       setError("");
@@ -74,7 +75,7 @@ const MessageSearch = ({ roomId, initialQuery = "", initialHashtagMode = false, 
         if (senderId) params.set("senderId", senderId);
         if (from) params.set("from", from);
         if (to) params.set("to", to);
-        const response = await fetch("/api/messages/search?" + params.toString());
+        const response = await fetch("/api/messages/search?" + params.toString(), { signal: controller.signal });
         const data = await response.json();
         if (!response.ok) throw new Error(data?.message || "Search failed");
         setResults(data.results || []);
