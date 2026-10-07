@@ -1,9 +1,11 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import connectToDB from "@/db";
 type ScheduledRoom={_id:unknown;type:string;channelRoles?:Record<string,string>};
 import ScheduledSchema from "@/schemas/scheduledMessageSchema";import SessionSchema from "@/schemas/sessionSchema";import RoomSchema from "@/schemas/roomSchema";import UserSchema from "@/schemas/userSchema";import tokenDecoder from "@/utils/TokenDecoder";import {cookies}from"next/headers";import mongoose from"mongoose";import { hasGroupPermission, channelCanPost } from"../../../../server/security/permissions.js";
 const auth=async()=>{const t=(await cookies()).get("token")?.value,d=t?tokenDecoder(t):false;if(!d||typeof d!=="object"||typeof d.sub!=="string"||typeof d.sv!=="number"||typeof d.sid!=="string"||!mongoose.isValidObjectId(d.sub)||!mongoose.isValidObjectId(d.sid))return null;await connectToDB();const [session,user]=await Promise.all([SessionSchema.findOne({_id:d.sid,user:d.sub,revokedAt:null}).select("_id").lean(),UserSchema.findOne({_id:d.sub,sessionVersion:d.sv}).select("_id").lean()]);return session&&user?d:null};
 export const GET=async()=>{const d=await auth();if(!d)return Response.json({message:"Unauthorized"},{status:401});return Response.json({scheduled:await ScheduledSchema.find({sender:d.sub,status:"pending"}).sort({scheduledFor:1}).lean().then((value)=>value)})};
 export const DELETE=async(req:Request)=>{
+  if(!isSafeBrowserRequest(req))return Response.json({message:"Forbidden"},{status:403});
   const d=await auth();if(!d)return Response.json({message:"Unauthorized"},{status:401});
   const id=new URL(req.url).searchParams.get("id");
   if(!mongoose.isValidObjectId(id))return Response.json({message:"Invalid id"},{status:400});
