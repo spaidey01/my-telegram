@@ -96,6 +96,14 @@ export const pendingMessagesService = {
     return pendingMessage;
   },
 
+  updatePendingMessage: (roomId: string, tempId: string, patch: Partial<Pick<PendingMessage, "retryCount" | "lastAttempt">>) => {
+    const all = pendingMessagesService.getAllPendingMessages();
+    const roomMessages = all[roomId] || [];
+    all[roomId] = roomMessages.map((message) => message.tempId === tempId ? { ...message, ...patch } : message);
+    localStorage.setItem(PENDING_MESSAGES_KEY, JSON.stringify(all));
+    mirrorToIndexedDB(all[roomId]);
+  },
+
   clearPendingMessages: (roomId: string) => {
     const existing = pendingMessagesService.getAllPendingMessages();
     for (const message of existing[roomId] || []) removeFromIndexedDB(message.tempId);
