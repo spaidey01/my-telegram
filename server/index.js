@@ -242,7 +242,7 @@ const sanitizeStickerData = async (data, userID) => {
 };
 
 await connectToDB();
-setInterval(() => { void processScheduledMessages(); }, 5000).unref();
+setInterval(() => { void processScheduledMessages().catch((error) => console.error("Scheduled message worker failure:", error)); }, 5000).unref();
 
 const getUserId = (socket) => socket.userId;
 
@@ -274,14 +274,23 @@ const createThreadMentionEvents = async (actorID, roomID, messageID, usernames) 
   const users = await UserSchema.find({ username: { $in: names }, _id: { $in: [...memberIds] } }).select("_id username").lean();
   for (const target of users) {
     if (String(target._id) === String(actorID)) continue;
+    const targetUser = String(target._id);
+    const alreadyExists = await ThreadEventSchema.exists({
+      actor: actorID,
+      type: "mention",
+      room: roomID,
+      message: messageID,
+      "data.targetUser": targetUser,
+    });
+    if (alreadyExists) continue;
     const event = await ThreadEventSchema.create({
       actor: actorID,
       type: "mention",
       room: roomID,
       message: messageID,
-      data: { targetUser: String(target._id), username: target.username },
+      data: { targetUser, username: target.username },
     });
-    io.to(`presence:${target._id}`).emit("thread:event", {
+    io.to(`presence:${targetUser}`).emit("thread:event", {
       _id: String(event._id),
       type: "mention",
       room: String(roomID),
@@ -333,7 +342,7 @@ const recordCallHistory = async (call, status, endedAt = new Date()) => {
     { upsert: true },
   );
 };
-const processScheduledMessages = async () => {
+export const processScheduledMessages = async () => {
   const now = new Date();
   const staleBefore = new Date(now.getTime() - 2 * 60 * 1000);
   const jobs = await ScheduledMessageSchema.find({
@@ -357,22 +366,75 @@ const processScheduledMessages = async () => {
     );
     if (!claimed) continue;
 
+    const idempotencyKey = "scheduled:" + claimed._id.toString();
+
+    const reconcileDelivery = async (message) => {
+      await createThreadMentionEvents(
+        claimed.sender.toString(),
+        claimed.room.toString(),
+        message._id,
+        message.mentions || [],
+      );
+
+      await RoomSchema.updateOne(
+        {
+          _id: claimed.room,
+          $or: [
+            { lastMessageAt: null },
+            { lastMessageAt: { $lte: message.createdAt } },
+          ],
+        },
+        {
+          $set: {
+            lastMessageId: message._id,
+            lastMessageAt: message.createdAt,
+          },
+        },
+      );
+
+      const populated = await MessageSchema.findById(message._id)
+        .populate("sender", "name username avatar _id")
+        .lean();
+
+      if (populated) {
+        await emitVisibleMessage(claimed.room.toString(), "newMessage", populated);
+        await emitVisibleMessage(
+          claimed.room.toString(),
+          "updateLastMsgData",
+          { roomID: claimed.room.toString(), msgData: populated },
+        );
+      }
+
+      await ScheduledMessageSchema.updateOne(
+        { _id: claimed._id },
+        {
+          $set: {
+            status: "sent",
+            sentAt: message.createdAt,
+            processingAt: null,
+          },
+        },
+      );
+    };
+
     try {
-      const idempotencyKey = "scheduled:" + claimed._id.toString();
       const existing = await MessageSchema.findOne({ tempId: idempotencyKey }).lean();
       if (existing) {
-        await ScheduledMessageSchema.updateOne(
-          { _id: claimed._id },
-          { $set: { status: "sent", sentAt: existing.createdAt, processingAt: null } },
-        );
+        await reconcileDelivery(existing);
         continue;
       }
 
       const room = await isMember(claimed.room.toString(), claimed.sender.toString());
-      if (!room || (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))) throw new Error("Forbidden");
+      if (
+        !room ||
+        (room.type === "group" && !hasGroupPermission(room, claimed.sender.toString(), "sendMessages")) ||
+        (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))
+      ) {
+        throw new Error("Forbidden");
+      }
 
       const p = claimed.payload || {};
-      const textValue = typeof p.message === "string" ? p.message.slice(0,10000) : "";
+      const textValue = typeof p.message === "string" ? p.message.slice(0, 10000) : "";
       const msg = await MessageSchema.create({
         sender: claimed.sender,
         roomID: claimed.room,
@@ -390,29 +452,39 @@ const processScheduledMessages = async () => {
         stickerData: await sanitizeStickerData(p.stickerData, claimed.sender.toString()),
       });
 
-      await createThreadMentionEvents(claimed.sender.toString(), claimed.room.toString(), msg._id, msg.mentions);
-      await RoomSchema.updateOne({ _id: claimed.room }, { $set: { lastMessageId: msg._id, lastMessageAt: msg.createdAt } });
-      const populated = await MessageSchema.findById(msg._id).populate("sender","name username avatar _id").lean();
-      await emitVisibleMessage(claimed.room.toString(),"newMessage",populated);
-      await emitVisibleMessage(claimed.room.toString(),"updateLastMsgData",{roomID:claimed.room.toString(),msgData:populated});
-      await ScheduledMessageSchema.updateOne({_id:claimed._id},{$set:{status:"sent",sentAt:new Date(),processingAt:null}});
+      await reconcileDelivery(msg);
     } catch (error) {
-      const duplicate = await MessageSchema.findOne({ tempId: "scheduled:" + claimed._id.toString() }).lean();
+      const duplicate = await MessageSchema.findOne({ tempId: idempotencyKey }).lean();
       if (duplicate) {
-        await ScheduledMessageSchema.updateOne(
-          { _id: claimed._id },
-          { $set: { status: "sent", sentAt: duplicate.createdAt, processingAt: null } },
-        );
+        try {
+          await reconcileDelivery(duplicate);
+        } catch (recoveryError) {
+          await ScheduledMessageSchema.updateOne(
+            { _id: claimed._id },
+            {
+              $set: {
+                status: "failed",
+                error: String(recoveryError?.message || recoveryError).slice(0, 500),
+                processingAt: null,
+              },
+            },
+          );
+        }
       } else {
         await ScheduledMessageSchema.updateOne(
-          {_id:claimed._id},
-          {$set:{status:"failed",error:String(error?.message||error).slice(0,500),processingAt:null}},
+          { _id: claimed._id },
+          {
+            $set: {
+              status: "failed",
+              error: String(error?.message || error).slice(0, 500),
+              processingAt: null,
+            },
+          },
         );
       }
     }
   }
 };
-
 const isMessageInRoom = async (msgID, roomID) => {
   if (!isValidId(msgID) || !isValidId(roomID)) return null;
   return MessageSchema.findOne({ _id: msgID, roomID });
