@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
 import { DEFAULT_PRIVACY_SETTINGS, PRIVACY_KEYS, PRIVACY_VALUES, normalizePrivacySettings } from "@/utils/privacy";
@@ -33,6 +34,7 @@ export const GET = async () => {
 };
 
 export const PATCH = async (req: Request) => {
+  if (!isSafeBrowserRequest(req)) return Response.json({ message: "Forbidden" }, { status: 403 });
   const auth = await getUserID();
   if (!auth) return Response.json({ message: "Unauthorized" }, { status: 401 });
   try {
