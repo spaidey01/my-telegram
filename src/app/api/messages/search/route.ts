@@ -72,12 +72,14 @@ export const GET = async (req: Request) => {
       filter.createdAt = createdAt;
     }
 
-    const messages = await MessageSchema.find(filter)
+    let messageQuery = MessageSchema.find(filter)
       .select("_id roomID sender message createdAt attachmentData stickerData voiceData pinnedAt")
-      .sort({ score: { $meta: "textScore" }, createdAt: -1, _id: -1 })
       .limit(100)
-      .populate("sender", "name username avatar _id")
-      .lean();
+      .populate("sender", "name username avatar _id");
+    messageQuery = hashtagParam
+      ? messageQuery.sort({ createdAt: -1, _id: -1 })
+      : messageQuery.sort({ score: { $meta: "textScore" }, createdAt: -1, _id: -1 });
+    const messages = await messageQuery.lean();
 
     const rooms = await RoomSchema.find({ _id: { $in: [...new Set(messages.map((message) => String(message.roomID)))] } })
       .select("_id name type avatar")
