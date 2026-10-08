@@ -303,3 +303,29 @@ test("multi-device sessions are bound to sessionVersion and revoke-all invalidat
   assert.match(currentUser, /sessionVersion: verifiedToken\.sv, revokedAt: null/);
   assert.match(logout, /sessionVersion: decoded\.sv, revokedAt: null/);
 });
+
+
+test("failure recovery policies fail closed for Redis, require ClamAV in production, and recover stale workers", async () => {
+  const rateLimit = await (await import("node:fs/promises")).readFile(
+    new URL("../src/utils/rateLimit.ts", import.meta.url),
+    "utf8",
+  );
+  const verify = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/files/verify/route.ts", import.meta.url),
+    "utf8",
+  );
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(rateLimit, /Redis rate-limit connection failure/);
+  assert.match(rateLimit, /redisPromise = null/);
+  assert.match(rateLimit, /if \(!redis\?\.isOpen\)/);
+  assert.match(rateLimit, /NODE_ENV === "production"/);
+  assert.match(rateLimit, /return \{ allowed: false/);
+  assert.match(verify, /NODE_ENV === "production" && !process\.env\.CLAMAV_HOST/);
+  assert.doesNotMatch(verify, /!process\.env\.S3_ENDPOINT/);
+  assert.match(server, /status: "processing", processingAt: \{ \$lte: staleBefore \}/);
+  assert.match(server, /status: "pending", processingAt: null/);
+  assert.match(server, /MAX_SCHEDULED_ATTEMPTS = 5/);
+});
