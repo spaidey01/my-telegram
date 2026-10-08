@@ -1890,10 +1890,13 @@ io.on("connection", (socket) => {
 
       const previousParticipants = new Set(room.participants.map((id) => id.toString()));
       const updatedRoom = await RoomSchema.findOneAndUpdate(
-        { _id: roomID },
-        { $set },
+        { _id: roomID, __v: room.__v ?? 0 },
+        { $set, $inc: { __v: 1 } },
         { new: true, runValidators: true }
       );
+      if (!updatedRoom) {
+        return socket.emit("updateRoomDataError", { message: "Room changed; reload and try again" });
+      }
       if (Array.isArray($set.participants)) {
         const nextParticipants = new Set($set.participants.map((id) => id.toString()));
         for (const memberID of previousParticipants) {
