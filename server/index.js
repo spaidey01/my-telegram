@@ -527,7 +527,7 @@ export const processScheduledMessages = async () => {
         (room.type === "group" && !hasGroupPermission(room, claimed.sender.toString(), "sendMessages")) ||
         (room.type === "group" && p.attachmentData && !hasGroupPermission(room, claimed.sender.toString(), "sendMedia")) ||
         (room.type === "group" && p.stickerData && !hasGroupPermission(room, claimed.sender.toString(), "sendStickers")) ||
-        (room.type === "group" && typeof p.message === "string" && /https?:\\/\\//i.test(p.message) && !hasGroupPermission(room, claimed.sender.toString(), "sendLinks")) ||
+        (room.type === "group" && typeof p.message === "string" && /https?:\/\//i.test(p.message) && !hasGroupPermission(room, claimed.sender.toString(), "sendLinks")) ||
         (room.type === "group" && room.restrictedUsers?.some((id) => id.toString() === claimed.sender.toString())) ||
         (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))
       ) {
