@@ -16,7 +16,8 @@
     "test:backlog": "node --test tests/backlog.test.mjs",
     "test:security": "node --test tests/csrf.test.mjs",
     "test:multi-node": "node --test tests/multi-node.integration.test.mjs",
-    "test:webrtc-e2e": "playwright test tests/webrtc.e2e.spec.mjs --workers=1"
+    "test:webrtc-e2e": "playwright test tests/webrtc.e2e.spec.mjs --workers=1",
+    "validate:production-env": "node ./scripts/validate-production-env.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
