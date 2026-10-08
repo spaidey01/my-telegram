@@ -11,6 +11,7 @@ const schema = new Schema(
     },
     admins: [{ type: Schema.ObjectId, ref: "User", required: true }],
     participants: [{ type: Schema.ObjectId, ref: "User", required: true }],
+    privateKey: { type: String, unique: true, sparse: true, index: true },
     creator: { type: Schema.ObjectId, ref: "User" },
     medias: [{ type: Schema.ObjectId, ref: "Media", required: true }],
     locations: [{ type: Schema.ObjectId, ref: "Location", required: true }],
