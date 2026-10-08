@@ -102,7 +102,7 @@ export const GET = async (req: Request) => {
       filter.createdAt = createdAt;
     }
 
-    const pipeline: Record<string, unknown>[] = [{ $match: filter }];
+    const pipeline: mongoose.PipelineStage[] = [{ $match: filter }];
     if (query) {
       pipeline.push({ $addFields: { _searchScore: { $meta: "textScore" } } });
     }
