@@ -15,7 +15,8 @@
     "test:call-reliability": "node --test tests/call-reliability.test.mjs",
     "test:backlog": "node --test tests/backlog.test.mjs",
     "test:security": "node --test tests/csrf.test.mjs",
-    "test:multi-node": "node --test tests/multi-node.integration.test.mjs"
+    "test:multi-node": "node --test tests/multi-node.integration.test.mjs",
+    "test:webrtc-e2e": "npx --yes playwright@1.51.1 test tests/webrtc.e2e.spec.mjs --workers=1"
   },
   "dependencies": {
     "aos": "^2.3.4",
