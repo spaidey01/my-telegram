@@ -326,7 +326,8 @@ test("failure recovery policies fail closed for Redis, require ClamAV in product
   assert.match(rateLimit, /return \{ allowed: false/);
   assert.match(verify, /!process\.env\.CLAMAV_HOST && \(process\.env\.NODE_ENV|NODE_ENV === "production" \|\| process\.env\.CLAMAV_REQUIRED === "true"/);
   assert.doesNotMatch(verify, /!process\.env\.S3_ENDPOINT/);
-  const access = read("src/app/api/files/access/route.ts");\n  assert.doesNotMatch(access, /!process\.env\.S3_ENDPOINT.*Storage is not configured/);
+  const access = read("src/app/api/files/access/route.ts");
+  assert.doesNotMatch(access, /!process\.env\.S3_ENDPOINT.*Storage is not configured/);
   assert.match(server, /status: "processing", processingAt: \{ \$lte: staleBefore \}/);
   assert.match(server, /status: "pending", processingAt: null/);
   assert.match(server, /MAX_SCHEDULED_ATTEMPTS = 5/);
