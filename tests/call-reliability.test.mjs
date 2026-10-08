@@ -43,6 +43,8 @@ test("call reliability server keeps a reconnect grace window",()=>{
     "io.in(c.callerSocketId).fetchSockets()",
     "io.to(targetSocketId).emit",
     "acceptedAt",
+    "CALL_ACTIVE_TTL_MS",
+    "const effectiveTtl = ttlMs ?? (call.acceptedAt ? CALL_ACTIVE_TTL_MS",
     "if (!active || active.acceptedAt) return;",
     'allowEvent(userID, "call:accept", 30, 60_000)',
     'allowEvent(userID, "call:offer", 60, 60_000)',
