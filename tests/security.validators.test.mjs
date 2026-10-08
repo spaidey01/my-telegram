@@ -189,6 +189,41 @@ test("2FA recovery codes are hashed at rest and consumed atomically", async () =
 });
 
 
+test("sticker APIs bind authentication to the active session id", async () => {
+  const packs = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/stickers/packs/route.ts", import.meta.url),
+    "utf8",
+  );
+  const packId = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/stickers/packs/[id]/route.ts", import.meta.url),
+    "utf8",
+  );
+  for (const source of [packs, packId]) {
+    assert.match(source, /typeof decoded\.sid !== "string"/);
+    assert.match(source, /SessionSchema\.findOne\(\{ _id: decoded\.sid, user: decoded\.sub, revokedAt: null \}/);
+    assert.match(source, /session\s*\?/);
+    assert.match(source, /sessionVersion: decoded\.sv/);
+  }
+});
+
+test("message search rejects ambiguous query and hashtag filters", async () => {
+  const source = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/messages/search/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /\(query && hashtagParam\)/);
+  assert.match(source, /provide exactly one of query or hashtag/);
+});
+
+test("2FA setup preserves enabled state when rotating an already-enabled authenticator", async () => {
+  const source = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/2fa/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /twoFactorEnabled:Boolean\(u\.twoFactorEnabled\)/);
+  assert.match(source, /u\.twoFactorEnabled&& !verifyTotp|u\.twoFactorEnabled&&!verifyTotp/);
+});
+
 test("room updates use optimistic concurrency to reject stale writes", async () => {
   const server = await (await import("node:fs/promises")).readFile(
     new URL("../server/index.js", import.meta.url),
