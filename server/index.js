@@ -86,6 +86,7 @@ const CALL_REDIS_SET = "stargram:active-call-ids";
 const CALL_REDIS_PREFIX = "stargram:active-call:";
 const CALL_RING_TIMEOUT_MS = 30_000;
 const CALL_RECONNECT_GRACE_MS = 20_000;
+const CALL_ACTIVE_TTL_MS = 2 * 60 * 60 * 1000;
 const CALL_RETRY_LIMIT = 2;
 const CALL_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const eventBuckets = new Map();
@@ -132,7 +133,7 @@ const listActiveCalls = async () => {
 const setActiveCall = async (callId, call, ttlMs = null) => {
   activeCalls.set(callId, call);
   if (!redisUrl) return;
-  const effectiveTtl = ttlMs ?? CALL_RING_TIMEOUT_MS + CALL_RECONNECT_GRACE_MS;
+  const effectiveTtl = ttlMs ?? (call.acceptedAt ? CALL_ACTIVE_TTL_MS : CALL_RING_TIMEOUT_MS + CALL_RECONNECT_GRACE_MS);
   await redisPubClient.set(callRedisKey(callId), JSON.stringify(serializeCall(call)), { PX: effectiveTtl });
   await redisPubClient.sAdd(CALL_REDIS_SET, callId);
 };
