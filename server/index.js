@@ -907,20 +907,21 @@ io.on("connection", (socket) => {
       );
     }
 
-    const replacementLast = await MessageSchema.findOne({
-      roomID,
-      hideFor: { $nin: [userID] },
-    }).sort({ createdAt: -1, _id: -1 }).lean();
+    const replacementLast = forAll
+      ? await MessageSchema.findOne({ roomID }).sort({ createdAt: -1, _id: -1 }).lean()
+      : null;
 
-    await RoomSchema.updateOne(
-      { _id: roomID },
-      {
-        $set: {
-          lastMessageId: replacementLast?._id || null,
-          lastMessageAt: replacementLast?.createdAt || null,
+    if (forAll) {
+      await RoomSchema.updateOne(
+        { _id: roomID, lastMessageId: { $in: ids } },
+        {
+          $set: {
+            lastMessageId: replacementLast?._id || null,
+            lastMessageAt: replacementLast?.createdAt || null,
+          },
         },
-      },
-    );
+      );
+    }
 
     const payload = { roomID, messageIDs: ids, forAll: Boolean(forAll) };
     if (forAll) {
@@ -1036,7 +1037,17 @@ io.on("connection", (socket) => {
     });
 
     await RoomSchema.updateOne(
-      { _id: targetRoomID },
+      {
+        _id: targetRoomID,
+        $or: [
+          { lastMessageAt: null },
+          { lastMessageAt: { $lt: forwarded.createdAt } },
+          {
+            lastMessageAt: forwarded.createdAt,
+            lastMessageId: { $lt: forwarded._id },
+          },
+        ],
+      },
       { $set: { lastMessageId: forwarded._id, lastMessageAt: forwarded.createdAt } },
     );
 
