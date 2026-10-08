@@ -15,7 +15,7 @@ const s3 = () => new S3Client({
 
 export const cleanupPendingUploads = async (maxAgeMs = DEFAULT_MAX_AGE_MS) => {
   const bucket = process.env.S3_BUCKET_NAME;
-  if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.S3_ENDPOINT) return 0;
+  if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) return 0;
 
   const cutoff = Date.now() - maxAgeMs;
   let continuationToken;
