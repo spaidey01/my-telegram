@@ -19,7 +19,8 @@
     "test:webrtc-e2e": "playwright test tests/webrtc.e2e.spec.mjs --workers=1",
     "validate:production-env": "node ./scripts/validate-production-env.mjs",
     "test:production-config": "node --test tests/production-config.test.mjs",
-    "validate:production-network": "node ./scripts/validate-production-network.mjs"
+    "validate:production-network": "node ./scripts/validate-production-network.mjs",
+    "test:deployment": "bash -n deploy/setup-vps.sh deploy/deploy-vps.sh"
   },
   "dependencies": {
     "aos": "^2.3.4",
