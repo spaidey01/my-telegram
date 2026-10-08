@@ -277,7 +277,7 @@ test("reply, edit, reaction, pin, forward and delete message flow", async () => 
     assert.equal(toggleB.success, true);
     const afterConcurrentToggle = await MessageSchema.findById(originalResult._id).lean();
     assert.equal(
-      afterConcurrentToggle.reactions.some((reaction) => reaction.emoji === "❤️" && reaction.userIds.some((id) => id.toString() === user._id.toString())),
+      afterConcurrentToggle.reactions.some((reaction) => reaction.emoji === "🔥" && reaction.userIds.some((id) => id.toString() === user._id.toString())),
       false,
     );
 
