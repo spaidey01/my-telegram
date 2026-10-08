@@ -102,7 +102,9 @@ export const getRequestIp = (req: Request) => {
     const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
     if (values.length) return values[Math.max(0, values.length - n)];
   }
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
+  if (n > 0) {
+    const realIp = req.headers.get("x-real-ip")?.trim();
+    if (realIp) return realIp;
+  }
   return "unknown";
 };
