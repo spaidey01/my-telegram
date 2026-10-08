@@ -31,7 +31,7 @@ export async function GET(req:Request){
   const key=new URL(req.url).searchParams.get("key")||"";
   if(!validKey(key))return NextResponse.json({message:"Invalid file"},{status:400});
   const bucket=process.env.S3_BUCKET_NAME;
-  if(!bucket||!process.env.S3_ACCESS_KEY||!process.env.S3_SECRET_KEY||!process.env.S3_ENDPOINT)return NextResponse.json({message:"Storage is not configured"},{status:500});
+  if(!bucket||!process.env.S3_ACCESS_KEY||!process.env.S3_SECRET_KEY)return NextResponse.json({message:"Storage is not configured"},{status:500});
   const accessUrl=`/api/files/access?key=${encodeURIComponent(key)}`;
   const ownsFile=key.split("/")[1]===userId;let canAccess=ownsFile;
   if(!canAccess){
