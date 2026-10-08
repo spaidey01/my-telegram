@@ -16,8 +16,7 @@
     "test:backlog": "node --test tests/backlog.test.mjs",
     "test:security": "node --test tests/csrf.test.mjs",
     "test:multi-node": "node --test tests/multi-node.integration.test.mjs",
-    "test:webrtc-e2e": "playwright test tests/webrtc.e2e.spec.mjs --workers=1",
-    "test:browser-webrtc": "playwright test tests/browser-webrtc.spec.ts --workers=1"
+    "test:webrtc-e2e": "playwright test tests/webrtc.e2e.spec.mjs --workers=1"
   },
   "dependencies": {
     "aos": "^2.3.4",
