@@ -29,6 +29,23 @@ const parseDate = (value: string | null, endOfDay = false, timezoneOffsetMinutes
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const encodeCursor = (value: Record<string, unknown>) =>
+  Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+
+const decodeCursor = (value: string | null) => {
+  if (!value || value.length > 1000) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!parsed || typeof parsed !== "object" || typeof parsed.id !== "string" || !mongoose.isValidObjectId(parsed.id) || typeof parsed.createdAt !== "string") return null;
+    const createdAt = new Date(parsed.createdAt);
+    if (Number.isNaN(createdAt.getTime())) return null;
+    if (parsed.score !== undefined && (!Number.isFinite(parsed.score) || parsed.score < 0)) return null;
+    return { id: new mongoose.Types.ObjectId(parsed.id), createdAt, score: parsed.score };
+  } catch {
+    return null;
+  }
+};
+
 export const GET = async (req: Request) => {
   try {
     const auth = await getAuth();
@@ -46,8 +63,10 @@ export const GET = async (req: Request) => {
     const hashtagParam = (params.get("hashtag") || "").trim().replace(/^#/, "").toLowerCase();
     const roomId = (params.get("roomId") || "").trim();
     const senderId = (params.get("senderId") || "").trim();
-    const page = Math.max(Number(params.get("page")) || 1, 1);
+    const requestedPage = Math.max(Number(params.get("page")) || 1, 1);
     const limit = Math.min(Math.max(Number(params.get("limit")) || 50, 1), 50);
+    const cursorParam = params.get("cursor");
+    const cursor = decodeCursor(cursorParam);
     const fromOffset = Number(params.get("fromOffset"));
     const toOffset = Number(params.get("toOffset"));
     const safeFromOffset = Number.isFinite(fromOffset) && Math.abs(fromOffset) <= 14 * 60 ? fromOffset : 0;
@@ -61,6 +80,10 @@ export const GET = async (req: Request) => {
     if (params.has("from") && !from) return Response.json({ message: "Invalid from date" }, { status: 400 });
     if (params.has("to") && !to) return Response.json({ message: "Invalid to date" }, { status: 400 });
     if (from && to && from > to) return Response.json({ message: "from must be before to" }, { status: 400 });
+    if (cursorParam && !cursor) return Response.json({ message: "Invalid cursor" }, { status: 400 });
+    if (requestedPage > 1 && !cursor) {
+      return Response.json({ message: "Cursor pagination is required after the first page.", code: "CURSOR_REQUIRED" }, { status: 400 });
+    }
 
     const memberRooms = await RoomSchema.find({ participants: auth.sub }).select("_id").lean();
     const memberRoomIds = memberRooms.map((room) => room._id);
@@ -79,28 +102,75 @@ export const GET = async (req: Request) => {
       filter.createdAt = createdAt;
     }
 
-    let messageQuery = MessageSchema.find(filter)
-      .select("_id roomID sender message createdAt attachmentData stickerData voiceData pinnedAt")
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .populate("sender", "name username avatar _id");
-    messageQuery = hashtagParam
-      ? messageQuery.sort({ createdAt: -1, _id: -1 })
-      : messageQuery.sort({ score: { $meta: "textScore" }, createdAt: -1, _id: -1 });
-    const messages = await messageQuery.lean();
+    const pipeline: Record<string, unknown>[] = [{ $match: filter }];
+    if (query) {
+      pipeline.push({ $addFields: { _searchScore: { $meta: "textScore" } } });
+    }
 
-    const rooms = await RoomSchema.find({ _id: { $in: [...new Set(messages.map((message) => String(message.roomID)))] } })
+    if (cursor) {
+      const cursorMatch = query
+        ? {
+            $or: [
+              { _searchScore: { $lt: cursor.score } },
+              { _searchScore: cursor.score, createdAt: { $lt: cursor.createdAt } },
+              { _searchScore: cursor.score, createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+            ],
+          }
+        : {
+            $or: [
+              { createdAt: { $lt: cursor.createdAt } },
+              { createdAt: cursor.createdAt, _id: { $lt: cursor.id } },
+            ],
+          };
+      pipeline.push({ $match: cursorMatch });
+    }
+
+    pipeline.push(
+      { $sort: query ? { _searchScore: -1, createdAt: -1, _id: -1 } : { createdAt: -1, _id: -1 } },
+      { $limit: limit },
+      { $project: { _id: 1, createdAt: 1, ...(query ? { _searchScore: 1 } : {}) } },
+    );
+
+    const pageRows = await MessageSchema.aggregate(pipeline);
+    const ids = pageRows.map((row) => row._id);
+    const messages = ids.length
+      ? await MessageSchema.find({ _id: { $in: ids } })
+        .select("_id roomID sender message createdAt attachmentData stickerData voiceData pinnedAt")
+        .populate("sender", "name username avatar _id")
+        .lean()
+      : [];
+    const messageById = new Map(messages.map((message) => [String(message._id), message]));
+    const orderedMessages = ids.map((id) => messageById.get(String(id))).filter(Boolean);
+
+    const rooms = await RoomSchema.find({ _id: { $in: [...new Set(orderedMessages.map((message) => String(message.roomID)))] } })
       .select("_id name type avatar")
       .lean();
     const roomById = new Map(rooms.map((room) => [String(room._id), room]));
 
-    const results = await Promise.all(messages.map(async (message) => ({
+    const results = await Promise.all(orderedMessages.map(async (message) => ({
       ...message,
       sender: message.sender ? await sanitizeUserForViewer(message.sender, auth.sub) : message.sender,
       room: roomById.get(String(message.roomID)) || null,
     })));
 
-    return Response.json({ results, count: results.length, page, limit, hasMore: results.length === limit });
+    const lastRow = pageRows.at(-1);
+    const hasMore = pageRows.length === limit;
+    const nextCursor = hasMore && lastRow
+      ? encodeCursor({
+          id: String(lastRow._id),
+          createdAt: new Date(lastRow.createdAt).toISOString(),
+          ...(query ? { score: lastRow._searchScore } : {}),
+        })
+      : null;
+
+    return Response.json({
+      results,
+      count: results.length,
+      page: requestedPage,
+      limit,
+      hasMore,
+      nextCursor,
+    });
   } catch (error) {
     console.error("messages/search:", error);
     return Response.json({ message: "Unknown error, try later." }, { status: 500 });
