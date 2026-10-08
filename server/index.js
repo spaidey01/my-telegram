@@ -908,7 +908,7 @@ io.on("connection", (socket) => {
   on("deleteRoom", async (roomID) => {
     if (!(await allowEvent(userID, "deleteRoom", 10, 60_000))) return;
     if (!isValidId(roomID)) return socket.emit("error", { message: "Invalid room" });
-    const room = await RoomSchema.findById(roomID);
+    const room = await isMember(roomID, userID);
     if (!room || !isAdmin(room, userID) || room.type === "private") return socket.emit("error", { message: "Forbidden" });
     io.to(roomID).emit("deleteRoom", roomID);
     io.to(roomID).emit("updateLastMsgData", { msgData: null, roomID });
