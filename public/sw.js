@@ -1,5 +1,5 @@
-const STATIC_CACHE = "telegram-static-v7";
-const DYNAMIC_CACHE = "telegram-dynamic-v7";
+const STATIC_CACHE = "stargram-static-v8";
+const DYNAMIC_CACHE = "stargram-dynamic-v8";
 const MAX_DYNAMIC_CACHE_SIZE = 50;
 
 const ASSETS = [self.origin + "/"];
