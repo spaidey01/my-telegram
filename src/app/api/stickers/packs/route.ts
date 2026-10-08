@@ -8,13 +8,19 @@ import StickerPackSchema from "@/schemas/stickerPackSchema";
 import UserStickerPackSchema from "@/schemas/userStickerPackSchema";
 import FileSchema from "@/schemas/fileSchema";
 import { rateLimit } from "@/utils/rateLimit";
+import SessionSchema from "@/schemas/sessionSchema";
+import mongoose from "mongoose";
 
 const auth = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") return null;
+  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") return null;
+  if (!mongoose.isValidObjectId(decoded.sub) || !mongoose.isValidObjectId(decoded.sid)) return null;
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null;
+  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).select("_id").lean();
+  const user = session
+    ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null
+    : null;
   return user ? { id: String(user._id) } : null;
 };
 
