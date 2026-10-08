@@ -22,7 +22,7 @@ const s3 = () => new S3Client({
 const scanWithClamAV = (bytes: Uint8Array) => new Promise<boolean>((resolve, reject) => {
   const host = process.env.CLAMAV_HOST;
   const port = Number(process.env.CLAMAV_PORT || 3310);
-  if (!host) return resolve(true);
+  if (!host) return reject(new Error("ClamAV host is not configured"));
 
   const socket = net.createConnection({ host, port });
   let response = "";
