@@ -287,8 +287,8 @@ const MessageActions = ({ isFromMe, msgData }: MessageActionsProps) => {
 
   const roomData = useMemo(() => {
     const rooms = useUserStore.getState()?.rooms;
-    return rooms.find((room) => room._id === msgData?.roomID);
-  }, [msgData?.roomID]);
+    return rooms.find((room) => room._id === msgData.roomID);
+  }, [msgData.roomID]);
 
   const onClose = useCallback(() => {
     setIsDropDownOpen(false);
