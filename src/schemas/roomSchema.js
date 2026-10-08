@@ -17,7 +17,7 @@ const schema = new Schema(
     locations: [{ type: Schema.ObjectId, ref: "Location", required: true }],
     lastMessageId: { type: Schema.ObjectId, ref: "Message", default: null },
     lastMessageAt: { type: Date, default: null },
-    link: { type: String, trim: true, maxlength: 500, unique: true, sparse: true },
+    link: { type: String, trim: true, maxlength: 500, sparse: true },
     biography: { type: String, default: "", maxlength: 1000 },
     visibility: { type: String, enum: ["private", "public"], default: "public" },
     groupPermissions: {
