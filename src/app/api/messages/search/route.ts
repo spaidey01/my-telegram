@@ -74,7 +74,7 @@ export const GET = async (req: Request) => {
     const from = parseDate(params.get("from"), false, safeFromOffset);
     const to = parseDate(params.get("to"), true, safeToOffset);
 
-    if ((!query && !hashtagParam) || query.length > 100 || hashtagParam.length > 64 || (hashtagParam && !/^[\p{L}\p{N}_]+$/u.test(hashtagParam))) return Response.json({ message: "query or hashtag is required and valid" }, { status: 400 });
+    if ((!query && !hashtagParam) || (query && hashtagParam) || query.length > 100 || hashtagParam.length > 64 || (hashtagParam && !/^[\p{L}\p{N}_]+$/u.test(hashtagParam))) return Response.json({ message: "provide exactly one of query or hashtag" }, { status: 400 });
     if (roomId && !mongoose.isValidObjectId(roomId)) return Response.json({ message: "Invalid roomId" }, { status: 400 });
     if (senderId && !mongoose.isValidObjectId(senderId)) return Response.json({ message: "Invalid senderId" }, { status: 400 });
     if (params.has("from") && !from) return Response.json({ message: "Invalid from date" }, { status: 400 });
