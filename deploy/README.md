@@ -24,7 +24,6 @@ REDIS_URL=redis://127.0.0.1:6379
 TRUSTED_PROXY_COUNT=1
 CLAMAV_HOST=127.0.0.1
 CLAMAV_PORT=3310
-CLAMAV_REQUIRED=true
 TURN_URL=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tcp
 TURN_SECRET=<long-random-turn-secret>
 TURN_CREDENTIAL_TTL_SECONDS=600
