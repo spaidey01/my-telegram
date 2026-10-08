@@ -11,9 +11,20 @@ const getRedis = async () => {
   if (!redisPromise) {
     const client = createClient({ url: process.env.REDIS_URL });
     client.on("error", (error) => console.error("Redis rate-limit error:", error));
-    redisPromise = client.connect().then(() => client as RedisClientType);
+    redisPromise = client.connect()
+      .then(() => client as RedisClientType)
+      .catch((error) => {
+        redisPromise = null;
+        console.error("Redis rate-limit connection failure:", error);
+        return null as unknown as RedisClientType;
+      });
   }
-  return redisPromise;
+  const redis = await redisPromise;
+  if (!redis?.isOpen) {
+    redisPromise = null;
+    return null;
+  }
+  return redis;
 };
 
 const cleanup = () => {
