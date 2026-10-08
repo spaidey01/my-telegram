@@ -94,7 +94,9 @@ export const rateLimit = async (
 setInterval(cleanup, 60_000).unref();
 
 export const getRequestIp = (req: Request) => {
-  const n = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_COUNT ?? "1", 10) || 0);
+  // Direct deployments must not trust client-supplied forwarding headers by default.
+  // Reverse-proxy deployments must opt in explicitly with the actual proxy hop count.
+  const n = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_COUNT ?? "0", 10) || 0);
   const forwarded = req.headers.get("x-forwarded-for");
   if (n > 0 && forwarded) {
     const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
