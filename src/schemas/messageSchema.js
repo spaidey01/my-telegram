@@ -62,6 +62,6 @@ schema.index({ "voiceData.src": 1 });
 schema.index({ "stickerData.stickerId": 1 });
 
 const MessageSchema = mongoose.models.Message || mongoose.model("Message", schema);
-export default MessageSchema;
-
 schema.index({ roomID: 1, hashtags: 1 });
+
+export default MessageSchema;
