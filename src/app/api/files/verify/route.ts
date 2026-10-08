@@ -115,8 +115,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    if (process.env.NODE_ENV === "production" && !process.env.CLAMAV_HOST) {
-      return NextResponse.json({ message: "Malware scanner is required in production" }, { status: 503 });
+    if (!process.env.CLAMAV_HOST && (process.env.NODE_ENV === "production" || process.env.CLAMAV_REQUIRED === "true")) {
+      return NextResponse.json({ message: "Malware scanner is required" }, { status: 503 });
     }
 
     const bucket = process.env.S3_BUCKET_NAME;
