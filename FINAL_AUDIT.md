@@ -62,3 +62,20 @@ lint, TypeScript, build, server syntax, coturn, TURN tests, browser WebRTC E2E, 
 The original audit's P1/P2 findings are no longer open in the current HEAD, except the proxy-IP item which was not reproduced as an application vulnerability and remains a deployment invariant.
 
 CI green does not mean production is universally proven safe; external production topology, real NAT diversity, S3/ClamAV infrastructure, and operational configuration still require deployment-level validation.
+
+
+## Stage 20 — Production Readiness Audit
+
+Verified against the current deployment/runtime configuration:
+
+- Production environment validation requires MongoDB, Redis, S3, HTTPS public origins, ephemeral TURN credentials, and ClamAV.
+- `TRUSTED_PROXY_COUNT` now defaults to 0 in `.env.example`; deployments behind a reverse proxy must set the actual trusted hop count.
+- Socket.IO restricts CORS to configured `CLIENT_ORIGIN` values and production requires Redis for distributed state/rate limiting.
+- File upload verification remains fail-closed on ClamAV in production and promotes only verified pending objects.
+- File deletion is bound to the caller's active `sid` session and browser-request CSRF policy.
+- Production systemd units run as the dedicated `telegram` user and use filesystem/kernel hardening plus `NoNewPrivileges` and restrictive umask.
+- TURN deployment documentation now includes the required production TURN variables.
+
+### Stage 20 conclusion
+
+No unresolved application-level production-readiness blocker was found in this pass. The remaining production requirements are deployment inputs: real HTTPS reverse-proxy configuration, correct proxy hop count, public TURN reachability/relay ports, MongoDB/Redis/S3/ClamAV operational availability, and real multi-network WebRTC validation.
