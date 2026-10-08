@@ -36,9 +36,9 @@ export async function GET(req:Request){
   const ownsFile=key.split("/")[1]===userId;let canAccess=ownsFile;
   if(!canAccess){
    if(key.startsWith("stickers/")){
-    const sticker=await StickerSchema.findOne({file:accessUrl}).select("packId").lean();
+    const sticker=await StickerSchema.findOne({file:accessUrl}).select("packId").lean() as { packId: mongoose.Types.ObjectId } | null;
     if(sticker){
-      const pack=await StickerPackSchema.findById(sticker.packId).select("_id owner").lean();
+      const pack=await StickerPackSchema.findById(sticker.packId).select("_id owner").lean() as { _id: mongoose.Types.ObjectId; owner: mongoose.Types.ObjectId } | null;
       const isOwner=Boolean(pack&&String(pack.owner)===userId);
       const isInstalled=Boolean(pack&&!isOwner&&await UserStickerPackSchema.exists({user:userId,packId:pack._id}));
       let isSharedInRoom=false;
