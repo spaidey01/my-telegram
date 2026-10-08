@@ -73,7 +73,7 @@ jobs:
       - name: Install Chromium for real browser WebRTC E2E
         run: |
           npm install --no-save @playwright/test@1.51.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
 
       - run: npm run test:webrtc-e2e
         env:
