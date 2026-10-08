@@ -136,6 +136,8 @@ test.beforeAll(async () => {
   process.env.MONGODB_URI = MONGO;
   process.env.secretKey = SECRET;
   process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
+  process.env.TURN_URL ||= "turn:127.0.0.1:3478";
+  process.env.TURN_SECRET ||= "ci-turn-shared-secret-0123456789";
   await mongoose.connect(MONGO);
   const suffix = crypto.randomBytes(5).toString("hex");
   user = await UserSchema.create({ name: "webrtc-e2e", username: "rtc_" + suffix, phone: "rtc_" + suffix, password: "not-real", sessionVersion: 0 });
