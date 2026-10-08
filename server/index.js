@@ -27,6 +27,7 @@ if (secret.length < 32) throw new Error("secretKey must be at least 32 character
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
   .split(",").map((v) => v.trim()).filter(Boolean);
+const SOCKET_HANDSHAKE_IP_LIMIT = Math.max(20, Number(process.env.SOCKET_HANDSHAKE_IP_LIMIT) || 20);
 const SOCKET_HANDSHAKE_USER_LIMIT = Math.max(30, Number(process.env.SOCKET_HANDSHAKE_USER_LIMIT) || 30);
 
 const socketPort = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
@@ -564,7 +565,7 @@ io.use(async (socket, next) => {
       return next(new Error("Origin not allowed"));
     }
     const address = socket.handshake.address || "unknown";
-    if (!(await allowEvent("handshake:" + address, "__connect__", 20, 60_000))) {
+    if (!(await allowEvent("handshake:" + address, "__connect__", SOCKET_HANDSHAKE_IP_LIMIT, 60_000))) {
       return next(new Error("Too many connection attempts"));
     }
     const token = socket.handshake.auth?.token;
