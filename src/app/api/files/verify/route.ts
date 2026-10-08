@@ -115,6 +115,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
+    if (process.env.NODE_ENV === "production" && !process.env.CLAMAV_HOST) {
+      return NextResponse.json({ message: "Malware scanner is required in production" }, { status: 503 });
+    }
+
     const bucket = process.env.S3_BUCKET_NAME;
     if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.S3_ENDPOINT) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
@@ -132,9 +136,11 @@ export async function POST(req: Request) {
     }
 
     // If a scanner is configured, it is mandatory unless explicitly disabled.
-    const scanRequired = process.env.CLAMAV_REQUIRED
-      ? process.env.CLAMAV_REQUIRED === "true"
-      : Boolean(process.env.CLAMAV_HOST);
+    const scanRequired = process.env.NODE_ENV === "production"
+      ? true
+      : (process.env.CLAMAV_REQUIRED
+        ? process.env.CLAMAV_REQUIRED === "true"
+        : Boolean(process.env.CLAMAV_HOST));
     try {
       const clean = await scanWithClamAV(bytes);
       if (!clean) {
