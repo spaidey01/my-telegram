@@ -478,3 +478,32 @@ test("all state-changing group and channel socket events use the session mutatio
     assert.match(list, new RegExp('"' + event.replace(/:/g, "\\:") + '"'));
   }
 });
+
+
+test("production deployment defaults to safe proxy handling and hardened systemd services", async () => {
+  const envExample = await (await import("node:fs/promises")).readFile(
+    new URL("../.env.example", import.meta.url),
+    "utf8",
+  );
+  const webUnit = await (await import("node:fs/promises")).readFile(
+    new URL("../deploy/my-telegram-web.service", import.meta.url),
+    "utf8",
+  );
+  const socketUnit = await (await import("node:fs/promises")).readFile(
+    new URL("../deploy/my-telegram-socket.service", import.meta.url),
+    "utf8",
+  );
+  assert.match(envExample, /TRUSTED_PROXY_COUNT=0/);
+  for (const unit of [webUnit, socketUnit]) {
+    assert.match(unit, /User=telegram/);
+    assert.match(unit, /NoNewPrivileges=true/);
+    assert.match(unit, /PrivateTmp=true/);
+    assert.match(unit, /ProtectHome=true/);
+    assert.match(unit, /ProtectSystem=full/);
+    assert.match(unit, /ProtectKernelTunables=true/);
+    assert.match(unit, /ProtectKernelModules=true/);
+    assert.match(unit, /ProtectControlGroups=true/);
+    assert.match(unit, /RestrictSUIDSGID=true/);
+    assert.match(unit, /UMask=027/);
+  }
+});
