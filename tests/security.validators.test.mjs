@@ -87,7 +87,7 @@ test("admin privileges require active room membership", async () => {
 });
 
 
-test("reaction update uses an atomic Mongo update pipeline", async () => {
+test("reaction toggle is atomic for concurrent toggles by the same user", async () => {
   const server = await (await import("node:fs/promises")).readFile(
     new URL("../server/index.js", import.meta.url),
     "utf8",
@@ -97,6 +97,9 @@ test("reaction update uses an atomic Mongo update pipeline", async () => {
   const handler = server.slice(start, end);
   assert.match(handler, /findOneAndUpdate/);
   assert.match(handler, /\$setUnion/);
+  assert.match(handler, /\$in:\s*\[userObjectId, "\$\$reaction\.userIds"\]/);
+  assert.match(handler, /\$filter/);
+  assert.doesNotMatch(handler, /const alreadyReacted/);
   assert.doesNotMatch(handler, /msg\.reactions\s*=\s*reactions/);
   assert.doesNotMatch(handler, /await msg\.save\(\)/);
 });
