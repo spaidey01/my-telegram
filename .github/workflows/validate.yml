@@ -71,6 +71,21 @@ jobs:
 
       - run: npm run test:turn
       - run: npm run test:call-reliability
+
+      - name: Install browser E2E runner
+        run: |
+          npm install --no-save --ignore-scripts @playwright/test@1.51.1
+          npx playwright install --with-deps chromium
+
+      - name: Run real browser WebRTC E2E
+        run: npm run test:webrtc-e2e
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_webrtc_e2e
+          secretKey: browser-webrtc-e2e-secret-key-32-bytes
+          REDIS_URL: redis://127.0.0.1:6379
+          TURN_URL: turn:127.0.0.1:3478
+          TURN_SECRET: ci-turn-shared-secret-0123456789
+          TURN_CREDENTIAL_TTL_SECONDS: "600"
       - run: npm run test:backlog
       - run: npm run test:security
       - run: npm run test:integration
