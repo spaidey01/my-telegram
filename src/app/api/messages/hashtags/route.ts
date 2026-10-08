@@ -40,15 +40,23 @@ export const GET = async (req: Request) => {
     if (roomId && !memberRoomIds.some((id) => String(id) === roomId)) return Response.json({ message: "Forbidden" }, { status: 403 });
 
     const roomFilter = roomId ? roomId : { $in: memberRoomIds };
-    const values = await MessageSchema.distinct("hashtags", { roomID: roomFilter, hideFor: { $ne: d.sub } });
-    const suggestions = values
-      .map((value) => String(value).toLowerCase())
-      .filter((value) => value.startsWith(prefix))
-      .filter((value) => /^[\p{L}\p{N}_]{1,64}$/u.test(value))
-      .sort((a, b) => a.localeCompare(b))
-      .slice(0, limit);
+    const prefixRegex = new RegExp("^" + prefix, "i");
+    const rows = await MessageSchema.aggregate([
+      {
+        $match: {
+          roomID: roomFilter,
+          hideFor: { $ne: d.sub },
+          hashtags: { $regex: prefixRegex },
+        },
+      },
+      { $unwind: "$hashtags" },
+      { $match: { hashtags: { $regex: prefixRegex } } },
+      { $group: { _id: { $toLower: "$hashtags" } } },
+      { $sort: { _id: 1 } },
+      { $limit: limit },
+    ]);
 
-    return Response.json({ suggestions });
+    return Response.json({ suggestions: rows.map((row) => String(row._id)) });
   } catch (error) {
     console.error("messages/hashtags:", error);
     return Response.json({ message: "Unknown error, try later." }, { status: 500 });
