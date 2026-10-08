@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     }
 
     const bucket = process.env.S3_BUCKET_NAME;
-    if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.S3_ENDPOINT) {
+    if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
     }
 
