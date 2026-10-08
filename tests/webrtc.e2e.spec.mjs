@@ -278,6 +278,9 @@ test("real browser peers recover from an induced ICE failure using TURN and ICE 
   await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
   await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
 
+  await caller.evaluate(() => new Promise((resolve) => {
+    window.callState.socket.emit("call:end", { callId: window.callState.callId }, resolve);
+  }));
   await callerContext.close();
   await calleeContext.close();
 });
