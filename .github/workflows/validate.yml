@@ -80,3 +80,10 @@ jobs:
           CLIENT_ORIGIN: http://localhost:3000
           SOCKET_PORT: 3101
           REDIS_URL: redis://127.0.0.1:6379
+
+      - run: npm run test:multi-node
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_multinode_test
+          secretKey: multi-node-test-secret-key-32-bytes-minimum
+          CLIENT_ORIGIN: http://localhost:3000
+          REDIS_URL: redis://127.0.0.1:6379
