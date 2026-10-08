@@ -265,6 +265,22 @@ test("reply, edit, reaction, pin, forward and delete message flow", async () => 
     const reacted = await MessageSchema.findById(originalResult._id).lean();
     assert.deepEqual(reacted.reactions[0].userIds.map(String), [user._id.toString()]);
 
+    const concurrentToggle = () => new Promise((resolve) => {
+      socket.emit(
+        "toggleReaction",
+        { msgID: originalResult._id, roomID: room._id.toString(), emoji: "❤️" },
+        resolve,
+      );
+    });
+    const [toggleA, toggleB] = await Promise.all([concurrentToggle(), concurrentToggle()]);
+    assert.equal(toggleA.success, true);
+    assert.equal(toggleB.success, true);
+    const afterConcurrentToggle = await MessageSchema.findById(originalResult._id).lean();
+    assert.equal(
+      afterConcurrentToggle.reactions.some((reaction) => reaction.emoji === "❤️" && reaction.userIds.some((id) => id.toString() === user._id.toString())),
+      false,
+    );
+
     const pinPromise = waitFor(otherSocket, "pinMessage");
     socket.emit("pinMessage", originalResult._id, room._id.toString(), false);
     const pinEvent = await pinPromise;
