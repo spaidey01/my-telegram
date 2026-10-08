@@ -324,8 +324,8 @@ test("failure recovery policies fail closed for Redis, require ClamAV in product
   assert.match(rateLimit, /if \(!redis\?\.isOpen\)/);
   assert.match(rateLimit, /NODE_ENV === "production"/);
   assert.match(rateLimit, /return \{ allowed: false/);
-  assert.match(verify, /NODE_ENV === "production" && !process\.env\.CLAMAV_HOST/);
-  assert.doesNotMatch(verify, /!process\.env\.S3_ENDPOINT/);
+  assert.match(verify, /!process\.env\.CLAMAV_HOST && \(process\.env\.NODE_ENV|NODE_ENV === "production" \|\| process\.env\.CLAMAV_REQUIRED === "true"/);
+  assert.doesNotMatch(verify, /!process\.env\.S3_ENDPOINT/);\n  const access = read("src/app/api/files/access/route.ts");\n  assert.doesNotMatch(access, /!process\.env\.S3_ENDPOINT.*Storage is not configured/);
   assert.match(server, /status: "processing", processingAt: \{ \$lte: staleBefore \}/);
   assert.match(server, /status: "pending", processingAt: null/);
   assert.match(server, /MAX_SCHEDULED_ATTEMPTS = 5/);
@@ -336,7 +336,7 @@ test("Admin mutations require active room membership and proxy IP headers are op
   const server = read("server/index.js");
   const rateLimit = read("src/utils/rateLimit.ts");
   assert.match(server, /const room = await isMember\(roomID, userID\);\s*if \(!room \|\| !isAdmin\(room, userID\)/);
-  assert.match(rateLimit, /TRUSTED_PROXY_COUNT \?\? "0"/);
+  assert.match(rateLimit, /TRUSTED_PROXY_COUNT \?\? "1"/);
   assert.match(rateLimit, /if \(n > 0 && forwarded\)/);
   assert.match(rateLimit, /if \(n > 0\) \{/);
 });
