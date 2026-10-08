@@ -65,6 +65,21 @@ window.bootstrap = async (token, iceServers) => {
     const pc = await makePeer(callId, false);
     return pc;
   };
+  window.restartIce = async () => {
+    if (!state.pc) throw new Error("peer connection is not ready");
+    const offer = await state.pc.createOffer({ iceRestart: true });
+    await state.pc.setLocalDescription(offer);
+    socket.emit("call:offer", { callId: state.callId, description: state.pc.localDescription, restart: true });
+  };
+  window.disconnectSocket = () => socket.disconnect();
+  window.reconnectSocket = async () => {
+    socket.connect();
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("socket reconnect timeout")), 8_000);
+      socket.once("connect", () => { clearTimeout(timer); resolve(); });
+    });
+    socket.emit("call:reconnect", { callId: state.callId });
+  };
   socket.on("call:incoming", async ({ callId }) => {
     if (window.acceptIncoming) {
       await window.prepareCallee(callId);
@@ -197,6 +212,43 @@ test("two real Chromium peers establish audio/video through Stargram call signal
   await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
   await expect.poll(() => caller.evaluate(() => window.callState?.remoteTracks > 0), { timeout: 10_000 }).toBe(true);
   await expect.poll(() => callee.evaluate(() => window.callState?.remoteTracks > 0), { timeout: 10_000 }).toBe(true);
+
+  await callerContext.close();
+  await calleeContext.close();
+});
+
+
+test("real browser peers survive ICE restart and Socket.IO disconnect/reconnect signaling", async ({ browser }) => {
+  const callerContext = await browser.newContext({ permissions: ["microphone", "camera"] });
+  const calleeContext = await browser.newContext({ permissions: ["microphone", "camera"] });
+  const caller = await callerContext.newPage();
+  const callee = await calleeContext.newPage();
+  const turnIceServers = buildTurnIceServers(user._id).iceServers;
+  await Promise.all([caller.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"), callee.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html")]);
+  await Promise.all([
+    caller.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(user._id, userSession), iceServers: turnIceServers }),
+    callee.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(otherUser._id, otherUserSession), iceServers: turnIceServers }),
+  ]);
+  await callee.evaluate(() => { window.acceptIncoming = true; });
+  const callId = crypto.randomUUID();
+  const invite = await caller.evaluate(({ callId, roomID, targetUserID }) => new Promise((resolve) => {
+    window.callState.socket.emit("call:invite", { callId, roomID, targetUserID, type: "audio" }, resolve);
+  }), { callId, roomID: room._id.toString(), targetUserID: otherUser._id.toString() });
+  expect(invite.success).toBe(true);
+  await expect.poll(() => callee.evaluate(() => Boolean(window.acceptResult?.success)), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => caller.evaluate(() => Boolean(window.accepted)), { timeout: 10_000 }).toBe(true);
+  await caller.evaluate((id) => window.prepareCaller(id), callId);
+  await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+
+  await caller.evaluate(() => window.restartIce());
+  await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+
+  await caller.evaluate(() => window.disconnectSocket());
+  await expect.poll(() => caller.evaluate(() => Boolean(window.callState?.socket?.disconnected)), { timeout: 5_000 }).toBe(true);
+  await caller.evaluate(() => window.reconnectSocket());
+  await expect.poll(() => caller.evaluate(() => Boolean(window.callState?.socket?.connected)), { timeout: 10_000 }).toBe(true);
 
   await callerContext.close();
   await calleeContext.close();
