@@ -25,6 +25,7 @@ process.env.SOCKET_PORT ||= "3101";
 process.env.CLIENT_ORIGIN ||= "http://localhost:3000";
 process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
 // The integration suite intentionally opens many authenticated sockets; keep the production default rate limit intact while allowing the suite to exercise the full flow.
+process.env.SOCKET_HANDSHAKE_IP_LIMIT ||= "1000";
 process.env.SOCKET_HANDSHAKE_USER_LIMIT ||= "1000";
 
 let serverProcess;
