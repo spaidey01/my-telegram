@@ -6,7 +6,7 @@ test.use({
   },
 });
 import { createServer } from "node:http";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
@@ -260,11 +260,21 @@ test("real browser peers recover from an induced ICE failure using TURN and ICE 
   await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
   await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
 
-  await caller.evaluate(() => window.forceIceFailure());
+  execFileSync("pkill", ["-x", "turnserver"]);
   await expect.poll(() => caller.evaluate(() => window.getConnectionState()), { timeout: 20_000 }).not.toBe("connected");
 
+  const restartedTurn = spawn("turnserver", [
+    "-n", "--log-file=stdout", "--use-auth-secret",
+    "--static-auth-secret=" + process.env.TURN_SECRET,
+    "--realm=ci.turn.stargram.local", "--fingerprint",
+    "--no-tls", "--no-dtls", "--no-multicast-peers", "--allow-loopback-peers",
+    "--cli-password=ci-cli-password-0123456789", "--userdb=/tmp/stargram-coturn.db",
+    "--min-port=49160", "--max-port=49200",
+  ], { stdio: ["ignore", "ignore", "ignore"] });
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
   await caller.evaluate(() => window.restoreIce());
   await caller.evaluate(() => window.restartIce());
+  restartedTurn.unref();
   await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
   await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
 
