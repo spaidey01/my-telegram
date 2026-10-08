@@ -187,3 +187,46 @@ test("2FA recovery codes are hashed at rest and consumed atomically", async () =
   assert.match(route, /\$map:\{input:"\$twoFactorBackupCodes"/);
   assert.match(user, /twoFactorBackupCodes: \{ type: \[String\], default: \[\], select: false \}/);
 });
+
+
+test("admin authorization is centralized and socket call state fails closed on Redis errors", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(server, /import \{ GROUP_PERMISSION_KEYS, isAdmin, hasGroupPermission, channelCanPost \}/);
+  assert.doesNotMatch(server, /const isAdmin = \(room, userID\)/);
+  assert.match(server, /Redis call-state read failure:[\\s\\S]*?return null/);
+  assert.match(server, /Redis call-state list failure:[\\s\\S]*?return \[\]/);
+  assert.match(server, /effectiveTtl = ttlMs \?\? CALL_RING_TIMEOUT_MS \+ CALL_RECONNECT_GRACE_MS/);
+});
+
+test("S3 presigned uploads use a pending prefix and verification only promotes pending objects", async () => {
+  const presign = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/files/presign/route.ts", import.meta.url),
+    "utf8",
+  );
+  const verify = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/files/verify/route.ts", import.meta.url),
+    "utf8",
+  );
+  const cleanup = await (await import("node:fs/promises")).readFile(
+    new URL("../server/storage/pendingUploads.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(presign, /pending\\/\$\{userId\}\\/\$\{randomUUID\(\)\}/);
+  assert.match(verify, /\/^pending\\\/[a-fA-F0-9]\{24\}\\\/[0-9a-f-]\{36\}\$\//);
+  assert.match(verify, /const verifiedPrefix/);
+  assert.match(cleanup, /Prefix: PENDING_PREFIX/);
+  assert.match(cleanup, /LastModified\.getTime\(\) < cutoff/);
+  assert.match(cleanup, /DeleteObjectsCommand/);
+});
+
+test("production file verification requires ClamAV", async () => {
+  const verify = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/files/verify/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(verify, /process\.env\.NODE_ENV === "production" && !process\.env\.CLAMAV_HOST/);
+  assert.match(verify, /process\.env\.NODE_ENV === "production"\n\s*\? true/);
+});
