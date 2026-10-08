@@ -1,4 +1,10 @@
 import { test, expect } from "@playwright/test";
+
+test.use({
+  launchOptions: {
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"],
+  },
+});
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import mongoose from "mongoose";
