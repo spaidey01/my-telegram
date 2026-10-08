@@ -340,6 +340,7 @@ test("Admin mutations require active room membership and proxy IP headers are op
   assert.match(server, /const room = await isMember\(roomID, userID\);\s*if \(!room \|\| !isAdmin\(room, userID\)/);
   assert.match(rateLimit, /TRUSTED_PROXY_COUNT \?\? "1"/);
   assert.match(rateLimit, /if \(n > 0 && forwarded\)/);
+   assert.match(rateLimit, /if \(n > 0\) \{\s*const realIp/);
   assert.match(rateLimit, /if \(n > 0\) \{/);
 });
 
