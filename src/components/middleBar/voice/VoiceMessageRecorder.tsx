@@ -283,7 +283,7 @@ export default function VoiceMessageRecorder({ replayData, closeEdit, closeRepla
         resolve();
       });
     });
-  }, [myData, replayPayload, rooms, selectedRoom?._id, setter]);
+  }, [myData, replayPayload, rooms, selectedRoom, setter]);
 
   const upload = useCallback(async () => {
     if (!blob || !selectedRoom?._id || (state !== "preview" && state !== "failed")) return;
