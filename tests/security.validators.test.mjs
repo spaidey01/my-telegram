@@ -198,7 +198,8 @@ test("admin authorization is centralized and socket call state fails closed on R
   assert.doesNotMatch(server, /const isAdmin = \(room, userID\)/);
   assert.match(server, /Redis call-state read failure:[\\s\\S]*?return null/);
   assert.match(server, /Redis call-state list failure:[\\s\\S]*?return \[\]/);
-  assert.match(server, /effectiveTtl = ttlMs \?\? CALL_RING_TIMEOUT_MS \+ CALL_RECONNECT_GRACE_MS/);
+  assert.match(server, /effectiveTtl = ttlMs \?\? \(call\.acceptedAt \? CALL_ACTIVE_TTL_MS : CALL_RING_TIMEOUT_MS \+ CALL_RECONNECT_GRACE_MS\)/);
+  assert.match(server, /CALL_ACTIVE_TTL_MS = 2 \* 60 \* 60 \* 1000/);
 });
 
 test("S3 presigned uploads use a pending prefix and verification only promotes pending objects", async () => {
@@ -220,6 +221,7 @@ test("S3 presigned uploads use a pending prefix and verification only promotes p
   assert.match(cleanup, /Prefix: PENDING_PREFIX/);
   assert.match(cleanup, /LastModified\.getTime\(\) < cutoff/);
   assert.match(cleanup, /DeleteObjectsCommand/);
+  assert.doesNotMatch(cleanup, /!process\.env\.S3_ENDPOINT\) return 0/);
 });
 
 test("production file verification requires ClamAV", async () => {
