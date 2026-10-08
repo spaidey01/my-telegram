@@ -23,7 +23,7 @@ const PAGE = `<!doctype html><html><body><script src="http://127.0.0.1:${SOCKET_
 window.bootstrap = async (token, iceServers) => {
   const socket = io("http://127.0.0.1:${SOCKET_PORT}", { auth: { token }, transports: ["websocket"] });
   await new Promise((resolve, reject) => { socket.once("connect", resolve); socket.once("connect_error", reject); });
-  const state = { socket, pc: null, stream: null, remoteTracks: 0, connected: false, callId: null };
+  const state = { socket, pc: null, stream: null, remoteTracks: 0, connected: false, callId: null, iceServers };
   window.callState = state;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const makePeer = async (callId, caller) => {
@@ -64,6 +64,18 @@ window.bootstrap = async (token, iceServers) => {
   window.prepareCallee = async (callId) => {
     const pc = await makePeer(callId, false);
     return pc;
+  };
+  window.getConnectionState = () => state.pc?.connectionState || "closed";
+  window.forceIceFailure = async () => {
+    if (!state.pc) throw new Error("peer connection is not ready");
+    state.pc.setConfiguration({ iceServers: [], iceTransportPolicy: "relay" });
+    const offer = await state.pc.createOffer({ iceRestart: true });
+    await state.pc.setLocalDescription(offer);
+    socket.emit("call:offer", { callId: state.callId, description: state.pc.localDescription, restart: true });
+  };
+  window.restoreIce = async () => {
+    if (!state.pc) throw new Error("peer connection is not ready");
+    state.pc.setConfiguration({ iceServers: state.iceServers, iceTransportPolicy: "relay" });
   };
   window.restartIce = async () => {
     if (!state.pc) throw new Error("peer connection is not ready");
@@ -220,6 +232,45 @@ test("two real Chromium peers establish audio/video through Stargram call signal
   await calleeContext.close();
 });
 
+
+
+test("real browser peers recover from an induced ICE failure using TURN and ICE restart", async ({ browser }) => {
+  const callerContext = await browser.newContext({ permissions: ["microphone", "camera"] });
+  const calleeContext = await browser.newContext({ permissions: ["microphone", "camera"] });
+  const caller = await callerContext.newPage();
+  const callee = await calleeContext.newPage();
+  const turnIceServers = buildTurnIceServers(user._id.toString()).iceServers;
+  await Promise.all([
+    caller.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"),
+    callee.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"),
+  ]);
+  await Promise.all([
+    caller.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(user._id, userSession), iceServers: turnIceServers }),
+    callee.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(otherUser._id, otherUserSession), iceServers: turnIceServers }),
+  ]);
+  await callee.evaluate(() => { window.acceptIncoming = true; });
+  const callId = crypto.randomUUID();
+  const invite = await caller.evaluate(({ callId, roomID, targetUserID }) => new Promise((resolve) => {
+    window.callState.socket.emit("call:invite", { callId, roomID, targetUserID, type: "audio" }, resolve);
+  }), { callId, roomID: room._id.toString(), targetUserID: otherUser._id.toString() });
+  expect(invite.success).toBe(true);
+  await expect.poll(() => callee.evaluate(() => Boolean(window.acceptResult?.success)), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => caller.evaluate(() => Boolean(window.accepted)), { timeout: 10_000 }).toBe(true);
+  await caller.evaluate((id) => window.prepareCaller(id), callId);
+  await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+
+  await caller.evaluate(() => window.forceIceFailure());
+  await expect.poll(() => caller.evaluate(() => window.getConnectionState()), { timeout: 20_000 }).not.toBe("connected");
+
+  await caller.evaluate(() => window.restoreIce());
+  await caller.evaluate(() => window.restartIce());
+  await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+
+  await callerContext.close();
+  await calleeContext.close();
+});
 
 test("real browser peers survive ICE restart and Socket.IO disconnect/reconnect signaling", async ({ browser }) => {
   const callerContext = await browser.newContext({ permissions: ["microphone", "camera"] });
