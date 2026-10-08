@@ -329,3 +329,22 @@ test("failure recovery policies fail closed for Redis, require ClamAV in product
   assert.match(server, /status: "pending", processingAt: null/);
   assert.match(server, /MAX_SCHEDULED_ATTEMPTS = 5/);
 });
+
+
+test("Socket.IO flood protection rate-limits handshakes, rejects malicious Origins, and caps in-flight handlers", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(server, /origin === "null" || (origin && !allowedOrigins.includes(origin))/);
+  assert.match(server, /allowEvent("handshake:" + address, "__connect__", 20, 60_000)/);
+  assert.match(server, /allowEvent("handshake-user:" + decoded.sub, "__connect__", 30, 60_000)/);
+  assert.match(server, /const MAX_SOCKET_IN_FLIGHT = 100/);
+  assert.match(server, /const SOCKET_BURST_LIMIT = 120/);
+  assert.match(server, /allowEvent("socket:" + socket.id, "__all__", SOCKET_BURST_LIMIT, SOCKET_BURST_WINDOW_MS)/);
+  assert.match(server, /if (inFlightHandlers >= MAX_SOCKET_IN_FLIGHT)/);
+  assert.match(server, /Rate limit exceeded/);
+  assert.match(server, /finally \{\s*inFlightHandlers -= 1;/);
+  assert.match(server, /origin: (origin, callback) =>/);
+  assert.match(server, /allowedOrigins.includes(origin)/);
+});
