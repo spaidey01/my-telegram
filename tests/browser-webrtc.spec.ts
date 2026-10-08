@@ -31,7 +31,14 @@ async function createPeer(page, config, initiator) {
     window.__pc = pc;
     window.__messages = [];
     window.__states = [];
+    window.__candidateTypes = [];
     pc.oniceconnectionstatechange = () => window.__states.push(pc.iceConnectionState);
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        const match = event.candidate.candidate.match(/ typ ([a-z]+)/);
+        if (match) window.__candidateTypes.push(match[1]);
+      }
+    };
     pc.ondatachannel = (event) => {
       event.channel.onmessage = (message) => window.__messages.push(message.data);
       window.__dc = event.channel;
@@ -86,12 +93,8 @@ test("real browser WebRTC uses TURN relay, transfers data, enters ICE failure, a
     await caller.waitForFunction(() => window.__pc.iceConnectionState === "connected" || window.__pc.iceConnectionState === "completed");
     await callee.waitForFunction(() => window.__pc.iceConnectionState === "connected" || window.__pc.iceConnectionState === "completed");
 
-    const candidateTypes = await caller.evaluate(() =>
-      [...window.__pc.getSenders(), ...window.__pc.getReceivers()]
-        .flatMap(() => [])
-        .concat(window.__pc.__candidateTypes || [])
-    );
-    expect(candidateTypes).toBeDefined();
+    const candidateTypes = await caller.evaluate(() => window.__candidateTypes);
+    expect(candidateTypes).toContain("relay");
 
     await caller.evaluate(() => window.__dc.send("stargram-turn-e2e"));
     await callee.waitForFunction(() => window.__messages.includes("stargram-turn-e2e"));
@@ -113,6 +116,10 @@ test("real browser WebRTC uses TURN relay, transfers data, enters ICE failure, a
       window.__pc.restartIce();
     }, goodConfig);
     await callee.close();
+    await caller.evaluate(() => {
+      window.__dc = window.__pc.createDataChannel("stargram-reconnect");
+      window.__dc.onmessage = (message) => window.__messages.push(message.data);
+    });
     const recovered = await context.newPage();
     await createPeer(recovered, goodConfig, false);
     await negotiate(caller, recovered);
