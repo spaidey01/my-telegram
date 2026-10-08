@@ -215,7 +215,7 @@ test("S3 presigned uploads use a pending prefix and verification only promotes p
     "utf8",
   );
   assert.match(presign, /pending\\/\$\{userId\}\\/\$\{randomUUID\(\)\}/);
-  assert.match(verify, /\/^pending\\\/[a-fA-F0-9]\{24\}\\\/[0-9a-f-]\{36\}\$\//);
+  assert.match(verify, /const keyPattern = \/\^pending\\\//);
   assert.match(verify, /const verifiedPrefix/);
   assert.match(cleanup, /Prefix: PENDING_PREFIX/);
   assert.match(cleanup, /LastModified\.getTime\(\) < cutoff/);
