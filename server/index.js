@@ -790,15 +790,37 @@ io.on("connection", (socket) => {
         biography: typeof newRoomData.biography === "string" ? newRoomData.biography.slice(0, 1000) : undefined,
       };
 
+      let newRoom;
       if (newRoomData.type === "private") {
-        const existing = await RoomSchema.findOne({ type: "private", participants: { $all: participants, $size: 2 } });
+        const privateKey = [...participants].sort().join(":");
+        const existing = await RoomSchema.findOne({
+          type: "private",
+          $or: [
+            { privateKey },
+            { privateKey: { $exists: false }, participants: { $all: participants, $size: 2 } },
+          ],
+        });
         if (existing) {
+          if (!existing.privateKey) {
+            existing.privateKey = privateKey;
+            await existing.save();
+          }
           socket.emit("createRoom", existing);
           return;
         }
+        roomData.privateKey = privateKey;
+        try {
+          newRoom = await RoomSchema.create(roomData);
+        } catch (error) {
+          if (error?.code !== 11000) throw error;
+          const racedRoom = await RoomSchema.findOne({ type: "private", privateKey });
+          if (!racedRoom) throw error;
+          socket.emit("createRoom", racedRoom);
+          return;
+        }
+      } else {
+        newRoom = await RoomSchema.create(roomData);
       }
-
-      const newRoom = await RoomSchema.create(roomData);
 
       if (message && typeof message.message === "string") {
         const newMsg = await MessageSchema.create({
