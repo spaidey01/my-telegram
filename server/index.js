@@ -447,7 +447,7 @@ export const processScheduledMessages = async () => {
         _id: job._id,
         $or: [
           { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS }, $or: [{ nextRetryAt: null }, { nextRetryAt: { $lte: now } }] },
-          { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
+          { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS } },
         ],
       },
       { $set: { status: "processing", processingAt: new Date() }, $inc: { attemptCount: 1 } },
@@ -570,7 +570,7 @@ export const processScheduledMessages = async () => {
       } else {
         const errorMessage = String(error?.message || error).slice(0, 500);
         const permanentFailure = errorMessage === "Forbidden";
-        const nextStatus = permanentFailure || (claimed.attemptCount || 0) >= MAX_SCHEDULED_ATTEMPTS
+        const nextStatus = permanentFailure || (claimed.attemptCount || 0) >= SCHEDULED_MAX_ATTEMPTS
           ? "failed"
           : "pending";
         await ScheduledMessageSchema.updateOne(
