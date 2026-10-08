@@ -285,6 +285,10 @@ test("multi-device sessions are bound to sessionVersion and revoke-all invalidat
     new URL("../src/app/api/auth/sessions/route.ts", import.meta.url),
     "utf8",
   );
+  const logout = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/logout/route.ts", import.meta.url),
+    "utf8",
+  );
   const currentUser = await (await import("node:fs/promises")).readFile(
     new URL("../src/app/api/auth/currentuser/route.ts", import.meta.url),
     "utf8",
@@ -297,4 +301,5 @@ test("multi-device sessions are bound to sessionVersion and revoke-all invalidat
   assert.match(sessions, /user:d\.sub,sessionVersion:d\.sv,revokedAt:null/);
   assert.match(sessions, /\$inc:\{sessionVersion:1\}/);
   assert.match(currentUser, /sessionVersion: verifiedToken\.sv, revokedAt: null/);
+  assert.match(logout, /sessionVersion: decoded\.sv, revokedAt: null/);
 });
