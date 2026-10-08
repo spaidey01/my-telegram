@@ -55,7 +55,7 @@ test("removing a channel role must revoke admin fallback", () => {
 
 test("channel posting is limited to publisher roles", () => {
   const room = {
-    type: "channel", creator: "owner",
+    type: "channel", creator: "owner", participants: ["owner", "editor", "moderator", "member"],
     channelRoles: new Map([["editor", "editor"], ["moderator", "moderator"], ["member", "subscriber"]]),
   };
   assert.equal(channelCanPost(room, "owner"), true);
