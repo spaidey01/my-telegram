@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import nodeTest, { after, before } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
