@@ -65,13 +65,15 @@ export const POST = async (req: Request) => {
       }
     }
 
+    const sessionVersion = userData.sessionVersion ?? 0;
     const session = await SessionSchema.create({
       user: userData._id,
+      sessionVersion,
       device: typeof body?.device === "string" ? body.device.slice(0,120) : "Web browser",
       ip: getRequestIp(req),
       userAgent: req.headers.get("user-agent") || "unknown",
     });
-    const token = tokenGenerator(userData._id.toString(), 7, userData.sessionVersion ?? 0, session._id.toString());
+    const token = tokenGenerator(userData._id.toString(), 7, sessionVersion, session._id.toString());
     (await cookies()).set("token", token, {
       httpOnly: true,
       path: "/",
