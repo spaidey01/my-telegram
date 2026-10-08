@@ -9,6 +9,7 @@ Group=telegram
 WorkingDirectory=/opt/my-telegram
 EnvironmentFile=/etc/my-telegram.env
 Environment=NODE_ENV=production
+ExecStartPre=/usr/bin/node /opt/my-telegram/scripts/validate-production-env.mjs
 ExecStart=/usr/bin/npm run server
 Restart=always
 RestartSec=5
