@@ -4,6 +4,7 @@ import SessionSchema from "@/schemas/sessionSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import { isSafeBrowserRequest } from "@/utils/csrf";
+import { acquireSessionMutationLock, releaseSessionMutationLock } from "@/utils/sessionMutationLock";
 
 export const POST = async (req: Request) => {
   if (!isSafeBrowserRequest(req)) return Response.json({ message: "Forbidden" }, { status: 403 });
@@ -13,10 +14,16 @@ export const POST = async (req: Request) => {
     const decoded = token ? tokenDecoder(token) : false;
     if (decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string" && mongoose.isValidObjectId(decoded.sub) && mongoose.isValidObjectId(decoded.sid)) {
       await connectToDB();
-      await SessionSchema.updateOne(
-        { _id: decoded.sid, user: decoded.sub, sessionVersion: decoded.sv, revokedAt: null },
-        { $set: { revokedAt: new Date() } },
-      );
+      const lock = await acquireSessionMutationLock(decoded.sub);
+      if (!lock) return Response.json({ message: "Session mutation temporarily unavailable" }, { status: 503 });
+      try {
+        await SessionSchema.updateOne(
+          { _id: decoded.sid, user: decoded.sub, sessionVersion: decoded.sv, revokedAt: null },
+          { $set: { revokedAt: new Date() } },
+        );
+      } finally {
+        await releaseSessionMutationLock(lock);
+      }
     }
     cookieStore.delete("token");
     return Response.json("Done", { status: 200 });
