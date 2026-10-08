@@ -5,7 +5,7 @@ import UserSchema from "@/schemas/userSchema";
 import tokenGenerator from "@/utils/TokenGenerator";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
 import SessionSchema from "@/schemas/sessionSchema";
-import { verifyTotp } from "@/utils/totp";
+import { hashBackupCode, verifyTotp } from "@/utils/totp";
 import { isSafeBrowserRequest } from "@/utils/csrf";
 
 const DUMMY_HASH = hashSync("dummy-password-for-timing", 12);
@@ -34,15 +34,34 @@ export const POST = async (req: Request) => {
       const recovery = typeof body?.recoveryCode === "string" ? body.recoveryCode.trim().toUpperCase() : "";
       const totpOk = Boolean(totp) && verifyTotp(userData.twoFactorSecret || "", totp);
       if (!totpOk) {
-        const recoveryOk = Boolean(recovery)
-          && Array.isArray(userData.twoFactorBackupCodes)
-          && userData.twoFactorBackupCodes.includes(recovery);
-        if (!recoveryOk) return Response.json({ message: "Two-factor authentication required", requires2FA: true }, { status: 401 });
-        const consumed = await UserSchema.updateOne(
-          { _id: userData._id, twoFactorBackupCodes: recovery },
-          { $pull: { twoFactorBackupCodes: recovery } },
+        const recoveryHash = recovery ? hashBackupCode(recovery) : "";
+        let consumed = await UserSchema.updateOne(
+          { _id: userData._id, twoFactorBackupCodes: recoveryHash },
+          { $pull: { twoFactorBackupCodes: recoveryHash } },
         );
-        if (consumed.modifiedCount !== 1) return Response.json({ message: "Invalid recovery code" }, { status: 401 });
+        if (consumed.modifiedCount !== 1 && recovery) {
+          consumed = await UserSchema.updateOne(
+            { _id: userData._id, twoFactorBackupCodes: recovery },
+            [{
+              $set: {
+                twoFactorBackupCodes: {
+                  $map: {
+                    input: "$twoFactorBackupCodes",
+                    as: "stored",
+                    in: {
+                      $cond: [
+                        { $eq: ["$stored", recovery] },
+                        recoveryHash,
+                        "$stored",
+                      ],
+                    },
+                  },
+                },
+              },
+            }],
+          );
+        }
+        if (consumed.modifiedCount !== 1) return Response.json({ message: "Two-factor authentication required", requires2FA: true }, { status: 401 });
       }
     }
 
