@@ -88,8 +88,11 @@ jobs:
           CLIENT_ORIGIN: http://localhost:3000
           REDIS_URL: redis://127.0.0.1:6379
 
+      - name: Install Playwright for real WebRTC E2E
+        run: npm install --no-save --no-package-lock @playwright/test@1.51.1
+
       - name: Install Chromium for real WebRTC E2E
-        run: npx --yes playwright@1.51.1 install --with-deps chromium
+        run: npx playwright install --with-deps chromium
 
       - run: npm run test:webrtc-e2e
         env:
