@@ -3,21 +3,30 @@ import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
+import SessionSchema from "@/schemas/sessionSchema";
+import mongoose from "mongoose";
 
 const s3 = () => new S3Client({ region: process.env.S3_REGION || "us-east-1", endpoint: process.env.S3_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY!, secretAccessKey: process.env.S3_SECRET_KEY! } });
 
 export async function POST(req: Request) {
+  if (!isSafeBrowserRequest(req)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   try {
     const token = (await cookies()).get("token")?.value;
     const decoded = token ? tokenDecoder(token) : false;
-    const userId = decoded && typeof decoded === "object" && "sub" in decoded ? String(decoded.sub) : null;
-    const sessionVersion = decoded && typeof decoded === "object" && "sv" in decoded && typeof decoded.sv === "number" ? decoded.sv : null;
-    if (!userId || sessionVersion === null) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    const userId = decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? String(decoded.sub) : null;
+    const sessionVersion = decoded && typeof decoded === "object" && typeof decoded.sv === "number" ? decoded.sv : null;
+    const sessionId = decoded && typeof decoded === "object" && typeof decoded.sid === "string" ? decoded.sid : null;
+    if (!userId || sessionVersion === null || !sessionId || !mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(sessionId)) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
     await connectToDB();
-    const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
+    const session = await SessionSchema.findOne({ _id: sessionId, user: userId, revokedAt: null }).select("_id").lean();
+    const activeUser = session ? await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean() : null;
     if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
     const limit = await rateLimit("file-delete:" + userId, 30, 60_000);
     if (!limit.allowed) return NextResponse.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
     const { fileUrl } = await req.json();
