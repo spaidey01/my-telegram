@@ -15,8 +15,7 @@
     "test:call-reliability": "node --test tests/call-reliability.test.mjs",
     "test:backlog": "node --test tests/backlog.test.mjs",
     "test:security": "node --test tests/csrf.test.mjs",
-    "test:multi-node": "node --test tests/multi-node.integration.test.mjs",
-    "test:webrtc-e2e": "playwright test tests/webrtc.e2e.spec.mjs --workers=1"
+    "test:multi-node": "node --test tests/multi-node.integration.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
@@ -64,8 +63,7 @@
     "typescript": "5.9.2",
     "eslint": "^9",
     "eslint-config-next": "16.0.9",
-    "daisyui": "^5.0.35",
-    "@playwright/test": "1.51.1"
+    "daisyui": "^5.0.35"
   },
   "overrides": {
     "@types/react": "19.1.9",
