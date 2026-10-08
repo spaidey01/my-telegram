@@ -202,6 +202,17 @@ test("admin authorization is centralized and socket call state fails closed on R
   assert.match(server, /CALL_ACTIVE_TTL_MS = 2 \* 60 \* 60 \* 1000/);
 });
 
+test("delete-for-all last message repair cannot overwrite a newer room message", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    server,
+    /await RoomSchema\.updateOne\(\s*\{ _id: roomID, lastMessageId: msgID \}/,
+  );
+});
+
 test("S3 presigned uploads use a pending prefix and verification only promotes pending objects", async () => {
   const presign = await (await import("node:fs/promises")).readFile(
     new URL("../src/app/api/files/presign/route.ts", import.meta.url),
