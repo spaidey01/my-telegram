@@ -189,6 +189,19 @@ test("2FA recovery codes are hashed at rest and consumed atomically", async () =
 });
 
 
+test("login consumes hashed 2FA recovery codes and migrates legacy plaintext codes", async () => {
+  const route = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/login/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /hashBackupCode/);
+  assert.match(route, /twoFactorBackupCodes: recoveryHash/);
+  assert.match(route, /\$pull: \{ twoFactorBackupCodes: recoveryHash \}/);
+  assert.match(route, /twoFactorBackupCodes: recovery/);
+  assert.match(route, /\$map:/);
+  assert.doesNotMatch(route, /twoFactorBackupCodes\.includes\(recovery\)/);
+});
+
 test("admin authorization is centralized and socket call state fails closed on Redis errors", async () => {
   const server = await (await import("node:fs/promises")).readFile(
     new URL("../server/index.js", import.meta.url),
