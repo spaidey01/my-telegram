@@ -53,3 +53,18 @@ test("call reliability server keeps a reconnect grace window",()=>{
     'allowEvent(userID, "call:end", 30, 60_000)',
   ]) assert.ok(server.includes(token),`missing server recovery primitive: ${token}`);
 });
+
+
+test("call invite uses an atomic per-participant reservation",()=>{
+  for(const token of [
+    "CALL_RESERVATION_PREFIX",
+    "reserveCallParticipants",
+    "redisPubClient.eval",
+    'redis.call("GET", KEYS[1])',
+    'redis.call("GET", KEYS[2])',
+    'redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2])',
+    "renewCallParticipants",
+    "releaseCallParticipants",
+    "Call reservation lost",
+  ]) assert.ok(server.includes(token),`missing atomic call reservation primitive: ${token}`);
+});
