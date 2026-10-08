@@ -291,7 +291,7 @@ test("multi-device sessions are bound to sessionVersion and revoke-all invalidat
   );
   assert.match(session, /sessionVersion: \{ type: Number, required: true, default: 0, index: true \}/);
   assert.match(login, /const sessionVersion = userData\.sessionVersion \?\? 0;/);
-  assert.match(login, /SessionSchema\.create\(\{[\s\S]*sessionVersion,[\s\S]*user: userData\._id/);
+  assert.match(login, /SessionSchema\.create\(\{[\s\S]*user: userData\._id,[\s\S]*sessionVersion,/);
   assert.match(login, /tokenGenerator\(userData\._id\.toString\(\), 7, sessionVersion,/);
   assert.match(sessions, /sessionVersion:d\.sv,revokedAt:null/);
   assert.match(sessions, /user:d\.sub,sessionVersion:d\.sv,revokedAt:null/);
