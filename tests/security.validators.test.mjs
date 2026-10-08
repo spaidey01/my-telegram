@@ -268,6 +268,7 @@ test("production file verification requires ClamAV", async () => {
     "utf8",
   );
   assert.match(verify, /process\.env\.NODE_ENV === "production" && !process\.env\.CLAMAV_HOST/);
+  assert.match(verify, /if \(!host\) return reject\(new Error\("ClamAV host is not configured"\)\)/);
   assert.match(verify, /process\.env\.NODE_ENV === "production"\n\s*\? true/);
 });
 
