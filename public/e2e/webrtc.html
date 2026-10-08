@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Stargram WebRTC E2E</title></head>
+<body>
+<div id="state">idle</div><div id="connection">new</div><audio id="remote" autoplay></audio>
+<script src="http://localhost:3101/socket.io/socket.io.js"></script>
+<script>
+(() => {
+  const cfg = window.__STARGRAM_E2E__ || {};
+  const state = document.getElementById("state");
+  const connection = document.getElementById("connection");
+  let call = null;
+  let pc = null;
+  let local = null;
+  let pending = [];
+  let reconnects = 0;
+
+  const setState = (value) => { state.textContent = value; window.__webrtcState = value; };
+  const setConnection = (value) => { connection.textContent = value; window.__webrtcConnection = value; };
+  const emit = (event, payload) => window.__socket.emit(event, payload);
+
+  const getTurn = async () => {
+    const response = await fetch("/api/calls/turn-credentials", { cache: "no-store" });
+    if (!response.ok) throw new Error("TURN_" + response.status);
+    const value = await response.json();
+    if (!value.iceServers?.length) throw new Error("TURN_EMPTY");
+    window.__turnMode = value.mode;
+    return value;
+  };
+
+  const media = async () => {
+    if (local) return local;
+    local = await navigator.mediaDevices.getUserMedia({ audio: true, video: cfg.type === "video" });
+    return local;
+  };
+
+  const makePeer = async () => {
+    const turn = await getTurn();
+    pc = new RTCPeerConnection({ iceServers: turn.iceServers });
+    pc.onicecandidate = (event) => {
+      if (event.candidate && call) emit("call:ice", { callId: call.callId, candidate: event.candidate.toJSON() });
+    };
+    pc.ontrack = (event) => {
+      const stream = event.streams[0] || new MediaStream([event.track]);
+      document.getElementById("remote").srcObject = stream;
+      window.__remoteTrack = true;
+    };
+    pc.onconnectionstatechange = () => {
+      setConnection(pc.connectionState);
+      if (pc.connectionState === "connected") setState("connected");
+      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") setState("reconnecting");
+      if (pc.connectionState === "closed") setState("closed");
+    };
+    pc.oniceconnectionstatechange = () => {
+      window.__iceState = pc.iceConnectionState;
+      if (pc.iceConnectionState === "failed") setState("ice-failed");
+    };
+    const stream = await media();
+    for (const track of stream.getTracks()) pc.addTrack(track, stream);
+    return pc;
+  };
+
+  const offer = async (description) => {
+    const peer = pc || await makePeer();
+    await peer.setRemoteDescription(description);
+    for (const candidate of pending.splice(0)) await peer.addIceCandidate(candidate);
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
+    emit("call:answer", { callId: call.callId, description: peer.localDescription });
+  };
+
+  window.stargramStartCall = async () => {
+    if (!cfg.isCaller || call) return;
+    call = { callId: cfg.callId, roomID: cfg.roomID, type: cfg.type };
+    setState("calling");
+    await media();
+    const result = await new Promise((resolve) => {
+      window.__socket.emit("call:invite", {
+        callId: cfg.callId, roomID: cfg.roomID, targetUserID: cfg.targetUserID, type: cfg.type,
+      }, resolve);
+    });
+    if (!result?.success) throw new Error("INVITE_" + (result?.error || "FAILED"));
+  };
+
+  window.stargramForceIceFailure = () => {
+    if (pc) { pc.close(); pc = null; setState("ice-failed"); }
+  };
+
+  window.stargramReconnect = async () => {
+    if (!call) return;
+    reconnects += 1;
+    window.__reconnects = reconnects;
+    emit("call:reconnect", { callId: call.callId });
+  };
+
+  window.stargramEndCall = () => { if (call) emit("call:end", { callId: call.callId }); };
+
+  window.__socket = io("http://localhost:3101", {
+    auth: { token: cfg.socketToken },
+    transports: ["websocket"],
+  });
+
+  window.__socket.on("connect", () => { window.__socketConnected = true; });
+  window.__socket.on("connect_error", (error) => { window.__socketError = error.message; });
+  window.__socket.on("call:incoming", async (value) => {
+    call = { callId: value.callId, roomID: value.roomID, type: value.type };
+    setState("incoming");
+    await media();
+    const result = await new Promise((resolve) => window.__socket.emit("call:accept", { callId: call.callId }, resolve));
+    if (!result?.success) throw new Error("ACCEPT_" + (result?.error || "FAILED"));
+    await makePeer();
+  });
+  window.__socket.on("call:accepted", async (value) => {
+    if (!call || value.callId !== call.callId) return;
+    const peer = pc || await makePeer();
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    emit("call:offer", { callId: call.callId, description: peer.localDescription });
+    setState("connecting");
+  });
+  window.__socket.on("call:offer", async (value) => {
+    if (call?.callId === value.callId) await offer(value.description);
+  });
+  window.__socket.on("call:answer", async (value) => {
+    if (call?.callId !== value.callId || !pc) return;
+    await pc.setRemoteDescription(value.description);
+    for (const candidate of pending.splice(0)) await pc.addIceCandidate(candidate);
+    setState("connecting");
+  });
+  window.__socket.on("call:ice", async (value) => {
+    if (call?.callId !== value.callId) return;
+    if (pc?.remoteDescription) await pc.addIceCandidate(value.candidate);
+    else pending.push(value.candidate);
+  });
+  window.__socket.on("call:reconnected", () => setState("reconnecting"));
+  window.__socket.on("call:peer-reconnecting", () => setState("reconnecting"));
+  window.__socket.on("call:ended", () => setState("ended"));
+})();
+</script>
+</body>
+</html>
