@@ -39,3 +39,6 @@ export const verifyTotp = (secret: string, token: string, window = 1) => {
 
 export const generateBackupCodes = (count=10) =>
   Array.from({length:count}, () => crypto.randomBytes(5).toString("hex").toUpperCase());
+
+
+export const hashBackupCode = (code: string) => crypto.createHash("sha256").update(code, "utf8").digest("hex");
