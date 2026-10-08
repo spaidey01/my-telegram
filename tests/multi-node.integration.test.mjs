@@ -127,10 +127,10 @@ after(async () => {
 });
 
 test("presence and typing cross real Socket.IO nodes through the Redis adapter", async () => {
-  const node1User = await connectTo(3102, user._id, userSession);
   const node2Other = await connectTo(3103, otherUser._id, otherUserSession);
   try {
     const presence = waitFor(node2Other, "userPresence");
+    const node1User = await connectTo(3102, user._id, userSession);
     await presence;
     const typing = waitFor(node2Other, "typing");
     node1User.emit("joining", room._id.toString());
