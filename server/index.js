@@ -27,6 +27,7 @@ if (secret.length < 32) throw new Error("secretKey must be at least 32 character
 
 const allowedOrigins = (process.env.CLIENT_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
   .split(",").map((v) => v.trim()).filter(Boolean);
+const SOCKET_HANDSHAKE_USER_LIMIT = Math.max(30, Number(process.env.SOCKET_HANDSHAKE_USER_LIMIT) || 30);
 
 const socketPort = Number(process.env.SOCKET_PORT || process.env.PORT || 3001);
 const redisUrl = process.env.REDIS_URL;
@@ -572,7 +573,7 @@ io.use(async (socket, next) => {
     if (!decoded || typeof decoded !== "object" || decoded.scope !== "socket" || !decoded.sub || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") {
       return next(new Error("Unauthorized"));
     }
-    if (!(await allowEvent("handshake-user:" + decoded.sub, "__connect__", 30, 60_000))) {
+    if (!(await allowEvent("handshake-user:" + decoded.sub, "__connect__", SOCKET_HANDSHAKE_USER_LIMIT, 60_000))) {
       return next(new Error("Too many connection attempts"));
     }
     const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).lean();
