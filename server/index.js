@@ -20,6 +20,7 @@ import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 import { GROUP_PERMISSION_KEYS, isAdmin, hasGroupPermission, channelCanPost } from "./security/permissions.js";
 import { cleanupPendingUploads } from "./storage/pendingUploads.js";
+import { acquireSessionMutationLock, releaseSessionMutationLock } from "../src/utils/sessionMutationLock.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
@@ -738,6 +739,17 @@ io.on("connection", (socket) => {
 
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
+  const SESSION_MUTATING_EVENTS = new Set([
+    "newMessage", "createRoom", "joinRoom", "deleteRoom", "messages:delete", "deleteMsg",
+    "editMessage", "forwardMessage", "toggleReaction", "markRoomRead", "seenMsg",
+    "listenToVoice", "call:invite", "call:accept", "call:reject", "call:reconnect",
+    "call:retry", "call:end", "group:leave", "group:member:add", "group:admin",
+    "group:permission", "group:ban", "group:unban", "group:transferOwnership",
+    "channel:joinByInvite", "pinMessage", "updateLastMsgPos", "updateUserData",
+    "updateRoomData", "updateRoomAvatar", "updateRoomBio", "changeRoomLink",
+    "changeRoomType", "removeRoomMember", "addRoomMember",
+  ]);
+
   const on = (event, handler) => socket.on(event, async (...args) => {
     if (inFlightHandlers >= MAX_SOCKET_IN_FLIGHT) {
       rejectOverload(args);
@@ -771,7 +783,38 @@ io.on("connection", (socket) => {
         socket.disconnect(true);
         return;
       }
-      await handler(...args);
+
+      let mutationLock = null;
+      if (SESSION_MUTATING_EVENTS.has(event)) {
+        mutationLock = await acquireSessionMutationLock(userID);
+        if (!mutationLock) {
+          const cb = args[args.length - 1];
+          if (typeof cb === "function") cb({ success: false, error: "Session mutation temporarily unavailable" });
+          return;
+        }
+
+        const lockedSession = await SessionSchema.findOne({
+          _id: socket.data.sessionId,
+          user: userID,
+          revokedAt: null,
+        }).select("_id").lean();
+        const lockedUser = lockedSession
+          ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean()
+          : null;
+        if (!lockedUser) {
+          await releaseSessionMutationLock(mutationLock);
+          const cb = args[args.length - 1];
+          if (typeof cb === "function") cb({ success: false, error: "Unauthorized" });
+          socket.disconnect(true);
+          return;
+        }
+      }
+
+      try {
+        await handler(...args);
+      } finally {
+        await releaseSessionMutationLock(mutationLock);
+      }
     } catch (error) {
       console.error(event + ":", error);
       const cb = args[args.length - 1];
