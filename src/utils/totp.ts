@@ -23,7 +23,7 @@ export const generateTotpSecret = () => {
 };
 
 export const verifyTotp = (secret: string, token: string, window = 1) => {
-  if (!/^\\d{6}$/.test(token)) return false;
+  if (!/^\d{6}$/.test(token)) return false;
   const key = base32Decode(secret);
   const now = Math.floor(Date.now()/1000/30);
   for (let offset=-window; offset<=window; offset++) {
