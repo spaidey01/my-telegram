@@ -1,11 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Stargram">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#38bdf8"/>
-      <stop offset="1" stop-color="#2563eb"/>
+    <linearGradient id="stargram-bg" x1="70" y1="30" x2="450" y2="490" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38bdf8"/>
+      <stop offset=".52" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#172554"/>
     </linearGradient>
+    <linearGradient id="stargram-glass" x1="140" y1="120" x2="370" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity=".98"/>
+      <stop offset="1" stop-color="#dbeafe" stop-opacity=".88"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#020617" flood-opacity=".28"/>
+    </filter>
   </defs>
-  <circle cx="256" cy="256" r="248" fill="url(#g)"/>
-  <path fill="#fff" d="M120 250 388 132c13-6 24 6 18 19L287 399c-5 12-22 13-30 2l-47-67-62-22c-14-5-17-24-4-32l42-26-48 1c-16 0-22-20-8-27Zm92 52 27 39 91-159-139 111 21 1Z"/>
-  <path fill="#dff7ff" d="m350 164 9 22 22 9-22 9-9 22-9-22-22-9 22-9 9-22Z"/>
+  <circle cx="256" cy="256" r="248" fill="url(#stargram-bg)"/>
+  <circle cx="256" cy="256" r="224" fill="none" stroke="#fff" stroke-opacity=".10" stroke-width="2"/>
+  <path filter="url(#shadow)" fill="url(#stargram-glass)" d="M121 231c0-61 49-110 110-110h50c61 0 110 49 110 110v42c0 61-49 110-110 110h-35l-54 42c-12 9-29 1-29-14v-31c-25-20-42-51-42-86v-63Z"/>
+  <path fill="#2563eb" d="m169 274 159-82c12-6 24 6 18 19l-76 151c-6 12-23 13-30 2l-28-47-45-17c-13-5-13-20 2-26Zm69 17 18 30 48-96-85 64 19 2Z"/>
+  <path fill="#fff" d="m356 135 10 25 25 10-25 10-10 25-10-25-25-10 25-10 10-25Z"/>
+  <circle cx="402" cy="333" r="7" fill="#bae6fd" opacity=".9"/>
 </svg>
