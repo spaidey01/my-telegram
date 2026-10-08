@@ -332,6 +332,15 @@ test("failure recovery policies fail closed for Redis, require ClamAV in product
 });
 
 
+test("Admin mutations require active room membership and proxy IP headers are opt-in", async () => {
+  const server = read("server/index.js");
+  const rateLimit = read("src/utils/rateLimit.ts");
+  assert.match(server, /const room = await isMember\(roomID, userID\);\s*if \(!room \|\| !isAdmin\(room, userID\)/);
+  assert.match(rateLimit, /TRUSTED_PROXY_COUNT \?\? "0"/);
+  assert.match(rateLimit, /if \(n > 0 && forwarded\)/);
+  assert.match(rateLimit, /if \(n > 0\) \{/);
+});
+
 test("Socket.IO flood protection rate-limits handshakes, rejects malicious Origins, and caps in-flight handlers", async () => {
   const server = await (await import("node:fs/promises")).readFile(
     new URL("../server/index.js", import.meta.url),
