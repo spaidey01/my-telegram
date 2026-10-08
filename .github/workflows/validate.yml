@@ -100,3 +100,5 @@ jobs:
           secretKey: browser-webrtc-e2e-secret-key-32-bytes
           CLIENT_ORIGIN: http://127.0.0.1:4173
           REDIS_URL: redis://127.0.0.1:6379
+          TURN_URL: turn:127.0.0.1:3478
+          TURN_SECRET: ci-turn-shared-secret-0123456789
