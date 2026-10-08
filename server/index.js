@@ -627,9 +627,33 @@ io.on("connection", (socket) => {
   }, 5000);
   sessionCheckTimer.unref?.();
 
+  // Bound each socket before touching MongoDB so event flooding cannot turn
+  // the per-event rate limits into a database amplification attack.
+  const MAX_SOCKET_IN_FLIGHT = 100;
+  const SOCKET_BURST_LIMIT = 120;
+  const SOCKET_BURST_WINDOW_MS = 1000;
+  let inFlightHandlers = 0;
+
+  const rejectOverload = (args) => {
+    const cb = args[args.length - 1];
+    if (typeof cb === "function") cb({ success: false, error: "Rate limit exceeded" });
+    else socket.emit("error", { message: "Rate limit exceeded" });
+  };
+
   // Wrap every handler so a thrown error never becomes an unhandled rejection
   // and the client always gets an answer.
   const on = (event, handler) => socket.on(event, async (...args) => {
+    if (inFlightHandlers >= MAX_SOCKET_IN_FLIGHT) {
+      rejectOverload(args);
+      return;
+    }
+
+    if (!(await allowEvent("socket:" + socket.id, "__all__", SOCKET_BURST_LIMIT, SOCKET_BURST_WINDOW_MS))) {
+      rejectOverload(args);
+      return;
+    }
+
+    inFlightHandlers += 1;
     try {
       if (!socket.userTokenExp || Date.now() >= socket.userTokenExp * 1000) {
         const cb = args[args.length - 1];
@@ -643,7 +667,7 @@ io.on("connection", (socket) => {
         revokedAt: null,
       }).select("_id").lean();
       const currentUser = currentSession
-        ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean()
+        ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id", "sessionVersion").lean()
         : null;
       if (!currentUser) {
         const cb = args[args.length - 1];
@@ -657,6 +681,8 @@ io.on("connection", (socket) => {
       const cb = args[args.length - 1];
       if (typeof cb === "function") cb({ success: false, error: "Internal error" });
       else socket.emit("error", { message: "Internal error" });
+    } finally {
+      inFlightHandlers -= 1;
     }
   });
 
