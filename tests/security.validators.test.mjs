@@ -270,3 +270,31 @@ test("production file verification requires ClamAV", async () => {
   assert.match(verify, /process\.env\.NODE_ENV === "production" && !process\.env\.CLAMAV_HOST/);
   assert.match(verify, /process\.env\.NODE_ENV === "production"\n\s*\? true/);
 });
+
+
+test("multi-device sessions are bound to sessionVersion and revoke-all invalidates the version", async () => {
+  const session = await (await import("node:fs/promises")).readFile(
+    new URL("../src/schemas/sessionSchema.js", import.meta.url),
+    "utf8",
+  );
+  const login = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/login/route.ts", import.meta.url),
+    "utf8",
+  );
+  const sessions = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/sessions/route.ts", import.meta.url),
+    "utf8",
+  );
+  const currentUser = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/currentuser/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(session, /sessionVersion: \{ type: Number, required: true, default: 0, index: true \}/);
+  assert.match(login, /const sessionVersion = userData\.sessionVersion \?\? 0;/);
+  assert.match(login, /SessionSchema\.create\(\{[\s\S]*sessionVersion,[\s\S]*user: userData\._id/);
+  assert.match(login, /tokenGenerator\(userData\._id\.toString\(\), 7, sessionVersion,/);
+  assert.match(sessions, /sessionVersion:d\.sv,revokedAt:null/);
+  assert.match(sessions, /user:d\.sub,sessionVersion:d\.sv,revokedAt:null/);
+  assert.match(sessions, /\$inc:\{sessionVersion:1\}/);
+  assert.match(currentUser, /sessionVersion: verifiedToken\.sv, revokedAt: null/);
+});
