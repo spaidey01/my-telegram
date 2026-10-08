@@ -67,7 +67,7 @@ Verified in CI with two real Socket.IO server processes:
 ## CI verification
 
 Final green run after the last fixes:
-- Validate Run #918
+- Validate Run #920
 - all validation, build, coturn, TURN, call-reliability, backlog, security, integration, multi-node, Playwright install, Chromium install, and WebRTC E2E steps passed.
 
 ## Remaining non-blocking observations
