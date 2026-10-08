@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import { S3Client } from "@aws-sdk/client-s3";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 import { randomUUID } from "crypto";
@@ -25,6 +26,7 @@ const s3 = () => new S3Client({
 });
 
 export async function POST(req: Request) {
+  if (!isSafeBrowserRequest(req)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   try {
     const auth = await userIdFromCookie();
     if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -63,7 +65,7 @@ export async function POST(req: Request) {
     }
 
     const prefix = purpose === "sticker" ? "stickers" : contentType.startsWith("image/") ? "images" : contentType.startsWith("audio/") ? "voices" : "files";
-    const key = `${prefix}/${userId}/${randomUUID()}`;
+    const key = `pending/${userId}/${randomUUID()}`;
     const client = s3();
     const post = await createPresignedPost(client, {
       Bucket: bucket,
