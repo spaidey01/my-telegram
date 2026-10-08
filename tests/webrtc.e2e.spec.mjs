@@ -191,7 +191,7 @@ test("two real Chromium peers establish audio/video through Stargram call signal
   });
   const caller = await callerContext.newPage();
   const callee = await calleeContext.newPage();
-  const turnIceServers = buildTurnIceServers(user._id).iceServers;
+  const turnIceServers = buildTurnIceServers(user._id.toString()).iceServers;
   await Promise.all([caller.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"), callee.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html")]);
   await Promise.all([
     caller.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(user._id, userSession), iceServers: turnIceServers }),
@@ -223,7 +223,7 @@ test("real browser peers survive ICE restart and Socket.IO disconnect/reconnect 
   const calleeContext = await browser.newContext({ permissions: ["microphone", "camera"] });
   const caller = await callerContext.newPage();
   const callee = await calleeContext.newPage();
-  const turnIceServers = buildTurnIceServers(user._id).iceServers;
+  const turnIceServers = buildTurnIceServers(user._id.toString()).iceServers;
   await Promise.all([caller.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"), callee.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html")]);
   await Promise.all([
     caller.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(user._id, userSession), iceServers: turnIceServers }),
