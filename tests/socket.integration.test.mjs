@@ -16,7 +16,7 @@ import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
 import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
-import { acquireSessionMutationLock, releaseSessionMutationLock } from "../src/utils/sessionMutationLock.js";
+import { acquireSessionMutationLock, releaseSessionMutationLock, closeSessionMutationLockClient } from "../src/utils/sessionMutationLock.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
@@ -129,6 +129,7 @@ after(async () => {
     serverProcess.kill("SIGTERM");
     await new Promise((resolve) => serverProcess.once("exit", resolve));
   }
+  await closeSessionMutationLockClient();
 });
 
 test("socket authentication, invite-link authorization and message flow", async () => {
