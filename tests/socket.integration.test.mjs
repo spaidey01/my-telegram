@@ -16,6 +16,7 @@ import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
 import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
 import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
+import { acquireSessionMutationLock, releaseSessionMutationLock } from "../src/utils/sessionMutationLock.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
@@ -1696,6 +1697,68 @@ test("revoked session and bumped sessionVersion cannot continue using an existin
     await RoomSchema.deleteOne({ _id: room._id });
     await UserSchema.updateOne({ _id: user._id }, { $set: { sessionVersion: 0 } });
     await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: null } });
+  }
+});
+
+test("session revoke cannot overtake a socket mutation after pre-handler authentication", async () => {
+  const room = await RoomSchema.create({
+    name: "Session Mutation Lock",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+
+    const revokeLock = await acquireSessionMutationLock(user._id.toString());
+    assert.ok(revokeLock);
+
+    const mutationResult = new Promise((resolve) => {
+      socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "must be rejected after the queued revoke",
+        tempId: "session-lock-" + Date.now(),
+      }, resolve);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await SessionSchema.updateOne(
+      { _id: userSession._id, user: user._id, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+    await releaseSessionMutationLock(revokeLock);
+
+    const result = await mutationResult;
+    assert.equal(result.success, false);
+    assert.equal(result.error, "Unauthorized");
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id }), 0);
+  } finally {
+    socket.disconnect();
+    await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: null } });
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("session mutation lock wiring covers socket mutations and revoke endpoints", () => {
+  const server = fs.readFileSync(new URL("../server/index.js", import.meta.url), "utf8");
+  const logout = fs.readFileSync(new URL("../src/app/api/auth/logout/route.ts", import.meta.url), "utf8");
+  const sessions = fs.readFileSync(new URL("../src/app/api/auth/sessions/route.ts", import.meta.url), "utf8");
+  for (const source of [server, logout, sessions]) {
+    assert.ok(source.includes("acquireSessionMutationLock"), "missing session mutation lock acquisition");
+    assert.ok(source.includes("releaseSessionMutationLock"), "missing session mutation lock release");
   }
 });
 
