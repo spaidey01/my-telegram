@@ -298,13 +298,30 @@ const LeftBar = () => {
               style={{ zIndex: 1 }}
             >
               <div className="flex items-center justify-between gap-6 mx-3">
-                <div className="flex items-center flex-1 gap-5 mt-3 w-full text-white">
+                <div className="flex items-center flex-1 gap-4 mt-3 w-full text-white min-w-0">
                   <RxHamburgerMenu
                     size={20}
                     onClick={handleOpenLeftBarMenu}
-                    className="cursor-pointer"
+                    className="cursor-pointer shrink-0"
                   />
-                  <h1 className="font-vazirBold mt-0.5">{status}</h1>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="relative flex size-8 shrink-0 items-center justify-center">
+                      <span className="absolute inset-0 rounded-xl bg-[#4f08ec]/20 blur-md" aria-hidden="true" />
+                      <img
+                        src="/images/stargram-logo.svg"
+                        alt="Stargram"
+                        className="relative size-8 object-contain drop-shadow-[0_0_10px_rgba(94,235,255,0.18)]"
+                      />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-vazirBold text-[13px] leading-5 text-white truncate">
+                        Stargram
+                      </div>
+                      <h1 className="font-vazirRegular text-[10px] leading-4 text-white/45 truncate">
+                        {status}
+                      </h1>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <FiPhoneCall size={20} onClick={() => setShowCallHistory(true)} className="cursor-pointer text-white/90 mt-3" title="Call history" />
