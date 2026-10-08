@@ -1881,7 +1881,7 @@ io.on("connection", (socket) => {
     try {
       const roomID = updatedFields?.roomID;
       if (!isValidId(roomID)) return socket.emit("updateRoomDataError", { message: "Invalid room" });
-      const room = await RoomSchema.findById(roomID);
+      const room = await isMember(roomID, userID);
       if (!room || !isAdmin(room, userID)) return socket.emit("updateRoomDataError", { message: "Forbidden" });
       if (room.type === "group" && !hasGroupPermission(room, userID, "changeInfo")) {
         return socket.emit("updateRoomDataError", { message: "Forbidden" });
