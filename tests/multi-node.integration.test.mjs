@@ -188,6 +188,37 @@ test("call signaling crosses nodes and keeps active call state in shared Redis",
   }
 });
 
+test("concurrent cross-node call invites reserve the caller atomically", async () => {
+  const callers = await Promise.all(
+    Array.from({ length: 8 }, (_, index) => connectTo(index % 2 === 0 ? 3102 : 3103, user._id, userSession)),
+  );
+  const callee = await connectTo(3103, otherUser._id, otherUserSession);
+  const callIds = callers.map(() => crypto.randomUUID());
+
+  try {
+    const results = await Promise.all(callers.map((caller, index) => new Promise((resolve) => {
+      caller.emit("call:invite", {
+        callId: callIds[index],
+        roomID: room._id.toString(),
+        targetUserID: otherUser._id.toString(),
+        type: "audio",
+      }, resolve);
+    })));
+
+    const successful = results.filter((result) => result?.success);
+    assert.equal(successful.length, 1, "exactly one concurrent invite may reserve a participant");
+
+    const winningIndex = results.findIndex((result) => result?.success);
+    if (winningIndex >= 0) {
+      callers[winningIndex].emit("call:end", { callId: callIds[winningIndex] });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  } finally {
+    callers.forEach((socket) => socket.disconnect());
+    callee.disconnect();
+  }
+});
+
 test("revoking one shared session disconnects sockets on both nodes before protected mutations", async () => {
   const node1 = await connectTo(3102, user._id, userSession);
   const node2 = await connectTo(3103, user._id, userSession);
