@@ -14,7 +14,7 @@ export const POST = async (req: Request) => {
     if (decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string" && mongoose.isValidObjectId(decoded.sub) && mongoose.isValidObjectId(decoded.sid)) {
       await connectToDB();
       await SessionSchema.updateOne(
-        { _id: decoded.sid, user: decoded.sub, revokedAt: null },
+        { _id: decoded.sid, user: decoded.sub, sessionVersion: decoded.sv, revokedAt: null },
         { $set: { revokedAt: new Date() } },
       );
     }
