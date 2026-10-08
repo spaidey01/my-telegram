@@ -518,6 +518,8 @@ export const processScheduledMessages = async () => {
         continue;
       }
 
+      if (claimed.attemptCount > SCHEDULED_MAX_ATTEMPTS) throw new Error("Maximum scheduled delivery attempts reached");
+
       const room = await isMember(claimed.room.toString(), claimed.sender.toString());
       const p = claimed.payload || {};
       if (
@@ -759,7 +761,9 @@ io.on("connection", (socket) => {
     "listenToVoice", "call:invite", "call:accept", "call:reject", "call:reconnect",
     "call:retry", "call:end", "group:leave", "group:member:add", "group:admin",
     "group:permission", "group:ban", "group:unban", "group:transferOwnership",
-    "channel:joinByInvite", "pinMessage", "updateLastMsgPos", "updateUserData",
+    "channel:joinByInvite", "channel:role", "channel:role:remove", "channel:invite:rotate", "channel:leave",
+    "channel:subscriber:remove", "channel:visibility", "group:permissions", "group:moderation", "group:reactions",
+    "pinMessage", "updateLastMsgPos", "updateUserData",
     "updateRoomData", "updateRoomAvatar", "updateRoomBio", "changeRoomLink",
     "changeRoomType", "removeRoomMember", "addRoomMember",
   ]);
