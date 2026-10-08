@@ -558,11 +558,22 @@ const findLatestVisibleMessage = (roomID) =>
 
 io.use(async (socket, next) => {
   try {
+    const origin = socket.handshake.headers?.origin;
+    if (origin === "null" || (origin && !allowedOrigins.includes(origin))) {
+      return next(new Error("Origin not allowed"));
+    }
+    const address = socket.handshake.address || "unknown";
+    if (!(await allowEvent("handshake:" + address, "__connect__", 20, 60_000))) {
+      return next(new Error("Too many connection attempts"));
+    }
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Unauthorized"));
     const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] });
     if (!decoded || typeof decoded !== "object" || decoded.scope !== "socket" || !decoded.sub || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") {
       return next(new Error("Unauthorized"));
+    }
+    if (!(await allowEvent("handshake-user:" + decoded.sub, "__connect__", 30, 60_000))) {
+      return next(new Error("Too many connection attempts"));
     }
     const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).lean();
     const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean() : null;
@@ -667,7 +678,7 @@ io.on("connection", (socket) => {
         revokedAt: null,
       }).select("_id").lean();
       const currentUser = currentSession
-        ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id", "sessionVersion").lean()
+        ? await UserSchema.findOne({ _id: userID, sessionVersion: socket.sessionVersion }).select("_id").lean()
         : null;
       if (!currentUser) {
         const cb = args[args.length - 1];
