@@ -7,7 +7,7 @@ Baseline report: supplied STARGRAM DEBUGGING REPORT
 
 ## Verdict
 
-All 20 primary findings from the original debugging report have been re-verified against the current HEAD and are FIXED.
+All 20 primary findings from the original debugging report have been re-verified against the current HEAD and are FIXED. The current HEAD is commit `54ff57d7e7c1c763971b9adcfe50034d5e06e4f4`.
 
 Status vocabulary:
 - FIXED: finding is addressed in current code and has regression/CI evidence where applicable.
@@ -41,7 +41,7 @@ Status vocabulary:
 
 ## Stage 18 — Real WebRTC E2E
 
-Verified in CI:
+Verified in CI (Run #964):
 - real Chromium
 - two browser peers
 - real Socket.IO signaling
