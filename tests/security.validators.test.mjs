@@ -397,3 +397,84 @@ test("Socket.IO flood protection rate-limits handshakes, rejects malicious Origi
   assert.match(server, /origin: (origin, callback) =>/);
   assert.match(server, /allowedOrigins.includes(origin)/);
 });
+
+
+test("TOTP accepts a valid six-digit code and rejects malformed tokens", async () => {
+  const { verifyTotp } = await import("../src/utils/totp.js");
+  const secret = "JBSWY3DPEHPK3PXP";
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const char of secret) bits += alphabet.indexOf(char).toString(2).padStart(5, "0");
+  const key = Buffer.from(Array.from({ length: Math.floor(bits.length / 8) }, (_, i) => parseInt(bits.slice(i * 8, i * 8 + 8), 2)));
+  const counter = Math.floor(Date.now() / 1000 / 30);
+  const buf = Buffer.alloc(8);
+  buf.writeBigInt64BE(BigInt(counter));
+  const digest = (await import("node:crypto")).default.createHmac("sha1", key).update(buf).digest();
+  const pos = digest[digest.length - 1] & 15;
+  const code = (((digest[pos] & 127) << 24) | ((digest[pos + 1] & 255) << 16) | ((digest[pos + 2] & 255) << 8) | (digest[pos + 3] & 255)) % 1000000;
+  assert.equal(verifyTotp(secret, String(code).padStart(6, "0")), true);
+  assert.equal(verifyTotp(secret, "12345"), false);
+});
+
+test("login response strips password and all 2FA secrets", async () => {
+  const route = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/login/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(route, /delete safeUser\.password/);
+  assert.match(route, /delete safeUser\.twoFactorSecret/);
+  assert.match(route, /delete safeUser\.twoFactorBackupCodes/);
+});
+
+test("scheduled messages enforce payload-sensitive group permissions", async () => {
+  const route = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/scheduled-messages/route.ts", import.meta.url),
+    "utf8",
+  );
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  for (const source of [route, server]) {
+    assert.match(source, /sendMessages/);
+    assert.match(source, /sendMedia/);
+    assert.match(source, /sendStickers/);
+    assert.match(source, /sendLinks/);
+  }
+  assert.match(route, /canViewPrivacy/);
+  assert.match(server, /canViewPrivacy\(recipientID, claimed\.sender\.toString\(\), "messages"\)/);
+});
+
+test("stale scheduled jobs can be recovered at the final attempt", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  const scheduled = server.slice(server.indexOf("export const processScheduledMessages"), server.indexOf("const isMessageInRoom"));
+  assert.match(scheduled, /status: "processing", processingAt: \{ \$lte: staleBefore \}, attemptCount: \{ \$lte: SCHEDULED_MAX_ATTEMPTS \}/);
+  assert.match(scheduled, /claimed\.attemptCount > SCHEDULED_MAX_ATTEMPTS/);
+});
+
+test("all state-changing group and channel socket events use the session mutation lock", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  for (const event of [
+    "group:permissions",
+    "group:moderation",
+    "group:reactions",
+    "channel:role",
+    "channel:role:remove",
+    "channel:invite:rotate",
+    "channel:leave",
+    "channel:subscriber:remove",
+    "channel:visibility",
+  ]) {
+    assert.match(server, new RegExp('"' + event.replace(/:/g, "\\:") + '"'));
+  }
+  const list = server.slice(server.indexOf("const SESSION_MUTATING_EVENTS"), server.indexOf("const on ="));
+  for (const event of ["group:permissions", "group:moderation", "group:reactions", "channel:role", "channel:role:remove", "channel:invite:rotate", "channel:leave", "channel:subscriber:remove", "channel:visibility"]) {
+    assert.match(list, new RegExp('"' + event.replace(/:/g, "\\:") + '"'));
+  }
+});
