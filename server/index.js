@@ -967,7 +967,7 @@ io.on("connection", (socket) => {
       await MessageSchema.deleteOne({ _id: msgID });
       const replacementLast = await findLatestVisibleMessage(roomID);
       await RoomSchema.updateOne(
-        { _id: roomID },
+        { _id: roomID, lastMessageId: msgID },
         { $set: { lastMessageId: replacementLast?._id || null, lastMessageAt: replacementLast?.createdAt || null } },
       );
       io.to(roomID).emit("deleteMsg", msgID);
