@@ -189,6 +189,20 @@ test("2FA recovery codes are hashed at rest and consumed atomically", async () =
 });
 
 
+test("room updates use optimistic concurrency to reject stale writes", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  const start = server.indexOf('on("updateRoomData"');
+  const end = server.indexOf('on("getRoomMembers"', start);
+  const handler = server.slice(start, end);
+  assert.match(handler, /\{ _id: roomID, __v: room\.\__v \?\? 0 \}/);
+  assert.match(handler, /\{ \$set, \$inc: \{ __v: 1 \} \}/);
+  assert.match(handler, /if \(!updatedRoom\)/);
+  assert.match(handler, /Room changed; reload and try again/);
+});
+
 test("login consumes hashed 2FA recovery codes and migrates legacy plaintext codes", async () => {
   const route = await (await import("node:fs/promises")).readFile(
     new URL("../src/app/api/auth/login/route.ts", import.meta.url),
