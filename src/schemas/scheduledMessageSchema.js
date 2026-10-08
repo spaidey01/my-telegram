@@ -8,6 +8,7 @@ const schema = new Schema({
   status: { type: String, enum: ["pending", "processing", "sent", "failed", "cancelled"], default: "pending", index: true },
   processingAt: { type: Date, default: null, index: true },
   attemptCount: { type: Number, default: 0, min: 0 },
+  nextRetryAt: { type: Date, default: null, index: true },
   sentAt: { type: Date, default: null },
   error: { type: String, default: null, maxlength: 500 },
 }, { timestamps: true });
