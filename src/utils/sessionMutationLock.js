@@ -33,6 +33,13 @@ export const acquireSessionMutationLock = async (userID, waitMs = 5_000) => {
   return null;
 };
 
+export const closeSessionMutationLockClient = async () => {
+  if (!clientPromise) return;
+  const client = await clientPromise;
+  clientPromise = undefined;
+  if (client.isOpen) await client.quit();
+};
+
 export const releaseSessionMutationLock = async (lock) => {
   if (!lock) return;
   const client = await getClient();
