@@ -19,6 +19,7 @@ import SessionSchema from "../src/schemas/sessionSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 import { GROUP_PERMISSION_KEYS, isAdmin, hasGroupPermission, channelCanPost } from "./security/permissions.js";
+import { cleanupPendingUploads } from "./storage/pendingUploads.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
@@ -241,6 +242,10 @@ const sanitizeStickerData = async (data, userID) => {
 };
 
 await connectToDB();
+void cleanupPendingUploads().catch((error) => console.error("Pending upload cleanup failure:", error));
+setInterval(() => {
+  void cleanupPendingUploads().catch((error) => console.error("Pending upload cleanup failure:", error));
+}, 10 * 60 * 1000).unref();
 setInterval(() => { void processScheduledMessages().catch((error) => console.error("Scheduled message worker failure:", error)); }, 5000).unref();
 
 const getUserId = (socket) => socket.userId;
