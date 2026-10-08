@@ -437,7 +437,7 @@ export const processScheduledMessages = async () => {
   const jobs = await ScheduledMessageSchema.find({
     $or: [
       { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS }, $or: [{ nextRetryAt: null }, { nextRetryAt: { $lte: now } }] },
-      { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS } },
+      { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lte: SCHEDULED_MAX_ATTEMPTS } },
     ],
   }).sort({ scheduledFor: 1 }).limit(25).lean();
 
@@ -447,7 +447,7 @@ export const processScheduledMessages = async () => {
         _id: job._id,
         $or: [
           { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS }, $or: [{ nextRetryAt: null }, { nextRetryAt: { $lte: now } }] },
-          { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS } },
+          { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lte: SCHEDULED_MAX_ATTEMPTS } },
         ],
       },
       { $set: { status: "processing", processingAt: new Date() }, $inc: { attemptCount: 1 } },
@@ -519,15 +519,26 @@ export const processScheduledMessages = async () => {
       }
 
       const room = await isMember(claimed.room.toString(), claimed.sender.toString());
+      const p = claimed.payload || {};
       if (
         !room ||
         (room.type === "group" && !hasGroupPermission(room, claimed.sender.toString(), "sendMessages")) ||
+        (room.type === "group" && p.attachmentData && !hasGroupPermission(room, claimed.sender.toString(), "sendMedia")) ||
+        (room.type === "group" && p.stickerData && !hasGroupPermission(room, claimed.sender.toString(), "sendStickers")) ||
+        (room.type === "group" && typeof p.message === "string" && /https?:\\/\\//i.test(p.message) && !hasGroupPermission(room, claimed.sender.toString(), "sendLinks")) ||
+        (room.type === "group" && room.restrictedUsers?.some((id) => id.toString() === claimed.sender.toString())) ||
+        (room.type === "private" && (() => {
+          const recipientID = room.participants?.map((id) => id.toString()).find((id) => id !== claimed.sender.toString());
+          return recipientID ? false : false;
+        })()) ||
         (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))
       ) {
         throw new Error("Forbidden");
       }
-
-      const p = claimed.payload || {};
+      if (room.type === "private") {
+        const recipientID = room.participants?.map((id) => id.toString()).find((id) => id !== claimed.sender.toString());
+        if (recipientID && !(await canViewPrivacy(recipientID, claimed.sender.toString(), "messages"))) throw new Error("Forbidden");
+      }
       const textValue = typeof p.message === "string" ? p.message.slice(0, 10000) : "";
       const msg = await MessageSchema.create({
         sender: claimed.sender,
