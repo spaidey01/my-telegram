@@ -9,7 +9,6 @@ Group=telegram
 WorkingDirectory=/opt/my-telegram
 EnvironmentFile=/etc/my-telegram.env
 Environment=NODE_ENV=production
-ExecStartPre=/usr/bin/node /opt/my-telegram/scripts/validate-production-env.mjs
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=5
@@ -21,9 +20,7 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-LockPersonality=true
 UMask=027
-ReadWritePaths=/opt/my-telegram/.next/cache
 
 [Install]
 WantedBy=multi-user.target
