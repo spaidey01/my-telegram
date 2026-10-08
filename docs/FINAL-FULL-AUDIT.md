@@ -3,81 +3,111 @@
 Date: 2026-10-08
 Repository: spaidey01/my-telegram
 Branch: feature/backlog-completion
-Baseline report: supplied STARGRAM DEBUGGING REPORT
+Current audit baseline: latest verified HEAD and CI.
 
-## Verdict
+## Final Release Gate
 
-All 20 primary findings from the original debugging report have been re-verified against the current HEAD and are FIXED. The current HEAD is commit `54ff57d7e7c1c763971b9adcfe50034d5e06e4f4`.
+The original 20 primary findings have been rechecked against the current branch.
 
-Status vocabulary:
-- FIXED: finding is addressed in current code and has regression/CI evidence where applicable.
-- STILL OPEN: unresolved finding.
-- NOT REPRODUCED: original finding could not be reproduced against current HEAD.
+| # | Finding | Status |
+|---|---|---|
+| 1 | Revoked connected socket remains authorized | FIXED |
+| 2 | Multi-session isolation | FIXED |
+| 3 | Revoked REST session bypass | FIXED |
+| 4 | Socket-scoped JWT reusable against REST | FIXED |
+| 5 | Profile-photo privacy bypass | FIXED |
+| 6 | Sticker storage/access inconsistency | FIXED |
+| 7 | Removed admin retains privileges | FIXED |
+| 8 | Room lastMessage stale-write race | FIXED |
+| 9 | Concurrent reaction lost writes | FIXED |
+| 10 | Call signaling rate-limit gaps | FIXED |
+| 11 | Socket JWT expiry after connection | FIXED |
+| 12 | Presigned upload orphaning | FIXED |
+| 13 | ClamAV fail-open | FIXED |
+| 14 | Proxy IP trust | FIXED / deployment invariant |
+| 15 | Multi-node Socket.IO state | FIXED |
+| 16 | Calls/WebRTC/TURN | FIXED in automated E2E; public-network validation remains deployment-dependent |
+| 17 | Scheduled-message worker/recovery | FIXED |
+| 18 | 2FA/TOTP | FIXED |
+| 19 | Delete-for-me vs global lastMessage | FIXED |
+| 20 | Private-room creation race | FIXED |
 
-## Primary findings
+## Security and application gates
 
-| # | Original finding | Status | Current verification |
-|---|---|---|---|
-| 1 | Existing revoked socket remains authorized up to 60s | FIXED | Socket event wrapper re-validates expiry/session/version before protected handlers; CI security/integration green. |
-| 2 | Multi-session isolation missing | FIXED | Session documents use sid + sessionVersion; individual revoke leaves other sessions valid; revoke-all increments version. |
-| 3 | Revoked REST session bypasses /api/privacy | FIXED | Route validates sid, active session and sessionVersion. |
-| 4 | Socket-scoped JWT reusable against REST | FIXED | REST routes use centralized TokenDecoder, which rejects socket scope. |
-| 5 | Profile-photo privacy bypass through file access | FIXED | File access resolves owner and applies profilePhoto privacy policy. |
-| 6 | Sticker storage pipeline inconsistent | FIXED | Pending upload flow accepts stickers, verifies/promotes them into stickers/<user>/<uuid>, and access validates sticker ownership/install/share. |
-| 7 | Removed admin retains administrative authorization | FIXED | isAdmin requires active room membership; participant updates also prune admins. |
-| 8 | Room lastMessage stale-write race | FIXED | Message/forward updates are monotonic by createdAt/_id; delete updates are conditional on current lastMessageId. |
-| 9 | Concurrent reactions lose writes | FIXED | toggleReaction uses an atomic Mongo update pipeline; concurrency regression is covered. |
-| 10 | Call signaling rate limiting incomplete | FIXED | Invite/accept/reject/reconnect/retry/offer/answer/ICE/end all have event limits plus global socket burst/in-flight limits. |
-| 11 | Socket JWT expiry not enforced after connection | FIXED | Established sockets check token expiry and session validity before events and on periodic validation. |
-| 12 | Presigned S3 uploads can orphan objects | FIXED | Uploads live under pending/, verification promotes them, and cleanup removes stale pending objects. |
-| 13 | ClamAV can fail open | FIXED | Production requires CLAMAV_HOST; scanner failure rejects verification and deletes the pending object. |
-| 14 | Proxy IP trust can be spoofed by misconfiguration | FIXED | X-Forwarded-For/X-Real-IP are now ignored unless TRUSTED_PROXY_COUNT is explicitly greater than zero. |
-| 15 | Multi-node Socket.IO state only partially distributed | FIXED | Redis adapter is enabled; active calls are stored in Redis; distributed presence/typing/call signaling are covered by real two-node integration. |
-| 16 | Calls/WebRTC not production-ready / TURN absent | FIXED | Ephemeral TURN credentials, real coturn validation, real Chromium peer connectivity, ICE restart and Socket.IO reconnect E2E are present and green. |
-| 17 | Scheduled messages absent | FIXED | Scheduled-message schema/worker/recovery/idempotency paths are present and covered by backlog/worker tests. |
-| 18 | 2FA/TOTP absent | FIXED | TOTP setup/verification, hashed one-time recovery codes, atomic consumption and recovery hardening are implemented. |
-| 19 | Delete-for-me conflicts with global room lastMessage | FIXED | Per-user hideFor updates no longer mutate global room lastMessage; global deletion recomputes room state separately. |
-| 20 | Private-room creation race | FIXED | Deterministic privateKey has a unique sparse index and creation handles duplicate-key races. |
+Verified in the current branch:
 
-## Stage 18 — Real WebRTC E2E
+- Auth/session revocation and session-version isolation.
+- CSRF/browser-request protection on sensitive browser mutations.
+- Distributed session-mutation locking for revoke-sensitive socket operations.
+- 2FA/TOTP setup, verification, backup-code handling, and login hardening.
+- Message authorization, scheduled-message authorization, group/channel permissions.
+- File access/deletion authorization, pending-upload verification, and ClamAV fail-closed behavior.
+- Sticker ownership/install/share authorization.
+- Search cursor pagination and bounded hashtag aggregation.
+- Scheduled-message retries and stale-processing recovery.
+- Redis-backed multi-node Socket.IO state and rate limiting.
+- Call signaling rate limits and WebRTC recovery paths.
 
-Verified in CI (Run #964):
-- real Chromium
-- two browser peers
-- real Socket.IO signaling
-- TURN credentials
-- coturn relay path
-- real audio/video RTCPeerConnection
-- ICE restart
-- Socket.IO disconnect/reconnect signaling
+## Automated WebRTC / multi-node validation
 
-The first browser run exposed a test bug: buildTurnIceServers received a Mongo ObjectId instead of a string. The test was corrected and the next CI run passed.
+CI runs real Chromium WebRTC E2E with real coturn and covers:
 
-## Stage 19 — Multi-node E2E
+- two browser peers;
+- TURN relay ICE policy;
+- real audio/video peer connection;
+- TURN outage / ICE failure;
+- ICE restart and recovery;
+- Socket.IO disconnect/reconnect signaling;
+- two-process Socket.IO multi-node behavior;
+- Redis-shared active call state;
+- cross-node presence, typing, call signaling, and session revocation.
 
-Verified in CI with two real Socket.IO server processes:
-- Node A + Node B
-- Redis adapter
-- cross-node presence
-- cross-node typing
-- cross-node call invite/accept/offer/answer/ICE/end
-- shared Redis active-call state
-- revoked session authorization across both nodes
+## Production readiness
 
-## CI verification
+Production configuration validation requires secure HTTPS origins, MongoDB, Redis, S3, ClamAV, ephemeral TURN credentials, and an explicitly configured trusted-proxy hop count when forwarded IP headers are intentionally trusted.
 
-Final green run after the last fixes:
-- Validate Run #920
-- all validation, build, coturn, TURN, call-reliability, backlog, security, integration, multi-node, Playwright install, Chromium install, and WebRTC E2E steps passed.
+The repository now also contains a production-network validation gate requiring:
 
-## Remaining non-blocking observations
+- production HTTPS app and socket URLs;
+- public turn:/turns: endpoints;
+- production TURN secret/realm;
+- configured relay-port range.
 
-- Mongoose reports duplicate index definitions for username, phone and link during browser E2E. This is a schema hygiene warning, not a failed security invariant.
-- TRUSTED_PROXY_COUNT must be configured to the real number of trusted reverse-proxy hops when deployment intentionally uses forwarded client IP headers.
-- Production WebRTC still depends on operational TURN reachability and correct firewall/relay-port configuration outside CI.
+That gate intentionally does not claim a public-network result without real deployment inputs.
 
-## Final classification
+## Latest CI evidence
 
-FIXED: 20
-STILL OPEN: 0
-NOT REPRODUCED: 0
+Validate Run #1030:
+- commit: 995ab436653eeab6dea825527a83b5d8de4b334b
+- conclusion: SUCCESS
+
+All validation steps passed:
+
+1. npm ci
+2. Playwright runner and Chromium
+3. npm audit
+4. production configuration tests
+5. ESLint
+6. TypeScript
+7. Next.js build
+8. server syntax
+9. real coturn authentication
+10. TURN tests
+11. real Chromium WebRTC E2E
+12. call reliability
+13. backlog
+14. security
+15. integration
+16. multi-node
+
+## Stage 2 production-network limitation
+
+Automated CI uses local coturn and cannot prove Internet-scale NAT traversal. A true production-network verdict still requires a public TURN deployment and two clients on independent networks, followed by relay, TCP/TLS fallback, outage, ICE restart, reconnect, and bidirectional media verification.
+
+Therefore:
+
+- Automated Release Gate: GREEN.
+- Application/security/test gate: GREEN.
+- Public production NAT/TURN gate: NOT YET VERIFIED.
+- Overall classification: RELEASE CANDIDATE pending Stage 2 public-network validation.
+
