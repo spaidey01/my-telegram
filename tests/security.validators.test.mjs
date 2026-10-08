@@ -143,3 +143,21 @@ test("room last message updates do not regress on delete-for-me or stale forward
   assert.match(forward, /lastMessageAt:\s*\{\s*\$lt:\s*forwarded\.createdAt\s*\}/);
   assert.match(forward, /lastMessageId:\s*\{\s*\$lt:\s*forwarded\._id\s*\}/);
 });
+
+
+test("private room creation uses a unique participant key to prevent duplicate races", async () => {
+  const roomSchema = await (await import("node:fs/promises")).readFile(
+    new URL("../src/schemas/roomSchema.js", import.meta.url),
+    "utf8",
+  );
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(roomSchema, /privateKey:\s*\{[^}]*unique:\s*true[^}]*sparse:\s*true/);
+  const createRoom = server.slice(server.indexOf('on("createRoom"'), server.indexOf('on("joinRoom"'));
+  assert.match(createRoom, /const privateKey = \[\.\.\.participants\]\.sort\(\)\.join\(":"\)/);
+  assert.match(createRoom, /roomData\.privateKey = privateKey/);
+  assert.match(createRoom, /error\?\.code !== 11000/);
+  assert.match(createRoom, /findOne\(\{ type: "private", privateKey \}\)/);
+});
