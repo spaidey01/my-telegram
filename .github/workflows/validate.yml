@@ -47,6 +47,7 @@ jobs:
       - run: npx playwright install chromium
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run test:production-config
+      - run: npm run test:deployment
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
