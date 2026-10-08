@@ -1095,75 +1095,26 @@ io.on("connection", (socket) => {
     if (room.type === "group" && !hasGroupPermission(room,userID,"sendMessages")) return callback({success:false,error:"Reactions are disabled"});
 
     const userObjectId = new mongoose.Types.ObjectId(userID);
-    const existingReaction = (Array.isArray(msg.reactions) ? msg.reactions : [])
-      .find((reaction) => reaction.emoji === safeEmoji);
-    const alreadyReacted = Boolean(existingReaction?.userIds?.some((id) => id.toString() === userID));
-
-    let updated;
-    if (alreadyReacted) {
-      updated = await MessageSchema.findOneAndUpdate(
-        { _id: msgID, roomID, "reactions.emoji": safeEmoji },
-        [
-          {
-            $set: {
-              reactions: {
-                $filter: {
-                  input: {
-                    $map: {
+    const updated = await MessageSchema.findOneAndUpdate(
+      { _id: msgID, roomID },
+      [
+        {
+          $set: {
+            reactions: {
+              $let: {
+                vars: {
+                  matching: {
+                    $filter: {
                       input: "$reactions",
                       as: "reaction",
-                      in: {
-                        $cond: [
-                          { $eq: ["$$reaction.emoji", safeEmoji] },
-                          {
-                            $mergeObjects: [
-                              "$$reaction",
-                              {
-                                userIds: {
-                                  $filter: {
-                                    input: "$$reaction.userIds",
-                                    as: "userId",
-                                    cond: { $ne: ["$$userId", userObjectId] },
-                                  },
-                                },
-                              },
-                            ],
-                          },
-                          "$$reaction",
-                        ],
-                      },
+                      cond: { $eq: ["$$reaction.emoji", safeEmoji] },
                     },
                   },
-                  as: "reaction",
-                  cond: { $gt: [{ $size: "$$reaction.userIds" }, 0] },
                 },
-              },
-            },
-          },
-        ],
-        { new: true },
-      ).lean();
-    } else {
-      updated = await MessageSchema.findOneAndUpdate(
-        { _id: msgID, roomID },
-        [
-          {
-            $set: {
-              reactions: {
-                $let: {
-                  vars: {
-                    matching: {
-                      $filter: {
-                        input: "$reactions",
-                        as: "reaction",
-                        cond: { $eq: ["$$reaction.emoji", safeEmoji] },
-                      },
-                    },
-                  },
-                  in: {
-                    $cond: [
-                      { $gt: [{ $size: "$$matching" }, 0] },
-                      {
+                in: {
+                  $let: {
+                    vars: {
+                      toggled: {
                         $map: {
                           input: "$reactions",
                           as: "reaction",
@@ -1173,7 +1124,21 @@ io.on("connection", (socket) => {
                               {
                                 $mergeObjects: [
                                   "$$reaction",
-                                  { userIds: { $setUnion: ["$$reaction.userIds", [userObjectId]] } },
+                                  {
+                                    userIds: {
+                                      $cond: [
+                                        { $in: [userObjectId, "$$reaction.userIds"] },
+                                        {
+                                          $filter: {
+                                            input: "$$reaction.userIds",
+                                            as: "userId",
+                                            cond: { $ne: ["$$userId", userObjectId] },
+                                          },
+                                        },
+                                        { $setUnion: ["$$reaction.userIds", [userObjectId]] },
+                                      ],
+                                    },
+                                  },
                                 ],
                               },
                               "$$reaction",
@@ -1181,21 +1146,35 @@ io.on("connection", (socket) => {
                           },
                         },
                       },
-                      { $concatArrays: ["$reactions", [{ emoji: safeEmoji, userIds: [userObjectId] }]] },
-                    ],
+                    },
+                    in: {
+                      $filter: {
+                        input: {
+                          $cond: [
+                            { $gt: [{ $size: "$$matching" }, 0] },
+                            "$$toggled",
+                            { $concatArrays: ["$$toggled", [{ emoji: safeEmoji, userIds: [userObjectId] }]] },
+                          ],
+                        },
+                        as: "reaction",
+                        cond: { $gt: [{ $size: "$$reaction.userIds" }, 0] },
+                      },
+                    },
                   },
                 },
               },
             },
           },
-        ],
-        { new: true },
-      ).lean();
-    }
+        },
+      ],
+      { new: true },
+    ).lean();
 
     if (!updated) return callback({ success: false, error: "Message not found" });
 
-    const reactionAdded = !alreadyReacted;
+    const updatedReaction = (updated.reactions || [])
+      .find((reaction) => reaction.emoji === safeEmoji);
+    const reactionAdded = Boolean(updatedReaction?.userIds?.some((id) => id.toString() === userID));
     if (reactionAdded) {
       const reactionTargetUser = String(updated.sender);
       await createThreadReactionEvent(userID, roomID, msgID, reactionTargetUser, safeEmoji);
