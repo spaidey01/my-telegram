@@ -176,14 +176,13 @@ test("two real Chromium peers establish audio/video through Stargram call signal
   });
   const caller = await callerContext.newPage();
   const callee = await calleeContext.newPage();
+  const turnIceServers = buildTurnIceServers(user._id).iceServers;
   await Promise.all([caller.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"), callee.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html")]);
   await Promise.all([
-    caller.evaluate((token) => window.bootstrap(token, turnIceServers), tokenFor(user._id, userSession)),
-    callee.evaluate((token) => window.bootstrap(token, turnIceServers), tokenFor(otherUser._id, otherUserSession)),
+    caller.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(user._id, userSession), iceServers: turnIceServers }),
+    callee.evaluate(({ token, iceServers }) => window.bootstrap(token, iceServers), { token: tokenFor(otherUser._id, otherUserSession), iceServers: turnIceServers }),
   ]);
   await callee.evaluate(() => { window.acceptIncoming = true; });
-
-  const turnIceServers = buildTurnIceServers(user._id).iceServers;
   const callId = crypto.randomUUID();
   const invite = await caller.evaluate(({ callId, roomID, targetUserID }) => new Promise((resolve) => {
     window.callState.socket.emit("call:invite", { callId, roomID, targetUserID, type: "video" }, resolve);
