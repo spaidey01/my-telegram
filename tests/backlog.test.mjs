@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import { scheduledRetryDelayMs } from "../src/utils/scheduledRetry.js";
 import { parseMentions, parseHashtags } from "../src/utils/messageParsing.js";
 import { hasGroupPermission, isAdmin, channelCanPost } from "../server/security/permissions.js";
 
@@ -62,4 +64,24 @@ test("channel posting is limited to publisher roles", () => {
   assert.equal(channelCanPost(room, "editor"), true);
   assert.equal(channelCanPost(room, "moderator"), true);
   assert.equal(channelCanPost(room, "member"), false);
+});
+
+
+test("scheduled retries use bounded exponential backoff", () => {
+  assert.equal(scheduledRetryDelayMs(1), 30_000);
+  assert.equal(scheduledRetryDelayMs(2), 60_000);
+  assert.equal(scheduledRetryDelayMs(3), 120_000);
+  assert.equal(scheduledRetryDelayMs(4), 240_000);
+  assert.equal(scheduledRetryDelayMs(20), 15 * 60_000);
+});
+
+test("search and hashtag endpoints avoid unbounded offset/distinct pagination", () => {
+  const search = fs.readFileSync("src/app/api/messages/search/route.ts", "utf8");
+  const hashtags = fs.readFileSync("src/app/api/messages/hashtags/route.ts", "utf8");
+  assert.doesNotMatch(search, /\.skip\(/);
+  assert.match(search, /nextCursor/);
+  assert.match(search, /CURSOR_REQUIRED/);
+  assert.doesNotMatch(hashtags, /\.distinct\(/);
+  assert.match(hashtags, /\$unwind: "\$hashtags"/);
+  assert.match(hashtags, /\$limit: limit/);
 });
