@@ -337,7 +337,7 @@ test("Socket.IO flood protection rate-limits handshakes, rejects malicious Origi
     "utf8",
   );
   assert.match(server, /origin === "null" || (origin && !allowedOrigins.includes(origin))/);
-  assert.match(server, /allowEvent("handshake:" + address, "__connect__", 20, 60_000)/);
+  assert.match(server, /allowEvent\("handshake:" \+ address, "__connect__", SOCKET_HANDSHAKE_IP_LIMIT, 60_000\)/);
   assert.match(server, /SOCKET_HANDSHAKE_USER_LIMIT = Math.max\(30, Number\(process\.env\.SOCKET_HANDSHAKE_USER_LIMIT\) \|\| 30\)/);
   assert.match(server, /allowEvent\("handshake-user:" + decoded\.sub, "__connect__", SOCKET_HANDSHAKE_USER_LIMIT, 60_000\)/);
   assert.match(server, /const MAX_SOCKET_IN_FLIGHT = 100/);
