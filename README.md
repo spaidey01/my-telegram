@@ -1,6 +1,6 @@
-#  Telegram Clone – Next.js & Socket.io  
+# Stargram — Next.js & Socket.io  
 
-A feature-rich Telegram clone built with **Next.js**, **Socket.io**, and **PWA** support. It features instant messaging, user authentication, group and channel management, and a modern UI with **Tailwind CSS** and **DaisyUI**.
+A feature-rich messaging platform built with **Next.js**, **Socket.io**, and **PWA** support. It features instant messaging, user authentication, group and channel management, and a modern UI with **Tailwind CSS** and **DaisyUI**.
 
 
 ## ✨ Features  
