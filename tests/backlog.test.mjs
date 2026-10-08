@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import { scheduledRetryDelayMs } from "../src/utils/scheduledRetry.js";
 import { parseMentions, parseHashtags } from "../src/utils/messageParsing.js";
