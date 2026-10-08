@@ -18,7 +18,7 @@ import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
 import SessionSchema from "../src/schemas/sessionSchema.js";
 import connectToDB from "../src/db/index.js";
 import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
-import { GROUP_PERMISSION_KEYS, hasGroupPermission, channelCanPost } from "./security/permissions.js";
+import { GROUP_PERMISSION_KEYS, isAdmin, hasGroupPermission, channelCanPost } from "./security/permissions.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
@@ -107,7 +107,7 @@ const getActiveCall = async (callId) => {
     return { ...remote, timer: local?.timer ?? null, reconnectTimer: local?.reconnectTimer ?? null };
   } catch (error) {
     console.error("Redis call-state read failure:", error);
-    return activeCalls.get(callId) || null;
+    return null;
   }
 };
 const listActiveCalls = async () => {
@@ -125,13 +125,14 @@ const listActiveCalls = async () => {
     return calls;
   } catch (error) {
     console.error("Redis call-state list failure:", error);
-    return [...activeCalls.values()];
+    return [];
   }
 };
 const setActiveCall = async (callId, call, ttlMs = null) => {
   activeCalls.set(callId, call);
   if (!redisUrl) return;
-  await redisPubClient.set(callRedisKey(callId), JSON.stringify(serializeCall(call)), ttlMs ? { PX: ttlMs } : {});
+  const effectiveTtl = ttlMs ?? CALL_RING_TIMEOUT_MS + CALL_RECONNECT_GRACE_MS;
+  await redisPubClient.set(callRedisKey(callId), JSON.stringify(serializeCall(call)), { PX: effectiveTtl });
   await redisPubClient.sAdd(CALL_REDIS_SET, callId);
 };
 const deleteActiveCall = async (callId) => {
@@ -252,17 +253,6 @@ const isMember = async (roomID, userID) => {
   return RoomSchema.findOne({ _id: roomID, participants: userID });
 };
 
-const isAdmin = (room, userID) => {
-  if (!room) return false;
-  const isMember = room.participants?.some?.((id) => id.toString() === userID);
-  if (!isMember) return false;
-  if (room.creator?.toString() === userID) return true;
-  if (room.type === "channel") {
-    const role = room.channelRoles?.get?.(userID) || room.channelRoles?.[userID];
-    if (role) return role === "owner" || role === "admin";
-  }
-  return room.admins?.some((id) => id.toString() === userID);
-};
 const parseMentionsServer = (text) => [...new Set((String(text).match(/(^|\s)@([a-zA-Z0-9_]{3,20})\b/g)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const parseHashtagsServer = (text) => [...new Set((String(text).match(/(^|[^\p{L}\p{N}_])#[\p{L}\p{N}_]{1,64}/gu)||[]).map(v=>v.trim().slice(1).toLowerCase()))];
 const createThreadMentionEvents = async (actorID, roomID, messageID, usernames) => {
