@@ -213,6 +213,9 @@ test("two real Chromium peers establish audio/video through Stargram call signal
   await expect.poll(() => caller.evaluate(() => window.callState?.remoteTracks > 0), { timeout: 10_000 }).toBe(true);
   await expect.poll(() => callee.evaluate(() => window.callState?.remoteTracks > 0), { timeout: 10_000 }).toBe(true);
 
+  await caller.evaluate(() => new Promise((resolve) => {
+    window.callState.socket.emit("call:end", { callId: window.callState.callId }, resolve);
+  }));
   await callerContext.close();
   await calleeContext.close();
 });
