@@ -13,13 +13,14 @@ import crypto from "node:crypto";
 import UserSchema from "../src/schemas/userSchema.js";
 import SessionSchema from "../src/schemas/sessionSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
+import { buildTurnIceServers } from "../src/utils/turnCredentials.js";
 
 const SOCKET_PORT = 3104;
 const PAGE_PORT = 4173;
 const SECRET = process.env.secretKey || "browser-webrtc-e2e-secret-key-32-bytes";
 const MONGO = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/my_telegram_webrtc_e2e";
 const PAGE = `<!doctype html><html><body><script src="http://127.0.0.1:${SOCKET_PORT}/socket.io/socket.io.js"></script><script>
-window.bootstrap = async (token) => {
+window.bootstrap = async (token, iceServers) => {
   const socket = io("http://127.0.0.1:${SOCKET_PORT}", { auth: { token }, transports: ["websocket"] });
   await new Promise((resolve, reject) => { socket.once("connect", resolve); socket.once("connect_error", reject); });
   const state = { socket, pc: null, stream: null, remoteTracks: 0, connected: false, callId: null };
@@ -27,7 +28,7 @@ window.bootstrap = async (token) => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const makePeer = async (callId, caller) => {
     state.callId = callId;
-    state.pc = new RTCPeerConnection({ iceServers: [] });
+    state.pc = new RTCPeerConnection({ iceServers, iceTransportPolicy: "relay" });
     state.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
     for (const track of state.stream.getTracks()) state.pc.addTrack(track, state.stream);
     state.pc.onicecandidate = (event) => {
@@ -177,11 +178,12 @@ test("two real Chromium peers establish audio/video through Stargram call signal
   const callee = await calleeContext.newPage();
   await Promise.all([caller.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html"), callee.goto("http://127.0.0.1:" + PAGE_PORT + "/peer.html")]);
   await Promise.all([
-    caller.evaluate((token) => window.bootstrap(token), tokenFor(user._id, userSession)),
-    callee.evaluate((token) => window.bootstrap(token), tokenFor(otherUser._id, otherUserSession)),
+    caller.evaluate((token) => window.bootstrap(token, turnIceServers), tokenFor(user._id, userSession)),
+    callee.evaluate((token) => window.bootstrap(token, turnIceServers), tokenFor(otherUser._id, otherUserSession)),
   ]);
   await callee.evaluate(() => { window.acceptIncoming = true; });
 
+  const turnIceServers = buildTurnIceServers(user._id).iceServers;
   const callId = crypto.randomUUID();
   const invite = await caller.evaluate(({ callId, roomID, targetUserID }) => new Promise((resolve) => {
     window.callState.socket.emit("call:invite", { callId, roomID, targetUserID, type: "video" }, resolve);
