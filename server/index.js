@@ -85,6 +85,87 @@ export { io };
 
 const activeCalls = new Map();
 const CALL_REDIS_SET = "stargram:active-call-ids";
+const CALL_RESERVATION_PREFIX = "stargram:call-reservation:";
+const callReservations = new Map();
+const callReservationKey = (userID) => CALL_RESERVATION_PREFIX + userID;
+
+const reserveCallParticipants = async (callerID, calleeID, callId) => {
+  const ttlMs = CALL_RECONNECT_GRACE_MS + CALL_RING_TIMEOUT_MS + 5_000;
+  if (redisUrl) {
+    try {
+      const result = await redisPubClient.eval(`
+        if redis.call("GET", KEYS[1]) or redis.call("GET", KEYS[2]) then
+          return 0
+        end
+        redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
+        redis.call("SET", KEYS[2], ARGV[1], "PX", ARGV[2])
+        return 1
+      `, {
+        keys: [callReservationKey(callerID), callReservationKey(calleeID)],
+        arguments: [callId, String(ttlMs)],
+      });
+      return Number(result) === 1;
+    } catch (error) {
+      console.error("Redis call reservation failure:", error);
+      return false;
+    }
+  }
+
+  if (callReservations.has(callerID) || callReservations.has(calleeID)) return false;
+  callReservations.set(callerID, callId);
+  callReservations.set(calleeID, callId);
+  return true;
+};
+
+const renewCallParticipants = async (call, ttlMs) => {
+  if (!call?.caller || !call?.callee || !call?.callId) return false;
+  if (redisUrl) {
+    try {
+      const result = await redisPubClient.eval(`
+        if redis.call("GET", KEYS[1]) ~= ARGV[1] or redis.call("GET", KEYS[2]) ~= ARGV[1] then
+          return 0
+        end
+        redis.call("PEXPIRE", KEYS[1], ARGV[2])
+        redis.call("PEXPIRE", KEYS[2], ARGV[2])
+        return 1
+      `, {
+        keys: [callReservationKey(call.caller), callReservationKey(call.callee)],
+        arguments: [call.callId, String(ttlMs)],
+      });
+      return Number(result) === 1;
+    } catch (error) {
+      console.error("Redis call reservation renewal failure:", error);
+      return false;
+    }
+  }
+
+  return callReservations.get(call.caller) === call.callId
+    && callReservations.get(call.callee) === call.callId;
+};
+
+const releaseCallParticipants = async (call) => {
+  if (!call?.caller || !call?.callee || !call?.callId) return;
+  if (redisUrl) {
+    try {
+      await redisPubClient.eval(`
+        for _, key in ipairs(KEYS) do
+          if redis.call("GET", key) == ARGV[1] then
+            redis.call("DEL", key)
+          end
+        end
+      `, {
+        keys: [callReservationKey(call.caller), callReservationKey(call.callee)],
+        arguments: [call.callId],
+      });
+    } catch (error) {
+      console.error("Redis call reservation release failure:", error);
+    }
+    return;
+  }
+
+  if (callReservations.get(call.caller) === call.callId) callReservations.delete(call.caller);
+  if (callReservations.get(call.callee) === call.callId) callReservations.delete(call.callee);
+};
 const CALL_REDIS_PREFIX = "stargram:active-call:";
 const CALL_RING_TIMEOUT_MS = 30_000;
 const CALL_RECONNECT_GRACE_MS = 20_000;
@@ -140,7 +221,9 @@ const setActiveCall = async (callId, call, ttlMs = null) => {
   await redisPubClient.sAdd(CALL_REDIS_SET, callId);
 };
 const deleteActiveCall = async (callId) => {
+  const call = activeCalls.get(callId) || await getActiveCall(callId);
   activeCalls.delete(callId);
+  if (call) await releaseCallParticipants(call);
   if (!redisUrl) return;
   await redisPubClient.del(callRedisKey(callId));
   await redisPubClient.sRem(CALL_REDIS_SET, callId);
@@ -1338,10 +1421,6 @@ io.on("connection", (socket) => {
     if (!(await canViewPrivacy(targetUserID, userID, "calls"))) {
       return callback({ success: false, error: "Calls are restricted by this user" });
     }
-    if ((await listActiveCalls()).some((c) => c.caller === targetUserID || c.callee === targetUserID)) {
-      return callback({ success: false, error: "User is busy" });
-    }
-
     const [caller, target] = await Promise.all([
       UserSchema.findById(userID).select("name username avatar _id status lastSeenAt").lean(),
       UserSchema.findById(targetUserID).select("name username avatar _id status lastSeenAt").lean(),
@@ -1380,7 +1459,19 @@ io.on("connection", (socket) => {
       })();
     }, CALL_RING_TIMEOUT_MS);
     call.timer.unref?.();
-    await setActiveCall(callId, call, CALL_RING_TIMEOUT_MS);
+
+    const reserved = await reserveCallParticipants(userID, targetUserID, callId);
+    if (!reserved) {
+      clearTimeout(call.timer);
+      return callback({ success: false, error: "User is busy" });
+    }
+
+    try {
+      await setActiveCall(callId, call, CALL_RING_TIMEOUT_MS);
+    } catch (error) {
+      await releaseCallParticipants(call);
+      throw error;
+    }
 
     for (const targetSocket of targetSockets) {
       targetSocket.emit("call:incoming", { callId, roomID, type, from: visibleCaller });
@@ -1402,6 +1493,10 @@ io.on("connection", (socket) => {
     c.calleeSocketId = socket.id;
     c.acceptedAt = Date.now();
     if (c.timer) clearTimeout(c.timer);
+    if (!(await renewCallParticipants(c, CALL_ACTIVE_TTL_MS))) {
+      await deleteActiveCall(callId);
+      return callback({ success: false, error: "Call reservation lost" });
+    }
     await setActiveCall(callId, c);
 
     const callerSockets = await io.in(c.callerSocketId).fetchSockets();
@@ -1460,6 +1555,10 @@ io.on("connection", (socket) => {
       await setActiveCall(callId, c, CALL_RECONNECT_GRACE_MS);
       socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: false });
       return callback({ success: true, ready: false });
+    }
+    if (!(await renewCallParticipants(c, c.acceptedAt ? CALL_ACTIVE_TTL_MS : CALL_RING_TIMEOUT_MS + CALL_RECONNECT_GRACE_MS))) {
+      await deleteActiveCall(callId);
+      return callback({ success: false, error: "Call reservation lost" });
     }
     await setActiveCall(callId, c);
     io.to(c.callerSocketId).emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: true });
