@@ -161,3 +161,26 @@ test("private room creation uses a unique participant key to prevent duplicate r
   assert.match(createRoom, /error\?\.code !== 11000/);
   assert.match(createRoom, /findOne\(\{ type: "private", privateKey \}\)/);
 });
+
+
+test("2FA recovery codes are hashed at rest and consumed atomically", async () => {
+  const route = await (await import("node:fs/promises")).readFile(
+    new URL("../src/app/api/auth/2fa/route.ts", import.meta.url),
+    "utf8",
+  );
+  const totp = await (await import("node:fs/promises")).readFile(
+    new URL("../src/utils/totp.ts", import.meta.url),
+    "utf8",
+  );
+  const user = await (await import("node:fs/promises")).readFile(
+    new URL("../src/schemas/userSchema.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(totp, /hashBackupCode/);
+  assert.match(route, /codes\.map\(hashBackupCode\)/);
+  assert.match(route, /twoFactorBackupCodes:hash/);
+  assert.match(route, /\$pull:\{twoFactorBackupCodes:hash\}/);
+  assert.match(route, /twoFactorBackupCodes:code/);
+  assert.match(route, /\$map:\{input:"\$twoFactorBackupCodes"/);
+  assert.match(user, /twoFactorBackupCodes: \{ type: \[String\], default: \[\], select: false \}/);
+});
