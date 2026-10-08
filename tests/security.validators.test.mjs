@@ -128,3 +128,18 @@ test("presence and typing do not depend on node-local state", async () => {
   assert.match(server, /io\.in\(data\.roomID\)\.fetchSockets\(\)/);
   assert.match(server, /io\.fetchSockets\(\)/);
 });
+
+
+test("room last message updates do not regress on delete-for-me or stale forward writes", async () => {
+  const server = await (await import("node:fs/promises")).readFile(
+    new URL("../server/index.js", import.meta.url),
+    "utf8",
+  );
+  const bulkDelete = server.slice(server.indexOf('on("messages:delete"'), server.indexOf('on("deleteMsg"'));
+  assert.match(bulkDelete, /forAll\s*\?/);
+  assert.match(bulkDelete, /lastMessageId:\s*\{\s*\$in:\s*ids\s*\}/);
+  assert.doesNotMatch(bulkDelete, /hideFor:\s*\{\s*\$nin:\s*\[userID\]\s*\}\).*sort/);
+  const forward = server.slice(server.indexOf('on("forwardMessage"'), server.indexOf('on("pinMessage"'));
+  assert.match(forward, /lastMessageAt:\s*\{\s*\$lt:\s*forwarded\.createdAt\s*\}/);
+  assert.match(forward, /lastMessageId:\s*\{\s*\$lt:\s*forwarded\._id\s*\}/);
+});
