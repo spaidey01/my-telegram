@@ -21,6 +21,7 @@ import { canViewPrivacy, sanitizeUserForViewer } from "../src/utils/privacy.js";
 import { GROUP_PERMISSION_KEYS, isAdmin, hasGroupPermission, channelCanPost } from "./security/permissions.js";
 import { cleanupPendingUploads } from "./storage/pendingUploads.js";
 import { acquireSessionMutationLock, releaseSessionMutationLock } from "../src/utils/sessionMutationLock.js";
+import { SCHEDULED_MAX_ATTEMPTS, scheduledNextRetryAt } from "../src/utils/scheduledRetry.js";
 
 const secret = process.env.secretKey;
 if (!secret) throw new Error("secretKey is not configured");
@@ -431,13 +432,12 @@ const recordCallHistory = async (call, status, endedAt = new Date()) => {
   );
 };
 export const processScheduledMessages = async () => {
-  const MAX_SCHEDULED_ATTEMPTS = 5;
   const now = new Date();
   const staleBefore = new Date(now.getTime() - 2 * 60 * 1000);
   const jobs = await ScheduledMessageSchema.find({
     $or: [
-      { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
-      { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
+      { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS }, $or: [{ nextRetryAt: null }, { nextRetryAt: { $lte: now } }] },
+      { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS } },
     ],
   }).sort({ scheduledFor: 1 }).limit(25).lean();
 
@@ -446,7 +446,7 @@ export const processScheduledMessages = async () => {
       {
         _id: job._id,
         $or: [
-          { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
+          { status: "pending", scheduledFor: { $lte: now }, attemptCount: { $lt: SCHEDULED_MAX_ATTEMPTS }, $or: [{ nextRetryAt: null }, { nextRetryAt: { $lte: now } }] },
           { status: "processing", processingAt: { $lte: staleBefore }, attemptCount: { $lt: MAX_SCHEDULED_ATTEMPTS } },
         ],
       },
@@ -505,6 +505,7 @@ export const processScheduledMessages = async () => {
             status: "sent",
             sentAt: message.createdAt,
             processingAt: null,
+            nextRetryAt: null,
           },
         },
       );
@@ -552,7 +553,7 @@ export const processScheduledMessages = async () => {
         try {
           await reconcileDelivery(duplicate);
         } catch (recoveryError) {
-          const nextStatus = (claimed.attemptCount || 0) >= MAX_SCHEDULED_ATTEMPTS ? "failed" : "pending";
+          const nextStatus = (claimed.attemptCount || 0) >= SCHEDULED_MAX_ATTEMPTS ? "failed" : "pending";
           await ScheduledMessageSchema.updateOne(
             { _id: claimed._id },
             {
@@ -560,7 +561,8 @@ export const processScheduledMessages = async () => {
                 status: nextStatus,
                 error: String(recoveryError?.message || recoveryError).slice(0, 500),
                 processingAt: null,
-                scheduledFor: new Date(),
+                scheduledFor: claimed.scheduledFor,
+                nextRetryAt: nextStatus === "pending" ? scheduledNextRetryAt(claimed.attemptCount) : null,
               },
             },
           );
@@ -578,7 +580,8 @@ export const processScheduledMessages = async () => {
               status: nextStatus,
               error: errorMessage,
               processingAt: null,
-              scheduledFor: new Date(),
+              scheduledFor: claimed.scheduledFor,
+              nextRetryAt: nextStatus === "pending" ? scheduledNextRetryAt(claimed.attemptCount) : null,
             },
           },
         );
