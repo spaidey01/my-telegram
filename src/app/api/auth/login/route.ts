@@ -84,6 +84,8 @@ export const POST = async (req: Request) => {
 
     const safeUser = userData.toObject();
     delete safeUser.password;
+    delete safeUser.twoFactorSecret;
+    delete safeUser.twoFactorBackupCodes;
     return Response.json(safeUser, { status: 200 });
   } catch (err) {
     console.error(err);
