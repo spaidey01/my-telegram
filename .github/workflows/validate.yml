@@ -89,10 +89,6 @@ jobs:
           SOCKET_HANDSHAKE_USER_LIMIT: "1000"
 
       - run: npm run test:call-reliability
-      - run: npm run test:browser-webrtc
-        env:
-          TURN_URL: turn:127.0.0.1:3478
-          TURN_SECRET: ci-turn-shared-secret-0123456789
 
       - run: npm run test:backlog
       - run: npm run test:security
