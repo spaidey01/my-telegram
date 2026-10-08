@@ -132,7 +132,7 @@ export const GET = async (req: Request) => {
     );
 
     const pageRows = await MessageSchema.aggregate(pipeline);
-    const ids = pageRows.map((row) => row._id);
+    const ids = pageRows.map((row) => row._id as mongoose.Types.ObjectId);
     const messages = ids.length
       ? await MessageSchema.find({ _id: { $in: ids } })
         .select("_id roomID sender message createdAt attachmentData stickerData voiceData pinnedAt")
@@ -140,7 +140,9 @@ export const GET = async (req: Request) => {
         .lean()
       : [];
     const messageById = new Map(messages.map((message) => [String(message._id), message]));
-    const orderedMessages = ids.map((id) => messageById.get(String(id))).filter(Boolean);
+    const orderedMessages = ids
+      .map((id) => messageById.get(String(id)))
+      .filter((message): message is NonNullable<typeof message> => Boolean(message));
 
     const rooms = await RoomSchema.find({ _id: { $in: [...new Set(orderedMessages.map((message) => String(message.roomID)))] } })
       .select("_id name type avatar")
@@ -153,7 +155,7 @@ export const GET = async (req: Request) => {
       room: roomById.get(String(message.roomID)) || null,
     })));
 
-    const lastRow = pageRows.at(-1);
+    const lastRow = pageRows.length ? pageRows[pageRows.length - 1] : null;
     const hasMore = pageRows.length === limit;
     const nextCursor = hasMore && lastRow
       ? encodeCursor({
