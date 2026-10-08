@@ -1,5 +1,6 @@
 import nodeTest, { after, before } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 const test = (name, fn) => nodeTest(name, { timeout: 30_000 }, fn);
 import { spawn } from "node:child_process";
