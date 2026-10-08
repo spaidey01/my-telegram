@@ -529,10 +529,6 @@ export const processScheduledMessages = async () => {
         (room.type === "group" && p.stickerData && !hasGroupPermission(room, claimed.sender.toString(), "sendStickers")) ||
         (room.type === "group" && typeof p.message === "string" && /https?:\\/\\//i.test(p.message) && !hasGroupPermission(room, claimed.sender.toString(), "sendLinks")) ||
         (room.type === "group" && room.restrictedUsers?.some((id) => id.toString() === claimed.sender.toString())) ||
-        (room.type === "private" && (() => {
-          const recipientID = room.participants?.map((id) => id.toString()).find((id) => id !== claimed.sender.toString());
-          return recipientID ? false : false;
-        })()) ||
         (room.type === "channel" && !channelCanPost(room, claimed.sender.toString()))
       ) {
         throw new Error("Forbidden");
