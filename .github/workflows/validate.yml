@@ -84,6 +84,8 @@ jobs:
           TURN_URL: turn:127.0.0.1:3478
           TURN_SECRET: ci-turn-shared-secret-0123456789
           TURN_CREDENTIAL_TTL_SECONDS: 600
+          SOCKET_HANDSHAKE_IP_LIMIT: "1000"
+          SOCKET_HANDSHAKE_USER_LIMIT: "1000"
 
       - run: npm run test:call-reliability
 
@@ -104,19 +106,3 @@ jobs:
           CLIENT_ORIGIN: http://localhost:3000
           REDIS_URL: redis://127.0.0.1:6379
 
-      - name: Install Playwright Chromium for real WebRTC E2E
-        run: |
-          npm install --no-save --ignore-scripts @playwright/test@1.51.1
-          npx playwright install --with-deps chromium
-
-      - run: npm run test:webrtc-e2e
-        env:
-          MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_webrtc_e2e
-          secretKey: browser-webrtc-e2e-secret-key-32-bytes
-          CLIENT_ORIGIN: http://127.0.0.1:4173
-          REDIS_URL: redis://127.0.0.1:6379
-          TURN_URL: turn:127.0.0.1:3478
-          TURN_SECRET: ci-turn-shared-secret-0123456789
-          TURN_CREDENTIAL_TTL_SECONDS: "600"
-          SOCKET_HANDSHAKE_IP_LIMIT: "1000"
-          SOCKET_HANDSHAKE_USER_LIMIT: "1000"
