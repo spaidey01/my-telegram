@@ -7,6 +7,8 @@ import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
+import SessionSchema from "@/schemas/sessionSchema";
+import mongoose from "mongoose";
 import { rateLimit } from "@/utils/rateLimit";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -15,7 +17,7 @@ const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg","image/png","image/gif","ima
 const userIdFromCookie = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" ? { id: String(decoded.sub), sv: decoded.sv } : null;
+  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string" && mongoose.isValidObjectId(decoded.sub) && mongoose.isValidObjectId(decoded.sid) ? { id: String(decoded.sub), sv: decoded.sv, sid: String(decoded.sid) } : null;
 };
 
 const s3 = () => new S3Client({
@@ -32,7 +34,8 @@ export async function POST(req: Request) {
     if (!auth) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     await connectToDB();
-    const sessionUser = await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean();
+    const session = await SessionSchema.findOne({ _id: auth.sid, user: auth.id, revokedAt: null }).select("_id").lean();
+    const sessionUser = session ? await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean() : null;
     if (!sessionUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const userId = auth.id;
@@ -60,7 +63,7 @@ export async function POST(req: Request) {
     }
 
     const bucket = process.env.S3_BUCKET_NAME;
-    if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.S3_ENDPOINT) {
+    if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
     }
 
