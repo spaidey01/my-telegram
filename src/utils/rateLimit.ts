@@ -11,9 +11,20 @@ const getRedis = async () => {
   if (!redisPromise) {
     const client = createClient({ url: process.env.REDIS_URL });
     client.on("error", (error) => console.error("Redis rate-limit error:", error));
-    redisPromise = client.connect().then(() => client as RedisClientType);
+    redisPromise = client.connect()
+      .then(() => client as RedisClientType)
+      .catch((error) => {
+        redisPromise = null;
+        console.error("Redis rate-limit connection failure:", error);
+        return null as unknown as RedisClientType;
+      });
   }
-  return redisPromise;
+  const redis = await redisPromise;
+  if (!redis?.isOpen) {
+    redisPromise = null;
+    return null;
+  }
+  return redis;
 };
 
 const cleanup = () => {
@@ -83,13 +94,17 @@ export const rateLimit = async (
 setInterval(cleanup, 60_000).unref();
 
 export const getRequestIp = (req: Request) => {
-  const n = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_COUNT ?? "1", 10) || 0);
+  // Direct deployments must not trust client-supplied forwarding headers by default.
+  // Reverse-proxy deployments must opt in explicitly with the actual proxy hop count.
+  const n = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_COUNT ?? "0", 10) || 0);
   const forwarded = req.headers.get("x-forwarded-for");
   if (n > 0 && forwarded) {
     const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
     if (values.length) return values[Math.max(0, values.length - n)];
   }
-  const realIp = req.headers.get("x-real-ip")?.trim();
-  if (realIp) return realIp;
+  if (n > 0) {
+    const realIp = req.headers.get("x-real-ip")?.trim();
+    if (realIp) return realIp;
+  }
   return "unknown";
 };

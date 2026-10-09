@@ -18,5 +18,14 @@ export default interface Room {
   notSeenCount: number;
   link?: string;
   createdAt: string;
+  visibility?: "private" | "public";
+  groupPermissions?: Record<string, boolean>;
+  memberPermissions?: Record<string, Record<string, boolean>>;
+  bannedUsers?: string[];
+  restrictedUsers?: string[];
+  mutedUsers?: string[];
+  allowedReactions?: string[];
+  inviteToken?: string | null;
+  channelRoles?: Record<string, "owner" | "admin" | "editor" | "moderator">;
   updatedAt: string;
 }

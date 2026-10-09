@@ -1,14 +1,14 @@
 import Loading from "@/components/modules/ui/Loading";
 import Room from "@/models/room";
 import User from "@/models/user";
-import { GlobalStoreProps } from "@/stores/globalStore";
+import MessageModel from "@/models/message";
+import { GlobalStoreProps, ThreadEvent } from "@/stores/globalStore";
 import { UserStoreUpdater } from "@/stores/userStore";
 import { SocketsProps } from "@/stores/useSockets";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import {
   pendingMessagesService,
-  PendingMessage,
 } from "@/utils/pendingMessages";
 import { uploadFile as uploadFileWithRetry } from "@/utils";
 import { voiceBlobStorage } from "@/utils/voiceBlobStorage";
@@ -107,6 +107,11 @@ const useConnection = ({
           );
 
           for (const msg of pendingOnly) {
+            if (msg.retryCount >= 20) continue;
+            pendingMessagesService.updatePendingMessage(roomData._id, msg.tempId, {
+              retryCount: msg.retryCount + 1,
+              lastAttempt: Date.now(),
+            });
             // Prepare voice data: if src is missing, try to upload from IndexedDB first
             let preparedVoiceData = msg.voiceData || null;
             if (
@@ -203,7 +208,7 @@ const useConnection = ({
                 : null,
               attachmentData: msg.attachmentData || null,
               stickerData: msg.stickerData || null,
-              tempId: msg._id,
+              tempId: msg.tempId,
             };
             if (preparedVoiceData) {
               Object.assign(payload, { voiceData: preparedVoiceData });
@@ -237,7 +242,7 @@ const useConnection = ({
                     );
                     pendingMessagesService.removePendingMessage(
                       roomData._id,
-                      msg._id
+                      msg.tempId
                     );
                     // Cleanup saved blob if any
                     voiceBlobStorage
@@ -293,19 +298,50 @@ const useConnection = ({
         ...prev,
         selectedRoom:
           prev.selectedRoom && prev.selectedRoom._id === roomData._id
-            ? {
-                ...prev.selectedRoom,
-                name: roomData.name,
-                avatar: roomData.avatar,
-                participants: roomData.participants,
-                admins: roomData.admins,
-              }
+            ? { ...prev.selectedRoom, ...roomData }
             : prev.selectedRoom,
       }));
     });
 
+    const updateChannelRole = (roomID: string, memberID: string, role?: string) => {
+      const apply = (room: Room) => {
+        if (room._id !== roomID) return room;
+        const nextRoles = { ...(room.channelRoles || {}) };
+        const nextAdmins = [...(room.admins || [])];
+        if (role) {
+          nextRoles[memberID] = role as NonNullable<Room["channelRoles"]>[string];
+          if (!nextAdmins.includes(memberID)) nextAdmins.push(memberID);
+        } else {
+          delete nextRoles[memberID];
+          const index = nextAdmins.indexOf(memberID);
+          if (index >= 0) nextAdmins.splice(index, 1);
+        }
+        return { ...room, channelRoles: nextRoles, admins: nextAdmins };
+      };
+      setRooms((prev) => prev.map(apply));
+      setter((prev) => ({
+        selectedRoom: prev.selectedRoom ? apply(prev.selectedRoom) : prev.selectedRoom,
+      }));
+    };
+    const onChannelRole = ({ roomID, memberID, role }: { roomID: string; memberID: string; role: string }) =>
+      updateChannelRole(roomID, memberID, role);
+    const onChannelRoleRemove = ({ roomID, memberID }: { roomID: string; memberID: string }) =>
+      updateChannelRole(roomID, memberID);
+    socket.on("channel:role", onChannelRole);
+    socket.on("channel:role:remove", onChannelRoleRemove);
+
+    socket.on("thread:event", (event: ThreadEvent) => {
+      if (!event || typeof event._id !== "string" || typeof event.type !== "string") return;
+      setter((prev) => ({
+        threadEvents: [
+          event,
+          ...prev.threadEvents.filter((item) => item._id !== event._id),
+        ].slice(0, 100),
+      }));
+    });
+
     socket.on("updateOnlineUsers", (onlineUsers) => setter({ onlineUsers }));
-    socket.on("profileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
+    socket.on("userProfileUpdated", (updatedUser: Pick<User, "_id" | "name" | "lastName" | "username" | "avatar" | "biography" | "status">) => {
       if (updatedUser._id === userId) userDataUpdater(updatedUser);
 
       setRooms((prevRooms) =>
@@ -373,6 +409,39 @@ const useConnection = ({
     socket.on("deleteRoom", (roomID) => {
       socket.emit("getRooms");
       if (roomID === selectedRoom?._id) setter({ selectedRoom: null });
+    });
+
+    socket.on("roomRead", ({ roomID, messageID, readBy, readTime }: { roomID: string; messageID: string; readBy: string; readTime: string }) => {
+      const applyRead = (messages: MessageModel[]) => {
+        const targetIndex = messages.findIndex((message) => message._id === messageID);
+        if (targetIndex < 0) return messages;
+        return messages.map((message, index) =>
+          index <= targetIndex && message.sender?._id !== readBy
+            ? { ...message, seen: message.seen?.includes(readBy) ? message.seen : [...(message.seen || []), readBy], readTime: new Date(readTime) }
+            : message
+        );
+      };
+      setRooms((prevRooms) => prevRooms.map((room) => {
+        if (room._id !== roomID) return room;
+        return {
+          ...room,
+          messages: applyRead(room.messages || []),
+          lastMsgData: room.lastMsgData
+            ? { ...room.lastMsgData, seen: [...new Set([...(room.lastMsgData.seen || []), readBy])], readTime: new Date(readTime) }
+            : room.lastMsgData,
+        };
+      }));
+      setter((prev) => ({
+        selectedRoom: prev.selectedRoom && prev.selectedRoom._id === roomID
+          ? {
+              ...prev.selectedRoom,
+              messages: applyRead(prev.selectedRoom.messages || []),
+              lastMsgData: prev.selectedRoom.lastMsgData
+                ? { ...prev.selectedRoom.lastMsgData, seen: [...new Set([...(prev.selectedRoom.lastMsgData.seen || []), readBy])], readTime: new Date(readTime) }
+                : prev.selectedRoom.lastMsgData,
+            }
+          : prev.selectedRoom,
+      }));
     });
 
     socket.on("seenMsg", ({ roomID, seenBy, readTime }) => {
@@ -480,7 +549,11 @@ const useConnection = ({
         "userProfileUpdated",
         "deleteRoom",
         "seenMsg",
+        "roomRead",
         "updateRoomData",
+        "channel:role",
+        "channel:role:remove",
+        "thread:event",
         "newMessageIdUpdate",
       ].forEach((event) => socket.off(event));
     };
@@ -488,6 +561,7 @@ const useConnection = ({
 
   const initializeSocket = useCallback(async () => {
     if (socketRef.current) return;
+    await pendingMessagesService.hydrateFromIndexedDB();
     try {
       const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_SERVER_URL, {
         auth: async (cb) => {

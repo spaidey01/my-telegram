@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
@@ -7,17 +8,17 @@ import UserSchema from "@/schemas/userSchema";
 import UserStickerPackSchema from "@/schemas/userStickerPackSchema";
 import StickerSchema from "@/schemas/stickerSchema";
 import { rateLimit } from "@/utils/rateLimit";
+import SessionSchema from "@/schemas/sessionSchema";
 
 const getAuth = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") return null;
+  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string" || !mongoose.isValidObjectId(decoded.sub) || !mongoose.isValidObjectId(decoded.sid)) return null;
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null;
+  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }).select("_id").lean();
+  const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id").lean() as unknown as { _id: unknown } | null : null;
   return user ? String(user._id) : null;
 };
-
-const normalizeIds = (value: unknown) => Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && mongoose.isValidObjectId(id)))].slice(0, 100) : [];
 
 export async function GET() {
   const userId = await getAuth();
@@ -30,6 +31,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
+  if (!isSafeBrowserRequest(req)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   const userId = await getAuth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   const limit = await rateLimit("stickers:prefs:" + userId, 60, 60_000);

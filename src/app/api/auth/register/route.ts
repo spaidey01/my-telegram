@@ -5,8 +5,11 @@ import { cookies } from "next/headers";
 import { hash } from "bcrypt";
 import tokenGenerator from "@/utils/TokenGenerator";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
+import { isSafeBrowserRequest } from "@/utils/csrf";
+import SessionSchema from "@/schemas/sessionSchema";
 
 export const POST = async (req: Request) => {
+  if (!isSafeBrowserRequest(req)) return Response.json({ message: "Forbidden" }, { status: 403 });
   const ipLimit = await rateLimit("register:ip:" + getRequestIp(req), 5, 60_000);
   if (!ipLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(ipLimit.retryAfter) } });
 
@@ -24,7 +27,14 @@ export const POST = async (req: Request) => {
     const userData = await UserSchema.create({ name: usernameRaw, lastName: "", username: usernameRaw.toLowerCase(), password, phone, sessionVersion: 0 });
     await RoomSchema.create({ name: "Saved Messages", avatar: "", type: "private", creator: userData._id, participants: [userData._id], admins: [userData._id] });
 
-    const token = tokenGenerator(userData._id.toString(), 7, 0);
+    const session = await SessionSchema.create({
+      user: userData._id,
+      sessionVersion: 0,
+      device: "Web browser",
+      ip: getRequestIp(req),
+      userAgent: req.headers.get("user-agent") || "unknown",
+    });
+    const token = tokenGenerator(userData._id.toString(), 7, 0, session._id.toString());
     (await cookies()).set("token", token, {
       httpOnly: true,
       maxAge: 60 * 60 * 24 * 7,

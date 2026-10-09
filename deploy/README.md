@@ -24,7 +24,12 @@ REDIS_URL=redis://127.0.0.1:6379
 TRUSTED_PROXY_COUNT=1
 CLAMAV_HOST=127.0.0.1
 CLAMAV_PORT=3310
-CLAMAV_REQUIRED=true
+TURN_URL=turn:turn.example.com:3478,turns:turn.example.com:5349?transport=tcp
+TURN_SECRET=<long-random-turn-secret>
+TURN_CREDENTIAL_TTL_SECONDS=600
+TURN_REALM=turn.example.com
+TURN_MIN_PORT=49160
+TURN_MAX_PORT=49200
 SOCKET_PORT=3001
 ```
 
@@ -77,3 +82,38 @@ sudo systemctl restart my-telegram-web my-telegram-socket
 Do not commit environment files or expose MongoDB, Redis, ClamAV, or S3 credentials publicly.
 
 CI must remain green before changes are merged to `main`.
+
+
+## One-command VPS runner
+
+For a fresh Debian/Ubuntu VPS, the setup runner installs the required host packages, Node.js 20, Redis, ClamAV, coturn, Nginx, the `telegram` service user, Stargram, systemd units, dependencies, and the production build:
+
+```bash
+sudo bash /opt/my-telegram/deploy/setup-vps.sh
+```
+
+If the repository is not installed yet, clone it first:
+
+```bash
+sudo git clone --branch main --single-branch https://github.com/spaidey01/my-telegram.git /opt/my-telegram
+sudo bash /opt/my-telegram/deploy/setup-vps.sh
+```
+
+The first run creates `/etc/my-telegram.env` from `.env.example` when it does not exist. **Edit that file with real production values before starting the services.** The runner validates the production environment before starting Stargram.
+
+For subsequent releases, use:
+
+```bash
+sudo bash /opt/my-telegram/deploy/deploy-vps.sh
+```
+
+That runner fetches the selected branch, installs the locked dependencies, validates production configuration, builds Next.js, and restarts both Stargram services.
+
+Optional overrides:
+
+```bash
+sudo env BRANCH=production-fixes bash /opt/my-telegram/deploy/deploy-vps.sh
+sudo env APP_DIR=/srv/stargram bash /opt/my-telegram/deploy/setup-vps.sh
+```
+
+The runner does not create or guess secrets, MongoDB credentials, S3 credentials, DNS records, TLS certificates, or public TURN credentials. Those remain explicit deployment inputs.

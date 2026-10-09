@@ -1,3 +1,4 @@
+import { isSafeBrowserRequest } from "@/utils/csrf";
 import { NextResponse } from "next/server";
 import net from "node:net";
 import { randomUUID } from "node:crypto";
@@ -5,6 +6,8 @@ import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, S3Client } fr
 import { cookies } from "next/headers";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { rateLimit } from "@/utils/rateLimit";
+import SessionSchema from "@/schemas/sessionSchema";
+import mongoose from "mongoose";
 
 const MAX_SCAN_BYTES = 25 * 1024 * 1024;
 const ALLOWED_CONTENT_TYPES = new Set(["image/jpeg","image/png","image/gif","image/webp","audio/ogg","audio/mpeg","audio/wav","audio/flac","audio/webm","audio/mp4","video/mp4","video/webm","video/quicktime","video/ogg","application/pdf","application/zip","application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","application/vnd.openxmlformats-officedocument.presentationml.presentation","text/plain","text/csv","application/json"]);
@@ -19,7 +22,7 @@ const s3 = () => new S3Client({
 const scanWithClamAV = (bytes: Uint8Array) => new Promise<boolean>((resolve, reject) => {
   const host = process.env.CLAMAV_HOST;
   const port = Number(process.env.CLAMAV_PORT || 3310);
-  if (!host) return resolve(true);
+  if (!host) return reject(new Error("ClamAV host is not configured"));
 
   const socket = net.createConnection({ host, port });
   let response = "";
@@ -82,17 +85,19 @@ const isMagicValid = (bytes: Uint8Array, contentType: string) => {
 };
 
 export async function POST(req: Request) {
+  if (!isSafeBrowserRequest(req)) return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   try {
     const token = (await cookies()).get("token")?.value;
     const decoded = token ? tokenDecoder(token) : false;
     const userId = decoded && typeof decoded === "object" && typeof decoded.sub === "string" ? String(decoded.sub) : null;
     const sessionVersion = decoded && typeof decoded === "object" && typeof decoded.sv === "number" ? decoded.sv : null;
-    if (!userId || sessionVersion === null) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!userId || sessionVersion === null || !decoded || typeof decoded !== "object" || typeof decoded.sid !== "string" || !mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(decoded.sid)) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const { default: UserSchema } = await import("@/schemas/userSchema");
     const { default: connectToDB } = await import("@/db");
     await connectToDB();
-    const activeUser = await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean();
+    const session = await SessionSchema.findOne({ _id: decoded.sid, user: userId, revokedAt: null }).select("_id").lean();
+    const activeUser = session ? await UserSchema.findOne({ _id: userId, sessionVersion }).select("_id").lean() : null;
     if (!activeUser) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const limit = await rateLimit("file-verify:" + userId, 30, 60_000);
@@ -103,14 +108,19 @@ export async function POST(req: Request) {
     const purpose = body?.purpose === "sticker" ? "sticker" : "file";
     const contentType = typeof body?.contentType === "string" ? body.contentType.toLowerCase() : "";
     const ownerPrefix = key.split("/")[1];
+    const keyPattern = /^pending\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/;
     if (!ALLOWED_CONTENT_TYPES.has(contentType)) return NextResponse.json({ message: "File type not allowed" }, { status: 415 });
     if (purpose === "sticker" && !new Set(["image/png", "image/webp", "image/gif"]).has(contentType)) return NextResponse.json({ message: "Sticker type not allowed" }, { status: 415 });
-    if (!/^(images|voices|files)\/[a-fA-F0-9]{24}\/[0-9a-f-]{36}$/.test(key) || ownerPrefix !== userId) {
+    if (!keyPattern.test(key) || ownerPrefix !== userId) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
+    if (!process.env.CLAMAV_HOST && (process.env.NODE_ENV === "production" || process.env.CLAMAV_REQUIRED === "true")) {
+      return NextResponse.json({ message: "Malware scanner is required" }, { status: 503 });
+    }
+
     const bucket = process.env.S3_BUCKET_NAME;
-    if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY || !process.env.S3_ENDPOINT) {
+    if (!bucket || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) {
       return NextResponse.json({ message: "Storage is not configured" }, { status: 500 });
     }
 
@@ -126,9 +136,11 @@ export async function POST(req: Request) {
     }
 
     // If a scanner is configured, it is mandatory unless explicitly disabled.
-    const scanRequired = process.env.CLAMAV_REQUIRED
-      ? process.env.CLAMAV_REQUIRED === "true"
-      : Boolean(process.env.CLAMAV_HOST);
+    const scanRequired = process.env.NODE_ENV === "production"
+      ? true
+      : (process.env.CLAMAV_REQUIRED
+        ? process.env.CLAMAV_REQUIRED === "true"
+        : Boolean(process.env.CLAMAV_HOST));
     try {
       const clean = await scanWithClamAV(bytes);
       if (!clean) {
@@ -148,7 +160,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "File verification failed" }, { status: 503 });
     }
 
-    const verifiedKey = `${key.split("/")[0]}/${userId}/${randomUUID()}`;
+    const verifiedPrefix = purpose === "sticker"
+      ? "stickers"
+      : contentType.startsWith("image/")
+        ? "images"
+        : contentType.startsWith("audio/")
+          ? "voices"
+          : "files";
+    const verifiedKey = `${verifiedPrefix}/${userId}/${randomUUID()}`;
     try {
       await s3().send(new CopyObjectCommand({
         Bucket: bucket,

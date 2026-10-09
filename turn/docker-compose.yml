@@ -1,0 +1,24 @@
+services:
+  coturn:
+    image: coturn/coturn:4.18.0
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ${TURN_TLS_CERT_FILE:?TURN_TLS_CERT_FILE is required}:/etc/coturn/fullchain.pem:ro
+      - ${TURN_TLS_KEY_FILE:?TURN_TLS_KEY_FILE is required}:/etc/coturn/privkey.pem:ro
+    command:
+      - -n
+      - --log-file=stdout
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET:?TURN_SECRET is required}
+      - --realm=${TURN_REALM:?TURN_REALM is required}
+      - --stale-nonce=600
+      - --no-multicast-peers
+      - --no-loopback-peers
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49200}
+      - --listening-port=3478
+      - --tls-listening-port=5349
+      - --cert=/etc/coturn/fullchain.pem
+      - --pkey=/etc/coturn/privkey.pem

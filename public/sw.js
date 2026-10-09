@@ -1,30 +1,36 @@
-const STATIC_CACHE = "telegram-static-v6";
-const DYNAMIC_CACHE = "telegram-dynamic-v6";
+const STATIC_CACHE = "stargram-static-v8";
+const DYNAMIC_CACHE = "stargram-dynamic-v8";
 const MAX_DYNAMIC_CACHE_SIZE = 50;
 
 const ASSETS = [self.origin + "/"];
 
-// Limiting dynamic cache size
 const limitCacheSize = async (cacheName, maxSize) => {
   const cache = await caches.open(cacheName);
   const keys = await cache.keys();
   if (keys.length > maxSize) {
     await cache.delete(keys[0]);
-    limitCacheSize(cacheName, maxSize);
+    await limitCacheSize(cacheName, maxSize);
   }
 };
 
-// Installing a service worker and caching primary resources
+const isCacheableResponse = (response) => {
+  const cacheControl = response.headers.get("cache-control") || "";
+  return response.ok
+    && !/private|no-store/i.test(cacheControl);
+};
+
 self.addEventListener("install", (event) => {
-  console.log("Installing Service Worker...");
   event.waitUntil(
     (async () => {
       const cache = await caches.open(STATIC_CACHE);
       for (const asset of ASSETS) {
         try {
-          await cache.add(asset);
+          const response = await fetch(asset, { cache: "no-store" });
+          if (isCacheableResponse(response)) {
+            await cache.put(asset, response.clone());
+          }
         } catch (error) {
-          console.warn("⚠ Failed to cache:", asset, error);
+          console.warn("Failed to cache:", asset, error);
         }
       }
     })()
@@ -32,9 +38,7 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Delete old caches upon activation
 self.addEventListener("activate", (event) => {
-  console.log("Service Worker Activated, clearing old caches...");
   event.waitUntil(
     caches
       .keys()
@@ -49,46 +53,12 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Automatically cache static Next.js files on request
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  if (
-    url.pathname.includes("node_modules") ||
-    url.hostname.includes("firestore.googleapis.com")
-  ) {
-    return;
-  }
-
-  // Never intercept API calls (auth, file access redirects, ...)
+  if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/api/")) return;
-
-  // Skip caching for PUT, POST, DELETE requests
-  if (event.request.method !== "GET") {
-    return;
-  }
-
-  // If the request is for a font, image, or animation file, prioritize the cache.
-  if (url.pathname.match(/\.(woff2?|ttf|png|jpg|jpeg|gif|svg|json)$/)) {
-    event.respondWith(
-      caches.open(DYNAMIC_CACHE).then(async (cache) => {
-        const cachedResponse = await cache.match(event.request);
-        if (cachedResponse) return cachedResponse;
-
-        try {
-          const response = await fetch(event.request);
-          if (response.ok) cache.put(event.request, response.clone());
-          limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
-          return response;
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (error) {
-          console.warn("⚠ Failed to fetch:", event.request.url);
-          return new Response("", { status: 404 });
-        }
-      })
-    );
-    return;
-  }
+  if (event.request.method !== "GET") return;
 
   if (url.pathname.startsWith("/_next/static/")) {
     event.respondWith(
@@ -98,11 +68,12 @@ self.addEventListener("fetch", (event) => {
 
         try {
           const response = await fetch(event.request);
-          if (response.ok) cache.put(event.request, response.clone());
+          if (isCacheableResponse(response)) {
+            await cache.put(event.request, response.clone());
+          }
           return response;
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
         } catch (error) {
-          console.warn("⚠ Failed to fetch:", event.request.url);
+          console.warn("Failed to fetch:", event.request.url);
           return new Response("", { status: 404 });
         }
       })
@@ -110,48 +81,50 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname === "/") {
-    event.respondWith(networkFirst(event.request));
+  if (url.pathname.match(/\.(woff2?|ttf|png|jpg|jpeg|gif|svg|json)$/)) {
+    event.respondWith(
+      caches.open(DYNAMIC_CACHE).then(async (cache) => {
+        const cachedResponse = await cache.match(event.request);
+        if (cachedResponse) return cachedResponse;
+
+        try {
+          const response = await fetch(event.request);
+          if (isCacheableResponse(response)) {
+            await cache.put(event.request, response.clone());
+            await limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
+          }
+          return response;
+        } catch (error) {
+          console.warn("Failed to fetch:", event.request.url);
+          return new Response("", { status: 404 });
+        }
+      })
+    );
     return;
   }
 
-  // Caching strategy for other requests
-  event.respondWith(
-    event.request.headers.get("accept")?.includes("text/html")
-      ? networkFirst(event.request)
-      : cacheFirst(event.request)
-  );
-});
+  // Do not cache authenticated/unknown application routes.
+  if (url.pathname !== "/") return;
 
-// Caching strategy
-const cacheFirst = async (request) => {
-  const cache = await caches.open(STATIC_CACHE);
-  const cachedResponse = await cache.match(request);
-  return (
-    cachedResponse || fetch(request).catch(() => cache.match(self.origin + "/"))
-  );
-};
+  event.respondWith(networkFirst(event.request));
+});
 
 const networkFirst = async (request) => {
   try {
     const response = await fetch(request);
-    if (request.method === "GET" && response.ok) {
+    if (isCacheableResponse(response)) {
       const cache = await caches.open(DYNAMIC_CACHE);
-      cache.put(request, response.clone());
-      limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
+      await cache.put(request, response.clone());
+      await limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_CACHE_SIZE);
     }
     return response;
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
-    console.warn("⚠ Network request failed, serving from cache:", request.url);
-    const cached =
-      (await caches.match(request)) ||
-      (await caches.match(self.origin + "/"));
+    console.warn("Network request failed, serving from cache:", request.url);
+    const cached = await caches.match(request);
     return cached || new Response("Offline", { status: 503 });
   }
 };
 
-// Service Worker Update Management
 self.addEventListener("message", (event) => {
   if (event.data === "SKIP_WAITING") {
     self.skipWaiting();

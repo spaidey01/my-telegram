@@ -12,6 +12,15 @@ Environment=NODE_ENV=production
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=027
 
 [Install]
 WantedBy=multi-user.target

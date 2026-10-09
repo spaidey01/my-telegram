@@ -42,15 +42,66 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - name: Install Playwright test runner
+        run: npm install --no-save --package-lock=false @playwright/test@1.64.0
+      - run: npx playwright install chromium
       - run: npm audit --omit=dev --audit-level=high
+      - run: npm run test:production-config
+      - run: npm run test:deployment
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
       - run: node --check server/index.js
+
+      - name: Start real coturn and verify REST authentication
+        env:
+          TURN_SECRET: ci-turn-shared-secret-0123456789
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coturn
+          sudo systemctl stop coturn || true
+          sudo pkill -x turnserver || true
+          sudo systemctl stop coturn || true
+          sudo systemctl disable coturn || true
+          turnserver -n --log-file=stdout             --use-auth-secret             --static-auth-secret="$TURN_SECRET"             --realm=ci.turn.stargram.local             --fingerprint             --no-tls             --no-dtls             --no-multicast-peers             --allow-loopback-peers             --cli-password=ci-cli-password-0123456789             --userdb=/tmp/stargram-coturn.db             --min-port=49160             --max-port=49200             > /tmp/coturn.log 2>&1 &
+          for i in $(seq 1 20); do
+            if turnutils_uclient -W "$TURN_SECRET" -p 3478 -y 127.0.0.1 >/tmp/turn-client.log 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/coturn.log
+          cat /tmp/turn-client.log
+          exit 1
+
+      - run: npm run test:turn
+      - run: npm run test:webrtc-e2e
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_webrtc_e2e
+          secretKey: browser-webrtc-e2e-secret-key-32-bytes
+          CLIENT_ORIGIN: http://127.0.0.1:4173
+          REDIS_URL: redis://127.0.0.1:6379
+          TURN_URL: turn:127.0.0.1:3478
+          TURN_SECRET: ci-turn-shared-secret-0123456789
+          TURN_CREDENTIAL_TTL_SECONDS: 600
+          SOCKET_HANDSHAKE_IP_LIMIT: "1000"
+          SOCKET_HANDSHAKE_USER_LIMIT: "1000"
+
+      - run: npm run test:call-reliability
+
+      - run: npm run test:backlog
+      - run: npm run test:security
       - run: npm run test:integration
         env:
           MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_test
           secretKey: integration-test-secret-key-32-bytes-minimum
           CLIENT_ORIGIN: http://localhost:3000
           SOCKET_PORT: 3101
+          REDIS_URL: redis://127.0.0.1:6379
+
+      - run: npm run test:multi-node
+        env:
+          MONGODB_URI: mongodb://127.0.0.1:27017/my_telegram_multinode_test
+          secretKey: multi-node-test-secret-key-32-bytes-minimum
+          CLIENT_ORIGIN: http://localhost:3000
           REDIS_URL: redis://127.0.0.1:6379

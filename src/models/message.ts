@@ -22,4 +22,7 @@ export default interface Message {
   updatedAt: string;
   status?: "pending" | "sent" | "failed";
   uploadProgress?: number;
+  kind?: "message" | "post" | "system";
+  mentions?: string[];
+  hashtags?: string[];
 }

@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
+type AuthSession={_id:unknown};
 import { NextResponse } from "next/server";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { socketTokenGenerator } from "@/utils/TokenGenerator";
 import connectToDB from "@/db";
 import UserSchema from "@/schemas/userSchema";
 import { getRequestIp, rateLimit } from "@/utils/rateLimit";
+import SessionSchema from "@/schemas/sessionSchema";
 
 export async function GET(req: Request) {
   const ipLimit = await rateLimit("socket-token:ip:" + getRequestIp(req), 30, 60_000);
@@ -19,16 +21,18 @@ export async function GET(req: Request) {
   if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
   const decoded = tokenDecoder(token);
-  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number") {
+  if (!decoded || typeof decoded !== "object" || typeof decoded.sub !== "string" || typeof decoded.sv !== "number" || typeof decoded.sid !== "string") {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
   await connectToDB();
-  const user = await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean();
+  const session = await SessionSchema.findOne({ _id: decoded.sid, user: decoded.sub, revokedAt: null }) .lean().then((value)=>value as unknown as AuthSession | null);
+  const user = session ? await UserSchema.findOne({ _id: decoded.sub, sessionVersion: decoded.sv }).select("_id sessionVersion").lean().then((value)=>value) : null;
+  if (session) await SessionSchema.updateOne({ _id: session._id }, { $set: { lastActiveAt: new Date() } });
   if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
   const sessionVersion = Number((user as { sessionVersion?: number }).sessionVersion ?? decoded.sv);
   return NextResponse.json({
-    token: socketTokenGenerator(decoded.sub, sessionVersion),
+    token: socketTokenGenerator(decoded.sub, sessionVersion, decoded.sid),
   }, { status: 200 });
 }

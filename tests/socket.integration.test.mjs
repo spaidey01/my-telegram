@@ -1,16 +1,25 @@
-import test, { after, before } from "node:test";
+import nodeTest, { after, before } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+// Keep the wiring test explicit about its filesystem dependency.
+// CI must execute this file from the PR head so the adversarial lock coverage is included.
+
+const test = (name, fn) => nodeTest(name, { timeout: 30_000 }, fn);
 import { spawn } from "node:child_process";
 import { io as createClient } from "socket.io-client";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import UserSchema from "../src/schemas/userSchema.js";
+import SessionSchema from "../src/schemas/sessionSchema.js";
 import RoomSchema from "../src/schemas/roomSchema.js";
 import MessageSchema from "../src/schemas/messageSchema.js";
 import FileSchema from "../src/schemas/fileSchema.js";
 import StickerSchema from "../src/schemas/stickerSchema.js";
 import StickerPackSchema from "../src/schemas/stickerPackSchema.js";
 import UserStickerPackSchema from "../src/schemas/userStickerPackSchema.js";
+import ScheduledMessageSchema from "../src/schemas/scheduledMessageSchema.js";
+import ThreadEventSchema from "../src/schemas/threadEventSchema.js";
+import { acquireSessionMutationLock, releaseSessionMutationLock, closeSessionMutationLockClient } from "../src/utils/sessionMutationLock.js";
 import { canViewPrivacy } from "../src/utils/privacy.js";
 import { EMPTY_MESSAGE_SELECTION, enterMessageSelection, toggleMessageSelection, selectAllMessages, pruneMessageSelection, replaceMessageSelection } from "../src/utils/messageSelection.js";
 
@@ -19,11 +28,17 @@ process.env.secretKey ||= "integration-test-secret-012345678901234567890123";
 process.env.SOCKET_PORT ||= "3101";
 process.env.CLIENT_ORIGIN ||= "http://localhost:3000";
 process.env.REDIS_URL ||= "redis://127.0.0.1:6379";
+// The integration suite intentionally opens many authenticated sockets; keep the production default rate limit intact while allowing the suite to exercise the full flow.
+process.env.SOCKET_HANDSHAKE_IP_LIMIT ||= "1000";
+process.env.SOCKET_HANDSHAKE_USER_LIMIT ||= "1000";
 
 let serverProcess;
 let user;
 let otherUser;
 let thirdUser;
+let userSession;
+let otherUserSession;
+let thirdUserSession;
 
 const waitFor = (socket, event, timeout = 5000) =>
   new Promise((resolve, reject) => {
@@ -91,6 +106,11 @@ before(async () => {
     password: "not-a-real-password",
     sessionVersion: 0,
   });
+  [userSession, otherUserSession, thirdUserSession] = await SessionSchema.create([
+    { user: user._id, device: "integration", ip: "127.0.0.1", userAgent: "integration-test" },
+    { user: otherUser._id, device: "integration", ip: "127.0.0.1", userAgent: "integration-test" },
+    { user: thirdUser._id, device: "integration", ip: "127.0.0.1", userAgent: "integration-test" },
+  ]);
 
   serverProcess = spawn(process.execPath, ["server/index.js"], {
     env: process.env,
@@ -103,6 +123,7 @@ before(async () => {
 after(async () => {
   if (user) {
     await RoomSchema.deleteMany({ creator: user._id });
+    await SessionSchema.deleteMany({ user: { $in: [user?._id, otherUser?._id, thirdUser?._id].filter(Boolean) } });
     await UserSchema.deleteMany({ _id: { $in: [user._id, otherUser?._id, thirdUser?._id].filter(Boolean) } });
   }
   await mongoose.disconnect();
@@ -111,6 +132,7 @@ after(async () => {
     serverProcess.kill("SIGTERM");
     await new Promise((resolve) => serverProcess.once("exit", resolve));
   }
+  await closeSessionMutationLockClient();
 });
 
 test("socket authentication, invite-link authorization and message flow", async () => {
@@ -126,7 +148,7 @@ test("socket authentication, invite-link authorization and message flow", async 
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -184,7 +206,7 @@ test("reply, edit, reaction, pin, forward and delete message flow", async () => 
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -251,6 +273,22 @@ test("reply, edit, reaction, pin, forward and delete message flow", async () => 
     const reacted = await MessageSchema.findById(originalResult._id).lean();
     assert.deepEqual(reacted.reactions[0].userIds.map(String), [user._id.toString()]);
 
+    const concurrentToggle = () => new Promise((resolve) => {
+      socket.emit(
+        "toggleReaction",
+        { msgID: originalResult._id, roomID: room._id.toString(), emoji: "❤️" },
+        resolve,
+      );
+    });
+    const [toggleA, toggleB] = await Promise.all([concurrentToggle(), concurrentToggle()]);
+    assert.equal(toggleA.success, true);
+    assert.equal(toggleB.success, true);
+    const afterConcurrentToggle = await MessageSchema.findById(originalResult._id).lean();
+    assert.equal(
+      afterConcurrentToggle.reactions.some((reaction) => reaction.emoji === "🔥" && reaction.userIds.some((id) => id.toString() === user._id.toString())),
+      false,
+    );
+
     const pinPromise = waitFor(otherSocket, "pinMessage");
     socket.emit("pinMessage", originalResult._id, room._id.toString(), false);
     const pinEvent = await pinPromise;
@@ -301,7 +339,7 @@ test("private rooms cannot be administratively modified or deleted", async () =>
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -341,7 +379,7 @@ test("server rejects non-hex public room links", async () => {
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -383,7 +421,7 @@ test("room read marker clears unread messages through the referenced message", a
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -453,7 +491,7 @@ test("room read marker rejects non-members and invalid target messages", async (
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: thirdUser._id.toString(), sv: 0, scope: "socket" },
+        { sub: thirdUser._id.toString(), sv: 0, sid: thirdUserSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -521,7 +559,7 @@ test("multi-select server actions cannot cross rooms", async () => {
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -618,7 +656,7 @@ test("message search jump loads an older target with room authorization", async 
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
       token: jwt.sign(
-        { sub: user._id.toString(), sv: 0, scope: "socket" },
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
         process.env.secretKey,
         { expiresIn: "5m" },
       ),
@@ -650,7 +688,7 @@ test("message search jump loads an older target with room authorization", async 
     const outsider = createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: thirdUser._id.toString(), sv: 0, scope: "socket" },
+          { sub: thirdUser._id.toString(), sv: 0, sid: thirdUserSession._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -754,7 +792,7 @@ test("bulk message delete removes selected messages in one operation and enforce
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -905,7 +943,7 @@ test("privacy permissions enforce everyone, contacts and nobody for every field"
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -1076,7 +1114,7 @@ test("last seen handles multi-socket presence and reconnects", async () => {
     createClient("http://127.0.0.1:3101", {
       auth: {
         token: jwt.sign(
-          { sub: uid.toString(), sv: 0, scope: "socket" },
+          { sub: uid.toString(), sv: 0, sid: (uid.toString() === user._id.toString() ? userSession : uid.toString() === otherUser._id.toString() ? otherUserSession : thirdUserSession)._id.toString(), scope: "socket" },
           process.env.secretKey,
           { expiresIn: "5m" },
         ),
@@ -1166,7 +1204,7 @@ test("attachment messages enforce verified-file ownership", async () => {
   ]);
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
-      token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+      token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
     },
     transports: ["websocket"],
   });
@@ -1227,7 +1265,7 @@ test("voice messages enforce verified-file ownership", async () => {
   ]);
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
-      token: jwt.sign({ sub: user._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+      token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
     },
     transports: ["websocket"],
   });
@@ -1289,7 +1327,7 @@ test("sticker messages require an installed or owned pack and persist full stick
 
   const socket = createClient("http://127.0.0.1:3101", {
     auth: {
-      token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
+      token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, sid: otherUserSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }),
     },
     transports: ["websocket"],
   });
@@ -1330,4 +1368,495 @@ test("sticker messages require an installed or owned pack and persist full stick
     await FileSchema.deleteOne({ key: stickerKey });
     await RoomSchema.deleteOne({ _id: room._id });
   }
+});
+
+
+test("offline retry tempId is idempotent at the socket and database boundary", async () => {
+  const room = await RoomSchema.create({
+    name: "Offline Idempotency",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const tempId = "offline-idempotent-" + Date.now();
+    const send = () => new Promise((resolve) => socket.emit("newMessage", {
+      roomID: room._id.toString(),
+      message: "offline retry",
+      tempId,
+    }, resolve));
+    const first = await send();
+    const second = await send();
+    assert.equal(first.success, true);
+    assert.equal(second.success, true);
+    assert.equal(second._id, first._id);
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id, tempId: user._id.toString() + ":" + tempId }), 1);
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("channel editor can forward through the same posting permission path", async () => {
+  const sourceRoom = await RoomSchema.create({
+    name: "Forward Source",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const channel = await RoomSchema.create({
+    name: "Forward Channel",
+    type: "channel",
+    creator: otherUser._id,
+    admins: [otherUser._id],
+    participants: [otherUser._id, user._id],
+    channelRoles: { [user._id.toString()]: "editor" },
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const source = await new Promise((resolve) => socket.emit("newMessage", {
+      roomID: sourceRoom._id.toString(),
+      message: "forwardable",
+      tempId: "forward-source-" + Date.now(),
+    }, resolve));
+    assert.equal(source.success, true);
+
+    const forwarded = await new Promise((resolve) => socket.emit("forwardMessage", {
+      msgID: source._id,
+      sourceRoomID: sourceRoom._id.toString(),
+      targetRoomID: channel._id.toString(),
+    }, resolve));
+    assert.equal(forwarded.success, true);
+    assert.equal(String(forwarded.message.roomID), channel._id.toString());
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: { $in: [sourceRoom._id, channel._id] } });
+    await RoomSchema.deleteMany({ _id: { $in: [sourceRoom._id, channel._id] } });
+  }
+});
+
+
+test("scheduled worker recovers a job when the message already exists", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Recovery",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "already persisted" },
+    scheduledFor: new Date(Date.now() - 1000),
+    status: "processing",
+    processingAt: new Date(Date.now() - 180000),
+  });
+  const tempId = "scheduled:" + scheduled._id.toString();
+  await MessageSchema.create({
+    sender: user._id,
+    roomID: room._id,
+    message: "already persisted",
+    seen: [],
+    hideFor: [],
+    status: "sent",
+    kind: "message",
+    tempId,
+    createdAt: Date.now(),
+  });
+  try {
+    const deadline = Date.now() + 7000;
+    let updated = null;
+    while (Date.now() < deadline) {
+      updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+      if (updated?.status === "sent") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(updated?.status, "sent");
+    assert.ok(updated?.sentAt);
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id, tempId }), 1);
+    const reconciledRoom = await RoomSchema.findById(room._id).lean();
+    assert.equal(String(reconciledRoom?.lastMessageId), String((await MessageSchema.findOne({ roomID: room._id, tempId }).lean())._id));
+    assert.ok(reconciledRoom?.lastMessageAt);
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("scheduled message worker connects DB jobs to real messages", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Integration",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const scheduledFor = new Date(Date.now() + 250);
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "scheduled integration message" },
+    scheduledFor,
+  });
+  try {
+    const deadline = Date.now() + 9000;
+    let message = null;
+    while (Date.now() < deadline) {
+      message = await MessageSchema.findOne({
+        roomID: room._id,
+        tempId: "scheduled:" + scheduled._id.toString(),
+      }).lean();
+      if (message) break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.ok(message, "scheduled worker did not create the message");
+    assert.equal(message.message, "scheduled integration message");
+    const updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+    assert.equal(updated.status, "sent");
+    assert.ok(updated.sentAt);
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+test("scheduled worker enforces group sendMessages permission at execution time", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Permission",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+    groupPermissions: { sendMessages: false },
+  });
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: otherUser._id,
+    room: room._id,
+    payload: { message: "must not be sent" },
+    scheduledFor: new Date(Date.now() - 1000),
+  });
+  try {
+    const deadline = Date.now() + 9000;
+    let updated = null;
+    while (Date.now() < deadline) {
+      updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+      if (updated?.status === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(updated?.status, "failed");
+    assert.equal(
+      await MessageSchema.countDocuments({
+        roomID: room._id,
+        tempId: "scheduled:" + scheduled._id.toString(),
+      }),
+      0,
+    );
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("scheduled worker does not overwrite a newer room last message during recovery", async () => {
+  const room = await RoomSchema.create({
+    name: "Scheduled Ordering",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const scheduled = await ScheduledMessageSchema.create({
+    sender: user._id,
+    room: room._id,
+    payload: { message: "older scheduled message" },
+    scheduledFor: new Date(Date.now() - 5000),
+    status: "processing",
+    processingAt: new Date(Date.now() - 180000),
+  });
+  const scheduledTempId = "scheduled:" + scheduled._id.toString();
+  const older = await MessageSchema.create({
+    sender: user._id,
+    roomID: room._id,
+    message: "older scheduled message",
+    seen: [],
+    hideFor: [],
+    status: "sent",
+    kind: "message",
+    tempId: scheduledTempId,
+    createdAt: new Date(Date.now() - 5000),
+  });
+  const newer = await MessageSchema.create({
+    sender: user._id,
+    roomID: room._id,
+    message: "newer live message",
+    seen: [],
+    hideFor: [],
+    status: "sent",
+    kind: "message",
+    createdAt: new Date(),
+  });
+  await RoomSchema.updateOne(
+    { _id: room._id },
+    { $set: { lastMessageId: newer._id, lastMessageAt: newer.createdAt } },
+  );
+  try {
+    const deadline = Date.now() + 9000;
+    let updated = null;
+    while (Date.now() < deadline) {
+      updated = await ScheduledMessageSchema.findById(scheduled._id).lean();
+      if (updated?.status === "sent") break;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    assert.equal(updated?.status, "sent");
+    const reconciledRoom = await RoomSchema.findById(room._id).lean();
+    assert.equal(String(reconciledRoom?.lastMessageId), String(newer._id));
+    assert.notEqual(String(reconciledRoom?.lastMessageId), String(older._id));
+  } finally {
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await ScheduledMessageSchema.deleteOne({ _id: scheduled._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+test("revoked session and bumped sessionVersion cannot continue using an existing socket", async () => {
+  const room = await RoomSchema.create({
+    name: "Session Revocation",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: new Date() } });
+    await UserSchema.updateOne({ _id: user._id }, { $inc: { sessionVersion: 1 } });
+
+    // Exercise the per-event session check immediately after revocation.
+    // Do not wait for the periodic 5s disconnect timer, otherwise the test
+    // races the timer and can lose the acknowledgement callback.
+    const result = await new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.off("disconnect", onDisconnect);
+        resolve(value);
+      };
+      const onDisconnect = () => finish({ disconnected: true });
+      const timer = setTimeout(() => finish({ timeout: true }), 8_000);
+      socket.once("disconnect", onDisconnect);
+      socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "must be rejected after revocation",
+        tempId: "revoked-session-" + Date.now(),
+      }, (payload) => finish(payload));
+    });
+    assert.ok(result.disconnected || result.success === false);
+    if (!result.disconnected) assert.equal(result.error, "Unauthorized");
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id }), 0);
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+    await UserSchema.updateOne({ _id: user._id }, { $set: { sessionVersion: 0 } });
+    await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: null } });
+  }
+});
+
+test("session revoke cannot overtake a socket mutation after pre-handler authentication", async () => {
+  const room = await RoomSchema.create({
+    name: "Session Mutation Lock",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: {
+      token: jwt.sign(
+        { sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" },
+        process.env.secretKey,
+        { expiresIn: "5m" },
+      ),
+    },
+    transports: ["websocket"],
+  });
+
+  try {
+    await waitFor(socket, "connect");
+
+    const revokeLock = await acquireSessionMutationLock(user._id.toString());
+    assert.ok(revokeLock);
+
+    const mutationResult = new Promise((resolve) => {
+      socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message: "must be rejected after the queued revoke",
+        tempId: "session-lock-" + Date.now(),
+      }, resolve);
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await SessionSchema.updateOne(
+      { _id: userSession._id, user: user._id, revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    );
+    await releaseSessionMutationLock(revokeLock);
+
+    const result = await mutationResult;
+    assert.equal(result.success, false);
+    assert.equal(result.error, "Unauthorized");
+    assert.equal(await MessageSchema.countDocuments({ roomID: room._id }), 0);
+  } finally {
+    socket.disconnect();
+    await SessionSchema.updateOne({ _id: userSession._id }, { $set: { revokedAt: null } });
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("session mutation lock wiring covers socket mutations and revoke endpoints", () => {
+  const server = fs.readFileSync(new URL("../server/index.js", import.meta.url), "utf8");
+  const logout = fs.readFileSync(new URL("../src/app/api/auth/logout/route.ts", import.meta.url), "utf8");
+  const sessions = fs.readFileSync(new URL("../src/app/api/auth/sessions/route.ts", import.meta.url), "utf8");
+  for (const source of [server, logout, sessions]) {
+    assert.ok(source.includes("acquireSessionMutationLock"), "missing session mutation lock acquisition");
+    assert.ok(source.includes("releaseSessionMutationLock"), "missing session mutation lock release");
+  }
+});
+
+test("hidden message edits are not broadcast to the viewer who hid the message", async () => {
+  const room = await RoomSchema.create({
+    name: "Hidden Edit Privacy",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const senderSocket = createClient("http://127.0.0.1:3101", {
+    auth: { token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
+    transports: ["websocket"],
+  });
+  const viewerSocket = createClient("http://127.0.0.1:3101", {
+    auth: { token: jwt.sign({ sub: otherUser._id.toString(), sv: 0, sid: otherUserSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
+    transports: ["websocket"],
+  });
+  try {
+    await Promise.all([waitFor(senderSocket, "connect"), waitFor(viewerSocket, "connect")]);
+    const join = (socket) => new Promise((resolve) => { socket.emit("joining", room._id.toString()); socket.once("joining", resolve); });
+    await Promise.all([join(senderSocket), join(viewerSocket)]);
+    const message = await MessageSchema.create({
+      sender: user._id,
+      message: "secret before hide",
+      roomID: room._id,
+      seen: [],
+      hideFor: [otherUser._id],
+    });
+
+    let leaked = false;
+    const onEdit = () => { leaked = true; };
+    viewerSocket.on("editMessage", onEdit);
+    senderSocket.emit("editMessage", {
+      msgID: message._id.toString(),
+      roomID: room._id.toString(),
+      editedMsg: "secret after hide",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    viewerSocket.off("editMessage", onEdit);
+    assert.equal(leaked, false);
+  } finally {
+    senderSocket.disconnect();
+    viewerSocket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+
+test("concurrent messages never move room lastMessage backwards", async () => {
+  const room = await RoomSchema.create({
+    name: "Message Ordering Race",
+    type: "group",
+    creator: user._id,
+    admins: [user._id],
+    participants: [user._id, otherUser._id],
+  });
+  const socket = createClient("http://127.0.0.1:3101", {
+    auth: { token: jwt.sign({ sub: user._id.toString(), sv: 0, sid: userSession._id.toString(), scope: "socket" }, process.env.secretKey, { expiresIn: "5m" }) },
+    transports: ["websocket"],
+  });
+  try {
+    await waitFor(socket, "connect");
+    const send = (message) => new Promise((resolve) => {
+      socket.emit("newMessage", {
+        roomID: room._id.toString(),
+        message,
+        tempId: "ordering-" + message,
+      }, resolve);
+    });
+    const results = await Promise.all([send("one"), send("two"), send("three")]);
+    assert.ok(results.every((result) => result.success));
+    const messages = await MessageSchema.find({ roomID: room._id }).sort({ createdAt: 1, _id: 1 }).lean();
+    const storedRoom = await RoomSchema.findById(room._id).lean();
+    const latest = messages[messages.length - 1];
+    assert.equal(String(storedRoom?.lastMessageId), String(latest?._id));
+    assert.equal(new Date(storedRoom?.lastMessageAt || 0).getTime(), new Date(latest?.createdAt || 0).getTime());
+  } finally {
+    socket.disconnect();
+    await MessageSchema.deleteMany({ roomID: room._id });
+    await RoomSchema.deleteOne({ _id: room._id });
+  }
+});
+
+test("mention event idempotency has a database uniqueness guard", () => {
+  const indexes = ThreadEventSchema.schema.indexes();
+  assert.ok(indexes.some(([fields, options]) =>
+    fields.actor === 1 &&
+    fields.type === 1 &&
+    fields.room === 1 &&
+    fields.message === 1 &&
+    fields["data.targetUser"] === 1 &&
+    options?.unique === true,
+  ));
 });

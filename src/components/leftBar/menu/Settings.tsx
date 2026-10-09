@@ -339,12 +339,9 @@ const Settings = ({ getBack, updateRoute }: Props) => {
               <MenuItem
                 icon={<CgLock />}
                 title="حریم خصوصی و امنیت"
-                onClick={() => {}}
+                onClick={() => updateRoute("security")}
               />
-              <span className="flex items-center gap-1 text-xs text-gray-400 absolute right-3 top-4">
-                <MdOutlineLockClock fill="teal" size={15} />
-                <span>به‌زودی</span>
-              </span>
+              <span className="hidden" />
             </div>
 
             <LineSeparator />

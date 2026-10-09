@@ -301,7 +301,23 @@ const Message = memo((msgData: MessageModel & msgDataProps) => {
               </div>
             )}
             <p dir="auto" className="text-white break-all whitespace-pre-wrap">
-              {message}
+              {message.split(/(#[\\p{L}\\p{N}_]{1,64})/gu).map((part, index) =>
+                /^#[\\p{L}\\p{N}_]{1,64}$/u.test(part) ? (
+                  <button
+                    key={index}
+                    type="button"
+                    className="text-lightBlue hover:underline"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      window.dispatchEvent(new CustomEvent("stargram:search-hashtag", {
+                        detail: { hashtag: part.slice(1) },
+                      }));
+                    }}
+                  >
+                    {part}
+                  </button>
+                ) : part
+              )}
             </p>
             {msgData.reactions?.length ? (
               <div className="flex flex-wrap gap-1 mt-1 pr-1" onClick={(e) => e.stopPropagation()}>

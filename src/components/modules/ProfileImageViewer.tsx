@@ -33,10 +33,12 @@ const ProfileImageViewer = ({ imageUrl, onClose }: ProfileImageViewerProps) => {
 
   return (
     <div
-      className="fixed inset-0 bg-black/90 flex-center z-50"
+      className="fixed inset-0 bg-[#05020f]/95 flex-center z-50 overflow-hidden"
       ref={containerRef}
     >
-      <div className="relative">
+      <div className="pointer-events-none absolute inset-0" aria-hidden="true"><div className="absolute left-1/2 top-[-12rem] size-80 -translate-x-1/2 rounded-full bg-[#4f08ec]/10 blur-3xl" /><div className="absolute bottom-[-10rem] right-[-5rem] size-64 rounded-full bg-[#9a2df6]/10 blur-3xl" /></div>
+      <div className="absolute top-4 left-4 flex items-center gap-2.5"><img src="/images/stargram-logo.svg" alt="Stargram" className="size-7 object-contain opacity-80" /><span className="text-xs font-vazirBold text-white/45">Stargram</span></div>
+      <div className="relative z-10">
         <Image
           src={imageUrl}
           alt="Profile"

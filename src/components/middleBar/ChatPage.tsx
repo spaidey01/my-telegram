@@ -60,7 +60,21 @@ const ChatPage = () => {
   const pendingMessageJumpId = useGlobalStore((state) => state.pendingMessageJumpId);
   const setPendingMessageJump = useGlobalStore((state) => state.setPendingMessageJump);
   const [isMessageSearchOpen, setIsMessageSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHashtagMode, setSearchHashtagMode] = useState(false);
   const jumpRequestRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const handleHashtagSearch = (event: Event) => {
+      const hashtag = (event as CustomEvent<{ hashtag?: string }>).detail?.hashtag;
+      if (!hashtag) return;
+      setSearchHashtagMode(true);
+      setSearchQuery(hashtag);
+      setIsMessageSearchOpen(true);
+    };
+    window.addEventListener("stargram:search-hashtag", handleHashtagSearch);
+    return () => window.removeEventListener("stargram:search-hashtag", handleHashtagSearch);
+  }, []);
 
   useEffect(() => {
     if (selectionRoomID && selectionRoomID !== selectedRoom?._id) clearMessageSelection();
@@ -178,7 +192,7 @@ const ChatPage = () => {
           : null,
       }));
     },
-    [messages, selectedRoom, setter]
+    [selectedRoom, setter]
   );
 
   // Register an event listener for the "pinMessage" event from the server
@@ -209,9 +223,19 @@ const ChatPage = () => {
 
   // Remove user from selected group or channel
   const leaveRoom = () => {
-    const newParticipants = participants.filter(
-      (participant) => participant !== myID
-    );
+    if (type === "group") {
+      roomsSocket?.emit("group:leave", { roomID: selectedRoom?._id }, (response: { success: boolean }) => {
+        if (response?.success) setter({ selectedRoom: null });
+      });
+      return;
+    }
+    if (type === "channel") {
+      roomsSocket?.emit("channel:leave", { roomID: selectedRoom?._id }, (response: { success: boolean }) => {
+        if (response?.success) setter({ selectedRoom: null });
+      });
+      return;
+    }
+    const newParticipants = participants.filter((participant) => participant !== myID);
     roomsSocket?.emit("updateRoomData", {
       roomID: selectedRoom?._id,
       participants: [...newParticipants],
@@ -271,7 +295,7 @@ const ChatPage = () => {
       className="relative h-dvh flex flex-col chatBackground w-full "
     >
       {isMessageSearchOpen && selectedRoom?._id && (
-        <MessageSearch roomId={selectedRoom._id} onClose={() => setIsMessageSearchOpen(false)} />
+        <MessageSearch roomId={selectedRoom._id} initialQuery={searchQuery} initialHashtagMode={searchHashtagMode} onClose={() => setIsMessageSearchOpen(false)} />
       )}
 
       {/* Chat Header */}

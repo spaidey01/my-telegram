@@ -1,6 +1,6 @@
 "use client";
 
-import useGlobalStore from "@/stores/globalStore";
+import useGlobalStore, { ThreadEvent } from "@/stores/globalStore";
 import useUserStore from "@/stores/userStore";
 import useSockets from "@/stores/useSockets";
 import React, {
@@ -21,6 +21,8 @@ import RoomFolders from "./RoomFolders";
 import useConnection from "@/hook/useConnection";
 import Message from "@/models/message";
 import NotificationPermission from "@/utils/NotificationPermission";
+import CallHistory from "./CallHistory";
+import { FiPhoneCall, FiBell } from "react-icons/fi";
 
 const CreateRoomBtn = lazy(() => import("@/components/leftBar/CreateRoomBtn"));
 const LeftBarMenu = lazy(() => import("@/components/leftBar/menu/LeftBarMenu"));
@@ -31,7 +33,9 @@ const LeftBar = () => {
   const [filterBy, setFilterBy] = useState("all");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isLeftBarMenuOpen, setIsLeftBarMenuOpen] = useState(false);
+  const [showCallHistory, setShowCallHistory] = useState(false);
   const [leftBarActiveRoute, setLeftBarActiveRoute] = useState("/");
+  const [showThreadEvents, setShowThreadEvents] = useState(false);
   const ringAudioRef = useRef<HTMLAudioElement>(null);
 
   const userId = useUserStore((state) => state._id);
@@ -46,8 +50,93 @@ const LeftBar = () => {
     isRoomDetailsShown,
     createRoomType,
     showCreateRoomBtn,
+    threadEvents,
   } = useGlobalStore((state) => state);
   const interactUser = useRef(false);
+  const unreadThreadEvents = useMemo(() => threadEvents.filter((event) => !event.readBy?.includes(userId)).length, [threadEvents, userId]);
+
+  const markThreadEventsRead = useCallback(async () => {
+    if (!userId || unreadThreadEvents === 0) return;
+    try {
+      const response = await fetch("/api/threads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (!response.ok) return;
+      setter((prev) => ({
+        threadEvents: prev.threadEvents.map((event) => ({
+          ...event,
+          readBy: event.readBy?.includes(userId) ? event.readBy : [...(event.readBy || []), userId],
+        })),
+      }));
+    } catch {}
+  }, [setter, unreadThreadEvents, userId]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadThreadEvents = async () => {
+      try {
+        const response = await fetch("/api/threads?mine=true", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const events: Array<{
+          _id?: unknown;
+          type?: unknown;
+          room?: unknown;
+          message?: unknown;
+          actor?: unknown;
+          data?: unknown;
+          createdAt?: unknown;
+          readBy?: unknown;
+        }> = Array.isArray(payload?.events) ? payload.events : [];
+        if (cancelled) return;
+        const normalized = events
+          .map((event): ThreadEvent | null => {
+            const actor = typeof event.actor === "string"
+              ? event.actor
+              : event.actor && typeof event.actor === "object" && "_id" in event.actor
+                ? (event.actor as { _id?: unknown })._id
+                : null;
+            if (
+              typeof event._id !== "string" ||
+              typeof event.type !== "string" ||
+              !["mention", "reaction", "call", "system"].includes(event.type) ||
+              typeof event.room !== "string" ||
+              typeof actor !== "string"
+            ) return null;
+            return {
+              _id: event._id,
+              type: event.type as ThreadEvent["type"],
+              room: event.room,
+              message: typeof event.message === "string" ? event.message : undefined,
+              actor,
+              data: event.data && typeof event.data === "object"
+                ? event.data as ThreadEvent["data"]
+                : undefined,
+              createdAt: typeof event.createdAt === "string" ? event.createdAt : new Date().toISOString(),
+              readBy: Array.isArray(event.readBy)
+                ? event.readBy.filter((id): id is string => typeof id === "string")
+                : [],
+            };
+          })
+          .filter((event): event is ThreadEvent => Boolean(event))
+          .slice(0, 100);
+        setter((prev) => {
+          const merged = [...normalized, ...prev.threadEvents];
+          const unique = merged.filter((event, index, list) =>
+            list.findIndex((item) => item._id === event._id) === index
+          );
+          unique.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          return { threadEvents: unique.slice(0, 100) };
+        });
+      } catch {
+        // Live socket events remain available if the history request fails.
+      }
+    };
+    void loadThreadEvents();
+    return () => { cancelled = true; };
+  }, [setter]);
+
 
   useEffect(() => {
     NotificationPermission();
@@ -65,11 +154,9 @@ const LeftBar = () => {
   }, []);
 
   useEffect(() => {
-    document.addEventListener("click", () => (interactUser.current = true));
-
-    return () => {
-      document.addEventListener("click", () => (interactUser.current = true));
-    };
+    const markInteracted = () => { interactUser.current = true; };
+    document.addEventListener("click", markInteracted);
+    return () => document.removeEventListener("click", markInteracted);
   }, []);
 
   const playRingSound = useCallback(() => {
@@ -124,7 +211,7 @@ const LeftBar = () => {
         ? userRooms
         : userRooms.filter((room) => room.type === filterBy);
 
-    return filteredRooms.sort((a, b) => {
+    return [...filteredRooms].sort((a, b) => {
       const aTime = a?.lastMsgData?.createdAt
         ? new Date(a.lastMsgData.createdAt).getTime()
         : 0;
@@ -134,6 +221,15 @@ const LeftBar = () => {
       return bTime - aTime;
     });
   }, [userRooms, filterBy]);
+
+  const handleThreadEventClick = useCallback((event: { room: string; message?: string }) => {
+    const room = userRooms.find((item) => item._id === event.room);
+    if (!room) return;
+    setter({ selectedRoom: room, rightBarRoute: "/" });
+    roomsSocket?.emit("joining", room._id);
+    if (event.message) useGlobalStore.getState().setPendingMessageJump(event.message);
+    setShowThreadEvents(false);
+  }, [roomsSocket, setter, userRooms]);
 
   const handleOpenLeftBarMenu = useCallback(() => {
     setIsLeftBarMenuOpen(true);
@@ -174,7 +270,22 @@ const LeftBar = () => {
         )}
         {isPageLoaded && showCreateRoomBtn && <CreateRoomBtn />}
         {isSearchOpen && <SearchPage closeSearch={handleCloseSearch} />}
+        {showThreadEvents && (
+          <div className="absolute top-16 right-2 z-50 w-[min(22rem,calc(100vw-1rem))] max-h-[70vh] overflow-y-auto rounded-2xl border border-white/10 bg-gray-900/95 shadow-2xl backdrop-blur p-2">
+            <div className="flex items-center justify-between px-2 py-2 border-b border-white/10">
+              <span className="font-vazirBold text-white">اعلان‌ها</span>
+              <button type="button" onClick={() => setShowThreadEvents(false)} className="text-white/50 hover:text-white">×</button>
+            </div>
+            {threadEvents.length ? threadEvents.map((event) => (
+              <button key={event._id} type="button" onClick={() => handleThreadEventClick(event)} className="w-full text-right rounded-xl px-3 py-3 hover:bg-white/10 border-b border-white/5 last:border-0">
+                <div className="text-sm text-white">{event.type === "mention" ? "در یک پیام منشن شدید" : event.type === "reaction" ? `واکنش ${event.data?.emoji || ""} به پیام شما` : "اعلان جدید"}</div>
+                <div className="text-[11px] text-white/40 mt-1">{new Date(event.createdAt).toLocaleString("fa-IR")}</div>
+              </button>
+            )) : <div className="p-5 text-center text-sm text-white/50">اعلانی ندارید</div>}
+          </div>
+        )}
 
+        {showCallHistory && <CallHistory onClose={() => setShowCallHistory(false)} />}
         {leftBarActiveRoute !== "/settings" && (
           <div
             data-aos-duration="400"
@@ -187,19 +298,45 @@ const LeftBar = () => {
               style={{ zIndex: 1 }}
             >
               <div className="flex items-center justify-between gap-6 mx-3">
-                <div className="flex items-center flex-1 gap-5 mt-3 w-full text-white">
+                <div className="flex items-center flex-1 gap-4 mt-3 w-full text-white min-w-0">
                   <RxHamburgerMenu
                     size={20}
                     onClick={handleOpenLeftBarMenu}
-                    className="cursor-pointer"
+                    className="cursor-pointer shrink-0"
                   />
-                  <h1 className="font-vazirBold mt-0.5">{status}</h1>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="relative flex size-8 shrink-0 items-center justify-center">
+                      <span className="absolute inset-0 rounded-xl bg-[#4f08ec]/20 blur-md" aria-hidden="true" />
+                      <img
+                        src="/images/stargram-logo.svg"
+                        alt="Stargram"
+                        className="relative size-8 object-contain drop-shadow-[0_0_10px_rgba(94,235,255,0.18)]"
+                      />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-vazirBold text-[13px] leading-5 text-white truncate">
+                        Stargram
+                      </div>
+                      <h1 className="font-vazirRegular text-[10px] leading-4 text-white/45 truncate">
+                        {status}
+                      </h1>
+                    </div>
+                  </div>
                 </div>
-                <BiSearch
-                  size={22}
-                  onClick={handleOpenSearch}
-                  className="cursor-pointer text-white/90 mt-3"
-                />
+                <div className="flex items-center gap-3">
+                  <FiPhoneCall size={20} onClick={() => setShowCallHistory(true)} className="cursor-pointer text-white/90 mt-3" title="Call history" />
+                  <button type="button" onClick={() => {
+                    setShowThreadEvents((value) => {
+                      const next = !value;
+                      if (next) void markThreadEventsRead();
+                      return next;
+                    });
+                  }} className="relative mt-3 p-0.5 text-white/90" title="Mentions and reactions">
+                    <FiBell size={20} />
+                    {unreadThreadEvents > 0 && <span className="absolute -right-1 -top-2 min-w-4 h-4 px-1 rounded-full bg-lightBlue text-black text-[9px] font-bold flex items-center justify-center">{unreadThreadEvents > 99 ? "99+" : unreadThreadEvents}</span>}
+                  </button>
+                  <BiSearch size={22} onClick={handleOpenSearch} className="cursor-pointer text-white/90 mt-3" />
+                </div>
               </div>
               <RoomFolders updateFilterBy={setFilterBy} />
             </div>

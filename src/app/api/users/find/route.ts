@@ -4,6 +4,8 @@ import UserSchema from "@/schemas/userSchema";
 import tokenDecoder from "@/utils/TokenDecoder";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
+import SessionSchema from "@/schemas/sessionSchema";
+import { sanitizeUserForViewer } from "@/utils/privacy";
 import { rateLimit } from "@/utils/rateLimit";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^()|[\]\\]/g, "\\$&").replace(/\$/g, "\\$");
@@ -12,8 +14,8 @@ const safeUserProjection = "name lastName username avatar biography type status 
 const getAuthenticatedUserId = async () => {
   const token = (await cookies()).get("token")?.value;
   const decoded = token ? tokenDecoder(token) : false;
-  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number"
-    ? { id: decoded.sub, sv: decoded.sv }
+  return decoded && typeof decoded === "object" && typeof decoded.sub === "string" && typeof decoded.sv === "number" && typeof decoded.sid === "string"
+    ? { id: decoded.sub, sv: decoded.sv, sid: decoded.sid }
     : null;
 };
 
@@ -25,7 +27,8 @@ export const POST = async (req: Request) => {
     if (!limit.allowed) return Response.json({ message: "Too many requests." }, { status: 429, headers: { "Retry-After": String(limit.retryAfter) } });
 
     await connectToDB();
-    const sessionUser = await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean();
+    const session = auth.sid ? await SessionSchema.findOne({ _id: auth.sid, user: auth.id, revokedAt: null }).select("_id").lean() : null;
+    const sessionUser = session ? await UserSchema.findOne({ _id: auth.id, sessionVersion: auth.sv }).select("_id").lean() : null;
     if (!sessionUser) return Response.json({ message: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
@@ -42,7 +45,7 @@ export const POST = async (req: Request) => {
         UserSchema.find({ username: { $regex: new RegExp("^" + escapeRegExp(searchText), "i") } }).select(safeUserProjection).limit(20).lean(),
         RoomSchema.findOne({ link: { $regex: new RegExp("^" + escapeRegExp(payload) + "$", "i") } }).select("_id name avatar type link biography").lean(),
       ]);
-      const results: unknown[] = [...users];
+      const results: unknown[] = await Promise.all(users.map((user) => sanitizeUserForViewer(user, auth.id)));
       if (room) results.push(room);
       return results.length ? Response.json(results, { status: 200 }) : Response.json(null, { status: 404 });
     }

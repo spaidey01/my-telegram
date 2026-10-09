@@ -40,6 +40,8 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
   const activeTask = useRef<{ id: string; cancel: () => void } | null>(null);
   const queueRef = useRef<QueueItem[]>([]);
   const roomRef = useRef<string | undefined>(undefined);
+  const draftTimerRef = useRef<number | null>(null);
+  const draftHydratedRef = useRef(false);
 
   const room = useGlobalStore((s) => s.selectedRoom);
   const setter = useGlobalStore((s) => s.setter);
@@ -60,7 +62,12 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     closeReplay();
     closeEdit();
     setText("");
-    if (roomId) localStorage.removeItem(roomId);
+    if (roomId) {
+      localStorage.removeItem(roomId);
+      if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+      fetch("/api/drafts?roomId=" + encodeURIComponent(roomId), { method: "DELETE" }).catch(() => {});
+    }
     resize();
     input.current?.focus();
   }, [closeReplay, closeEdit, roomId, resize]);
@@ -119,6 +126,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
 
   const sendAttachment = useCallback((file: File, src: string) => {
     if (!roomId) return;
+    fetch("/api/drafts?roomId=" + encodeURIComponent(roomId), { method: "DELETE" }).catch(() => {});
     send({
       roomID: roomId,
       message: "",
@@ -189,7 +197,7 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
   useEffect(() => () => {
     activeTask.current?.cancel();
     queue.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); });
-  }, []);
+  }, [queue]);
 
   useEffect(() => {
     if (roomRef.current === undefined) {
@@ -206,7 +214,11 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
 
   const sendText = () => {
     const message = text.trim().replace(/\n+$/, "");
-    if (!roomId || !message || !room || (room.type === "channel" && !room.admins.includes(me._id))) return;
+    if (!roomId || !message || !room) return;
+    if (room.type === "channel") {
+      const role = room.channelRoles?.[me._id] || (room.admins.includes(me._id) ? "admin" : null);
+      if (!["owner", "admin", "editor", "moderator"].includes(role ?? "")) return;
+    }
     send({
       roomID: roomId,
       message,
@@ -257,8 +269,39 @@ export default function MessageInput({ replayData, editData, closeReplay, closeE
     }
   };
 
-  useEffect(() => { resize(); setText(roomId ? localStorage.getItem(roomId) || "" : ""); }, [roomId, resize]);
-  useEffect(() => { if (roomId && text) localStorage.setItem(roomId, text); }, [roomId, text]);
+  useEffect(() => {
+    resize();
+    draftHydratedRef.current = false;
+    if (!roomId) { setText(""); return; }
+    let cancelled = false;
+    fetch("/api/drafts?roomId=" + encodeURIComponent(roomId))
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (cancelled) return;
+        setText(data?.draft?.message ?? localStorage.getItem(roomId) ?? "");
+        draftHydratedRef.current = true;
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setText(localStorage.getItem(roomId) || "");
+        draftHydratedRef.current = true;
+      });
+    return () => { cancelled = true; draftHydratedRef.current = false; };
+  }, [roomId, resize]);
+  useEffect(() => {
+    if (!roomId || !draftHydratedRef.current) return;
+    localStorage.setItem(roomId, text);
+    if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = window.setTimeout(() => {
+      if (text.trim()) {
+        fetch("/api/drafts", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ roomId, message: text }) }).catch(() => {});
+      } else {
+        fetch("/api/drafts?roomId=" + encodeURIComponent(roomId), { method: "DELETE" }).catch(() => {});
+      }
+      draftTimerRef.current = null;
+    }, 500);
+    return () => { if (draftTimerRef.current) window.clearTimeout(draftTimerRef.current); };
+  }, [roomId, text]);
   useEffect(() => { if (editData?.message) setText(editData.message); }, [editData?.message]);
 
   return (
