@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4.0.0",
+    "@tailwindcss/postcss": "^8.5.1",
     "@types/aos": "^3.0.7",
     "@types/bcrypt": "^5.0.2",
     "@types/jsonwebtoken": "^9.0.7",
@@ -67,6 +67,6 @@
     "source-map-js": "1.2.2"
   },
   "engines": {
-    "node": ">=20.9.0 <21"
+    "node": ">=22.0.0 <23"
   }
 }
