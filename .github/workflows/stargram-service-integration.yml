@@ -181,7 +181,7 @@ jobs:
             const socket = net.createConnection({ host: "127.0.0.1", port: Number(process.env.CLAMAV_PORT) });
             let response = "";
             let finished = false;
-            const timer = setTimeout(() => { socket.destroy(); reject(new Error("ClamAV INSTREAM timed out")); }, 15000);
+            const timer = setTimeout(() => { socket.destroy(); reject(new Error("ClamAV INSTREAM timed out")); }, 90000);
             const done = (error) => {
               if (finished) return;
               finished = true;
