@@ -27,6 +27,23 @@ test("production environment accepts a complete secure configuration", () => {
   assert.deepEqual(validateProductionEnv(valid), { ok: true });
 });
 
+test("explicit IP/HTTP test mode permits HTTP app URLs and loopback S3 only", () => {
+  const env = {
+    ...valid,
+    STARGRAM_ALLOW_HTTP: "true",
+    CLIENT_ORIGIN: "http://203.0.113.10",
+    NEXT_PUBLIC_APP_URL: "http://203.0.113.10",
+    NEXT_PUBLIC_SOCKET_SERVER_URL: "http://203.0.113.10",
+    S3_ENDPOINT: "http://127.0.0.1:9000",
+  };
+  assert.deepEqual(validateProductionEnv(env), { ok: true });
+});
+
+test("explicit IP/HTTP test mode does not permit remote plain-HTTP S3", () => {
+  const env = { ...valid, STARGRAM_ALLOW_HTTP: "true", S3_ENDPOINT: "http://storage.example.com" };
+  assert.throws(() => validateProductionEnv(env), /S3_ENDPOINT must use https/);
+});
+
 for (const [name, mutate] of [
   ["missing Redis", (env) => { delete env.REDIS_URL; }],
   ["missing ClamAV", (env) => { delete env.CLAMAV_HOST; }],
