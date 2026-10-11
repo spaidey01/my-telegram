@@ -34,7 +34,7 @@ jobs:
   integration:
     name: MongoDB, Redis, S3, build and runtime smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     services:
       mongodb:
         image: mongo:7
@@ -186,19 +186,27 @@ jobs:
           echo "$scan_output"
           echo "$scan_output" | grep -qi "Eicar-.*Signature.*FOUND" || { docker logs stargram-clamav; exit 1; }
       - name: Run real-browser WebRTC and TURN recovery tests
+        timeout-minutes: 18
+        env:
+          CI: "true"
         run: |
           sudo apt-get update
-          sudo apt-get install -y coturn
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y coturn
           sudo systemctl stop coturn || true
-          turnserver -n --log-file=stdout \\
-            --use-auth-secret --static-auth-secret="$TURN_SECRET" \\
-            --realm="$TURN_REALM" --fingerprint --no-tls --no-dtls \\
-            --no-multicast-peers --allow-loopback-peers \\
-            --cli-password=ci-cli-password-0123456789 \\
-            --userdb=/tmp/stargram-coturn.db \\
+          turnserver -n --log-file=stdout \
+            --pidfile=/tmp/stargram-turnserver.pid \
+            --use-auth-secret --static-auth-secret="$TURN_SECRET" \
+            --realm="$TURN_REALM" --fingerprint --no-tls --no-dtls \
+            --no-multicast-peers --allow-loopback-peers \
+            --cli-password=ci-cli-password-0123456789 \
+            --userdb=/tmp/stargram-coturn.db \
             --min-port=49160 --max-port=49200 >/tmp/stargram-coturn.log 2>&1 &
           TURN_PID=$!
-          trap 'kill "$TURN_PID" 2>/dev/null || true' EXIT
+          cleanup_turn() {
+            kill "$TURN_PID" 2>/dev/null || true
+            wait "$TURN_PID" 2>/dev/null || true
+          }
+          trap cleanup_turn EXIT
           ready=0
           for i in $(seq 1 30); do
             if node --input-type=module -e 'import net from "node:net"; const s=net.createConnection(3478,"127.0.0.1"); s.once("connect",()=>{s.destroy();process.exit(0)}); s.once("error",()=>process.exit(1));' ; then ready=1; break; fi
@@ -206,8 +214,8 @@ jobs:
           done
           test "$ready" = 1 || { cat /tmp/stargram-coturn.log; exit 1; }
           npm install --no-save --package-lock=false @playwright/test
-          npx playwright install --with-deps chromium
-          npm run test:webrtc-e2e
+          timeout 8m npx playwright install chromium
+          timeout 8m npm run test:webrtc-e2e
 
       - name: Start production web and Socket.IO processes
         run: |
