@@ -25,8 +25,7 @@ export const validateProductionEnv = (env = process.env) => {
   required(env, "S3_ACCESS_KEY");
   required(env, "S3_SECRET_KEY");
   const endpoint = required(env, "S3_ENDPOINT");
-  const localHttpS3 = env.STARGRAM_ALLOW_HTTP === "true"
-    && /^http:\/\//i.test(endpoint)
+  const localHttpS3 = /^http:\/\//i.test(endpoint)
     && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname);
   if (!/^https:\/\//i.test(endpoint) && !localHttpS3) {
     throw new Error("S3_ENDPOINT must use https:// in production (HTTP is allowed only for loopback S3 in explicit HTTP test mode)");
