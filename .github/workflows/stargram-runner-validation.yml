@@ -40,6 +40,10 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Static analysis for setup runner
+        run: shellcheck -S warning deploy/stargram-runner.sh
       - name: Check deployment script syntax
         run: npm run test:deployment
       - name: Test production configuration validation
