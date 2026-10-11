@@ -10,7 +10,7 @@ TURN_MAX_PORT=49200
 BACKUP_DIR=/var/backups/stargram-runner
 log(){ printf '\n==> %s\n' "$*"; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
-ask(){ local v; read -r -p "$1 [$2]: " v; printf '%s' "\${v:-$2}"; }
+ask(){ local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
 randhex(){ openssl rand -hex "$1"; }
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash deploy/stargram-runner.sh"
 command -v apt-get >/dev/null || die "Only Debian/Ubuntu supported."
@@ -19,7 +19,7 @@ mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
 open_ports(){
   log "Opening required ports using the host firewall"
   local ssh_port=""
-  [[ -n "\${SSH_CONNECTION:-}" ]] && ssh_port="$(awk '{print $4}' <<<"$SSH_CONNECTION")"
+  [[ -n "${SSH_CONNECTION:-}" ]] && ssh_port="$(awk '{print $4}' <<<"$SSH_CONNECTION")"
   if command -v ufw >/dev/null && ufw status | grep -q '^Status: active'; then
     [[ -n "$ssh_port" ]] && ufw allow "$ssh_port/tcp" >/dev/null
     ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 3478/tcp; ufw allow 3478/udp; ufw allow 5349/tcp
@@ -130,7 +130,7 @@ setup_network(){
 server {
  listen 80 default_server;
  listen [::]:80 default_server;
- server_name \${domain:-_};
+ server_name ${domain:-_};
  client_max_body_size 30m;
  location /socket.io/ {
   proxy_pass http://127.0.0.1:3001/socket.io/;
@@ -181,7 +181,7 @@ write_manual_env(){
   turnsecret="$(ask "TURN secret (32+ chars)" "")"; realm="$(ask "TURN realm" "")
   [[ "$mongo" == mongodb://* || "$mongo" == mongodb+srv://* ]] || die "Invalid MongoDB URI."
   [[ "$s3" == https://* || "$s3" == http://127.0.0.1:* ]] || die "S3 must use HTTPS or loopback HTTP."
-  [[ -n "$bucket" && -n "$access" && -n "$secret" && -n "$turn" && \${#turnsecret} -ge 32 && -n "$realm" ]] || die "Missing required values."
+  [[ -n "$bucket" && -n "$access" && -n "$secret" && -n "$turn" && ${#turnsecret} -ge 32 && -n "$realm" ]] || die "Missing required values."
   cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 secretKey=$(randhex 32)
@@ -201,7 +201,6 @@ TURN_MAX_PORT=$TURN_MAX_PORT
 CLAMAV_HOST=127.0.0.1
 CLAMAV_PORT=3310
 TRUSTED_PROXY_COUNT=1
-STARGRAM_ALLOW_HTTP=$([[ "$app" == http://* ]] && echo true || echo false)
 EOF
 }
 apply_config(){
@@ -209,7 +208,7 @@ apply_config(){
   cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
   chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
   set -a; . "$ENV_FILE"; set +a
-  [[ \${#secretKey} -ge 32 && \${#TURN_SECRET} -ge 32 ]] || die "Secrets missing or too short."
+  [[ ${#secretKey} -ge 32 && ${#TURN_SECRET} -ge 32 ]] || die "Secrets missing or too short."
   sudo -u "$APP_USER" env $(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | sed 's/[[:space:]]*#.*$//') NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
   install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my-telegram-web.service
   install -m 0644 "$APP_DIR/deploy/my-telegram-socket.service" /etc/systemd/system/my-telegram-socket.service
@@ -246,9 +245,16 @@ CLAMAV_PORT=3310
 $(cat /run/stargram-network.env)
 EOF
      apply_config ;;
-  2) install_packages; checkout_app; open_ports; write_manual_env; apply_config ;;
-  3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "\${EDITOR:-nano}" "$ENV_FILE" ;;
-  4) install_packages; checkout_app; apply_config ;;
+  2) install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
+  3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
+     install_packages; open_ports; setup_network
+     cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
+     sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
+     cat /run/stargram-network.env >> "$ENV_FILE"
+     chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
+     apply_config ;;
+  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE" ;;
+  5) install_packages; checkout_app; apply_config ;;
   0) exit 0 ;;
   *) die "Invalid option." ;;
 esac
