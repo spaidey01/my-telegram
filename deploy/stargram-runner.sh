@@ -174,9 +174,10 @@ EOF
     systemctl enable --now certbot.timer || true
     if [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
       sed -i '/^cert=/d;/^pkey=/d;/^tls-listening-port=/d' /etc/turnserver.conf
-      printf '\n tls-listening-port=5349\ncert=/etc/letsencrypt/live/%s/fullchain.pem\npkey=/etc/letsencrypt/live/%s/privkey.pem\n' "$domain" "$domain" >> /etc/turnserver.conf
+      printf '\ntls-listening-port=5349\ncert=/etc/letsencrypt/live/%s/fullchain.pem\npkey=/etc/letsencrypt/live/%s/privkey.pem\n' "$domain" "$domain" >> /etc/turnserver.conf
       systemctl restart coturn
-    fi  fi
+    fi
+  fi
   cat > /run/stargram-network.env <<EOF
 CLIENT_ORIGIN=$url
 NEXT_PUBLIC_APP_URL=$url
@@ -224,79 +225,8 @@ load_env_file(){
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
-    [[ "$value" != *
-echo "Stargram Setup Runner"
-echo "1) Automatic install (local MongoDB, MinIO/S3, Redis, Coturn, ClamAV)"
-echo "2) Manual service credentials; remaining dependencies install automatically"
-echo "3) Network / domain / HTTPS setup or update"
-echo "4) Edit configuration after install"
-echo "5) Validate/build/restart current configuration"
-echo "0) Exit"
-choice="$(ask "Choose" "1")"
-case "$choice" in
-  1) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to revalidate/rebuild or option 3 to edit it."
-     install_packages; checkout_app; open_ports; setup_auto_services; setup_network
-     cat > "$ENV_FILE" <<EOF
-NODE_ENV=production
-secretKey=$(randhex 32)
-$(cat /run/stargram-generated.env)
-REDIS_URL=redis://127.0.0.1:6379
-CLAMAV_HOST=127.0.0.1
-CLAMAV_PORT=3310
-$(cat /run/stargram-network.env)
-EOF
-     apply_config ;;
-  2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
-     install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
-  3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
-     install_packages; open_ports; setup_network
-     cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
-     sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
-     cat /run/stargram-network.env >> "$ENV_FILE"
-     chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
-     apply_config ;;
-  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE" ;;
-  5) install_packages; checkout_app; apply_config ;;
-  0) exit 0 ;;
-  *) die "Invalid option." ;;
-esac
-\\n'* && "$value" != *
-echo "Stargram Setup Runner"
-echo "1) Automatic install (local MongoDB, MinIO/S3, Redis, Coturn, ClamAV)"
-echo "2) Manual service credentials; remaining dependencies install automatically"
-echo "3) Network / domain / HTTPS setup or update"
-echo "4) Edit configuration after install"
-echo "5) Validate/build/restart current configuration"
-echo "0) Exit"
-choice="$(ask "Choose" "1")"
-case "$choice" in
-  1) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to revalidate/rebuild or option 3 to edit it."
-     install_packages; checkout_app; open_ports; setup_auto_services; setup_network
-     cat > "$ENV_FILE" <<EOF
-NODE_ENV=production
-secretKey=$(randhex 32)
-$(cat /run/stargram-generated.env)
-REDIS_URL=redis://127.0.0.1:6379
-CLAMAV_HOST=127.0.0.1
-CLAMAV_PORT=3310
-$(cat /run/stargram-network.env)
-EOF
-     apply_config ;;
-  2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
-     install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
-  3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
-     install_packages; open_ports; setup_network
-     cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
-     sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
-     cat /run/stargram-network.env >> "$ENV_FILE"
-     chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
-     apply_config ;;
-  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE" ;;
-  5) install_packages; checkout_app; apply_config ;;
-  0) exit 0 ;;
-  *) die "Invalid option." ;;
-esac
-\\r'* ]] || die "Newlines are not allowed in environment values ($key)."
+    [[ "$key" != line && "$key" != key && "$key" != value ]] || die "Reserved environment key: $key"
+    [[ "$value" != *$'\\n'* && "$value" != *$'\\r'* ]] || die "Newlines are not allowed in environment values ($key)."
     printf -v "$key" '%s' "$value"
     export "$key"
   done < "$ENV_FILE"
@@ -309,79 +239,7 @@ build_env_args(){
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
-    [[ "$value" != *
-echo "Stargram Setup Runner"
-echo "1) Automatic install (local MongoDB, MinIO/S3, Redis, Coturn, ClamAV)"
-echo "2) Manual service credentials; remaining dependencies install automatically"
-echo "3) Network / domain / HTTPS setup or update"
-echo "4) Edit configuration after install"
-echo "5) Validate/build/restart current configuration"
-echo "0) Exit"
-choice="$(ask "Choose" "1")"
-case "$choice" in
-  1) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to revalidate/rebuild or option 3 to edit it."
-     install_packages; checkout_app; open_ports; setup_auto_services; setup_network
-     cat > "$ENV_FILE" <<EOF
-NODE_ENV=production
-secretKey=$(randhex 32)
-$(cat /run/stargram-generated.env)
-REDIS_URL=redis://127.0.0.1:6379
-CLAMAV_HOST=127.0.0.1
-CLAMAV_PORT=3310
-$(cat /run/stargram-network.env)
-EOF
-     apply_config ;;
-  2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
-     install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
-  3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
-     install_packages; open_ports; setup_network
-     cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
-     sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
-     cat /run/stargram-network.env >> "$ENV_FILE"
-     chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
-     apply_config ;;
-  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE" ;;
-  5) install_packages; checkout_app; apply_config ;;
-  0) exit 0 ;;
-  *) die "Invalid option." ;;
-esac
-\\n'* && "$value" != *
-echo "Stargram Setup Runner"
-echo "1) Automatic install (local MongoDB, MinIO/S3, Redis, Coturn, ClamAV)"
-echo "2) Manual service credentials; remaining dependencies install automatically"
-echo "3) Network / domain / HTTPS setup or update"
-echo "4) Edit configuration after install"
-echo "5) Validate/build/restart current configuration"
-echo "0) Exit"
-choice="$(ask "Choose" "1")"
-case "$choice" in
-  1) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to revalidate/rebuild or option 3 to edit it."
-     install_packages; checkout_app; open_ports; setup_auto_services; setup_network
-     cat > "$ENV_FILE" <<EOF
-NODE_ENV=production
-secretKey=$(randhex 32)
-$(cat /run/stargram-generated.env)
-REDIS_URL=redis://127.0.0.1:6379
-CLAMAV_HOST=127.0.0.1
-CLAMAV_PORT=3310
-$(cat /run/stargram-network.env)
-EOF
-     apply_config ;;
-  2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
-     install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
-  3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
-     install_packages; open_ports; setup_network
-     cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
-     sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
-     cat /run/stargram-network.env >> "$ENV_FILE"
-     chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
-     apply_config ;;
-  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE" ;;
-  5) install_packages; checkout_app; apply_config ;;
-  0) exit 0 ;;
-  *) die "Invalid option." ;;
-esac
-\\r'* ]] || die "Newlines are not allowed in environment values ($key)."
+    [[ "$value" != *$'\\n'* && "$value" != *$'\\r'* ]] || die "Newlines are not allowed in environment values ($key)."
     ENV_ARGS+=("$key=$value")
   done < "$ENV_FILE"
 }
