@@ -190,7 +190,7 @@ jobs:
               error ? reject(error) : resolve();
             };
             socket.on("connect", () => {
-              socket.write(Buffer.from("zINSTREAM\\0"));
+              socket.write(Buffer.concat([Buffer.from("zINSTREAM"), Buffer.from([0])]));
               const size = Buffer.alloc(4);
               size.writeUInt32BE(eicar.length);
               socket.write(size);
@@ -199,7 +199,7 @@ jobs:
             });
             socket.on("data", (chunk) => {
               response += chunk.toString("utf8");
-              if (response.includes("\\0") || response.includes("\\n")) {
+              if (response.includes(String.fromCharCode(0)) || response.includes(String.fromCharCode(10))) {
                 try {
                   assert.match(response, /Eicar-Signature.*FOUND/i);
                   console.log("ClamAV detected the EICAR test signature");
