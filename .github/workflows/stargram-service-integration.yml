@@ -61,7 +61,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379
       S3_ACCESS_KEY: stargramci
       S3_SECRET_KEY: stargram-ci-s3-secret-0123456789
-      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_ENDPOINT: http://127.0.0.1:4566
       S3_BUCKET_NAME: stargram-ci
       CLIENT_ORIGIN: https://chat.example.test
       NEXT_PUBLIC_APP_URL: https://chat.example.test
@@ -89,22 +89,35 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Start isolated MinIO and create test bucket
+      - name: Start isolated LocalStack S3 and create test bucket
         run: |
-          docker run -d --name stargram-minio \
-            -p 9000:9000 -p 9001:9001 \
-            -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
-            -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            quay.io/minio/minio:latest server /data --console-address ":9001"
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null; then break; fi
+          docker run -d --name stargram-s3 \
+            -p 4566:4566 \
+            -e SERVICES=s3 \
+            -e DEFAULT_REGION=us-east-1 \
+            -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+            -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+            localstack/localstack:3
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:4566/_localstack/health >/dev/null; then break; fi
             sleep 2
           done
-          curl -fsS http://127.0.0.1:9000/minio/health/ready
-          docker run --rm --network host quay.io/minio/mc:latest \
-            alias set ci http://127.0.0.1:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
-          docker run --rm --network host quay.io/minio/mc:latest \
-            mb --ignore-existing ci/"$S3_BUCKET_NAME"
+          curl -fsS http://127.0.0.1:4566/_localstack/health
+          node --input-type=module <<'NODE'
+          import { CreateBucketCommand, S3Client } from "@aws-sdk/client-s3";
+          const client = new S3Client({
+            endpoint: process.env.S3_ENDPOINT,
+            region: "us-east-1",
+            forcePathStyle: true,
+            credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY },
+          });
+          try {
+            await client.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET_NAME }));
+            console.log("S3 test bucket created");
+          } finally {
+            client.destroy();
+          }
+          NODE
 
       - name: Validate production configuration
         run: npm run validate:production-env
