@@ -78,6 +78,7 @@ setup_auto_services(){
   docker run --rm --network host -e MC_HOST_stargram="http://$s3_user:$s3_pw@127.0.0.1:9000" quay.io/minio/mc:latest mb --ignore-existing stargram/stargram >/dev/null
   public_ip="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
   realm="$(ask "TURN realm (public IP or hostname)" "$public_ip")"; turn_secret="$(randhex 32)"
+  if [[ -f /etc/turnserver.conf ]]; then cp -a /etc/turnserver.conf "$BACKUP_DIR/turnserver.conf.$(date +%Y%m%d%H%M%S).bak"; fi
   cat > /etc/turnserver.conf <<EOF
 listening-port=3478
 tls-listening-port=5349
@@ -128,6 +129,7 @@ setup_network(){
     url="http://$ip"
     echo "WARNING: public HTTP over IP normally blocks browser microphone/camera. HTTPS is needed for public calls."
   fi
+  if [[ -f /etc/nginx/sites-available/stargram ]]; then cp -a /etc/nginx/sites-available/stargram "$BACKUP_DIR/nginx-stargram.$(date +%Y%m%d%H%M%S).bak"; fi
   cat > /etc/nginx/sites-available/stargram <<EOF
 server {
  listen 80 default_server;
