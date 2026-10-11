@@ -87,7 +87,7 @@ jobs:
           cache: npm
 
       - name: Install locked dependencies
-        run: npm ci
+        run: npm ci --include=dev
 
       - name: Start isolated LocalStack S3 and create test bucket
         run: |
