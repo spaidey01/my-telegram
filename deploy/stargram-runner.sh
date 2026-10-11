@@ -249,7 +249,8 @@ CLAMAV_PORT=3310
 $(cat /run/stargram-network.env)
 EOF
      apply_config ;;
-  2) install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
+  2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
+     install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
   3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
      install_packages; open_ports; setup_network
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
