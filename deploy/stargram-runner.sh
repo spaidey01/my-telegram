@@ -34,7 +34,8 @@ open_ports(){
     [[ -n "$ssh_port" ]] && ufw allow "$ssh_port/tcp" >/dev/null
     ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 3478/tcp; ufw allow 3478/udp; ufw allow 5349/tcp
     ufw allow "$TURN_MIN_PORT:$TURN_MAX_PORT/udp"
-    echo "UFW rules prepared but not enabled automatically, to avoid SSH lockout. Review and enable from a trusted session."
+    [[ -n "$ssh_port" ]] || ufw allow OpenSSH
+    ufw --force enable
   fi
 }
 install_packages(){
@@ -153,7 +154,10 @@ EOF
   nginx -t; systemctl enable --now nginx; systemctl reload nginx
   if [[ -n "$domain" ]]; then
     apt-get install -y certbot python3-certbot-nginx
-    certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect
+    if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then
+      echo "WARNING: certificate issuance failed (usually DNS or inbound port 80). Keeping HTTP test mode for now."
+      url="http://$ip"
+    fi
     systemctl enable --now certbot.timer || true
     if [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
       printf '\ncert=/etc/letsencrypt/live/%s/fullchain.pem\npkey=/etc/letsencrypt/live/%s/privkey.pem\n' "$domain" "$domain" >> /etc/turnserver.conf
@@ -233,7 +237,8 @@ echo "4) Validate/build/restart current configuration"
 echo "0) Exit"
 choice="$(ask "Choose" "1")"
 case "$choice" in
-  1) install_packages; checkout_app; open_ports; setup_auto_services; setup_network
+  1) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to revalidate/rebuild or option 3 to edit it."
+     install_packages; checkout_app; open_ports; setup_auto_services; setup_network
      cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 secretKey=$(randhex 32)
