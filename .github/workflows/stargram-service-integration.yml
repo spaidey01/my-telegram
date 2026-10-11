@@ -190,12 +190,12 @@ jobs:
               error ? reject(error) : resolve();
             };
             socket.on("connect", () => {
-              socket.write(Buffer.concat([Buffer.from("zINSTREAM"), Buffer.from([0])]));
               const size = Buffer.alloc(4);
               size.writeUInt32BE(eicar.length);
-              socket.write(size);
-              socket.write(eicar);
-              socket.write(Buffer.alloc(4));
+              socket.write(Buffer.concat([
+                Buffer.from("zINSTREAM"), Buffer.from([0]),
+                size, eicar, Buffer.alloc(4),
+              ]));
             });
             socket.on("data", (chunk) => {
               response += chunk.toString("utf8");
@@ -208,8 +208,12 @@ jobs:
               }
             });
             socket.on("error", done);
+          }).catch(async (error) => {
+            console.error(error);
+            process.exitCode = 1;
           });
           NODE
+          if [ "$?" -ne 0 ]; then docker logs stargram-clamav; exit 1; fi
 
       - name: Run real-browser WebRTC and TURN recovery tests
         run: |
