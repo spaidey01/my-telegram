@@ -95,15 +95,15 @@ jobs:
             -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
             -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
-            minio/minio:latest server /data --console-address ":9001"
+            quay.io/minio/minio:latest server /data --console-address ":9001"
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null; then break; fi
             sleep 2
           done
           curl -fsS http://127.0.0.1:9000/minio/health/ready
-          docker run --rm --network host minio/mc:latest \
+          docker run --rm --network host quay.io/minio/mc:latest \
             alias set ci http://127.0.0.1:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
-          docker run --rm --network host minio/mc:latest \
+          docker run --rm --network host quay.io/minio/mc:latest \
             mb --ignore-existing ci/"$S3_BUCKET_NAME"
 
       - name: Validate production configuration
