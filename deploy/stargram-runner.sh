@@ -71,6 +71,8 @@ setup_auto_services(){
   docker container inspect stargram-minio >/dev/null 2>&1 && die "Existing MinIO container found; refusing to guess credentials."
   docker run -d --name stargram-mongodb --restart unless-stopped -p 127.0.0.1:27017:27017 -e MONGO_INITDB_ROOT_USERNAME=stargram -e MONGO_INITDB_ROOT_PASSWORD="$mongo_pw" -e MONGO_INITDB_DATABASE=stargram -v stargram-mongodb-data:/data/db mongo:8 >/dev/null
   docker run -d --name stargram-minio --restart unless-stopped -p 127.0.0.1:9000:9000 -p 127.0.0.1:9001:9001 -e MINIO_ROOT_USER="$s3_user" -e MINIO_ROOT_PASSWORD="$s3_pw" -v stargram-minio-data:/data quay.io/minio/minio:latest server /data --console-address ':9001' >/dev/null
+  for _ in $(seq 1 60); do docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping}).ok' >/dev/null 2>&1 && break; sleep 2; done
+  docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping}).ok' >/dev/null 2>&1 || die "MongoDB did not become ready."
   for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1 && break; sleep 2; done
   curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1 || die "MinIO did not become ready."
   docker run --rm --network host -e MC_HOST_stargram="http://$s3_user:$s3_pw@127.0.0.1:9000" quay.io/minio/mc:latest mb --ignore-existing stargram/stargram >/dev/null
