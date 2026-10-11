@@ -1,0 +1,46 @@
+name: Stargram runner validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "deploy/stargram-runner.sh"
+      - "deploy/setup-vps.sh"
+      - "deploy/deploy-vps.sh"
+      - "src/utils/productionConfig.js"
+      - "tests/production-config.test.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/stargram-runner-validation.yml"
+  push:
+    branches: [feature/setup-wizard-runner]
+    paths:
+      - "deploy/stargram-runner.sh"
+      - "src/utils/productionConfig.js"
+      - "tests/production-config.test.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/stargram-runner-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Syntax and production config tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check deployment script syntax
+        run: npm run test:deployment
+      - name: Test production configuration validation
+        run: npm run test:production-config
