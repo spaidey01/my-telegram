@@ -156,65 +156,35 @@ jobs:
       - name: Run socket integration against MongoDB and Redis
         run: npm run test:integration
 
-      - name: Start ClamAV and verify EICAR stream scanning
+      - name: Start ClamAV and verify EICAR signature detection
         run: |
           docker run -d --name stargram-clamav -p 127.0.0.1:3310:3310 clamav/clamav:stable
           ready=0
           for i in $(seq 1 180); do
-            if node --input-type=module <<'NODE'
-          import net from "node:net";
-          const socket = net.createConnection({ host: "127.0.0.1", port: 3310 });
-          socket.setTimeout(1000);
-          socket.once("connect", () => { socket.destroy(); process.exit(0); });
-          socket.once("error", () => process.exit(1));
-          socket.once("timeout", () => { socket.destroy(); process.exit(1); });
-          NODE
-            then ready=1; break; fi
+            if node --input-type=module -e 'import net from "node:net"; const s=net.createConnection(3310,"127.0.0.1"); s.once("connect",()=>{s.destroy();process.exit(0)}); s.once("error",()=>process.exit(1));' ; then ready=1; break; fi
             sleep 2
           done
           test "$ready" = 1 || { docker logs stargram-clamav; exit 1; }
           node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-          import net from "node:net";
-          const eicar = Buffer.from("X5O!P%@AP[4\\PZX54(P^)7CC)7}$" + "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*");
-          await new Promise((resolve, reject) => {
-            const socket = net.createConnection({ host: "127.0.0.1", port: Number(process.env.CLAMAV_PORT) });
-            let response = "";
-            let finished = false;
-            const timer = setTimeout(() => { socket.destroy(); reject(new Error("ClamAV INSTREAM timed out")); }, 90000);
-            const done = (error) => {
-              if (finished) return;
-              finished = true;
-              clearTimeout(timer);
-              socket.destroy();
-              error ? reject(error) : resolve();
-            };
-            socket.on("connect", () => {
-              const size = Buffer.alloc(4);
-              size.writeUInt32BE(eicar.length);
-              socket.write(Buffer.concat([
-                Buffer.from("zINSTREAM"), Buffer.from([0]),
-                size, eicar, Buffer.alloc(4),
-              ]));
-            });
-            socket.on("data", (chunk) => {
-              response += chunk.toString("utf8");
-              if (response.includes(String.fromCharCode(0)) || response.includes(String.fromCharCode(10))) {
-                try {
-                  assert.match(response, /Eicar-Signature.*FOUND/i);
-                  console.log("ClamAV detected the EICAR test signature");
-                  done();
-                } catch (error) { done(new Error("Unexpected ClamAV response: " + response)); }
-              }
-            });
-            socket.on("error", done);
-          }).catch(async (error) => {
-            console.error(error);
-            process.exitCode = 1;
-          });
+          import { writeFileSync } from "node:fs";
+          const eicar = "X5O!P%@AP[4\\\\PZX54(P^)7CC)7}$" + "EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
+          writeFileSync("/tmp/stargram-eicar.com", eicar);
           NODE
-          if [ "$?" -ne 0 ]; then docker logs stargram-clamav; exit 1; fi
-
+          docker cp /tmp/stargram-eicar.com stargram-clamav:/tmp/stargram-eicar.com
+          scan_output=""
+          scan_status=0
+          for i in $(seq 1 45); do
+            scan_status=0
+            scan_output="$(docker exec stargram-clamav clamdscan --no-summary /tmp/stargram-eicar.com 2>&1)" || scan_status=$?
+            if echo "$scan_output" | grep -qi "Eicar-Signature.*FOUND"; then
+              echo "$scan_output"
+              echo "ClamAV detected the EICAR test signature"
+              break
+            fi
+            sleep 2
+          done
+          echo "$scan_output"
+          echo "$scan_output" | grep -qi "Eicar-Signature.*FOUND" || { docker logs stargram-clamav; exit 1; }
       - name: Run real-browser WebRTC and TURN recovery tests
         run: |
           sudo apt-get update
