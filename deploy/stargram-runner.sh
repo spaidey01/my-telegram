@@ -34,7 +34,7 @@ open_ports(){
     [[ -n "$ssh_port" ]] && ufw allow "$ssh_port/tcp" >/dev/null
     ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 3478/tcp; ufw allow 3478/udp; ufw allow 5349/tcp
     ufw allow "$TURN_MIN_PORT:$TURN_MAX_PORT/udp"
-    [[ -n "$ssh_port" ]] || ufw allow OpenSSH
+    [[ -n "$ssh_port" ]] || ufw allow 22/tcp
     ufw --force enable
   fi
 }
