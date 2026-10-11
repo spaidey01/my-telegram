@@ -44,6 +44,11 @@ test("explicit IP/HTTP test mode does not permit remote plain-HTTP S3", () => {
   assert.throws(() => validateProductionEnv(env), /S3_ENDPOINT must use https/);
 });
 
+test("secure public URLs can use loopback-only local S3 over HTTP", () => {
+  const env = { ...valid, S3_ENDPOINT: "http://127.0.0.1:9000" };
+  assert.deepEqual(validateProductionEnv(env), { ok: true });
+});
+
 for (const [name, mutate] of [
   ["missing Redis", (env) => { delete env.REDIS_URL; }],
   ["missing ClamAV", (env) => { delete env.CLAMAV_HOST; }],
