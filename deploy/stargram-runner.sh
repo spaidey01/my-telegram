@@ -211,19 +211,44 @@ CLAMAV_PORT=3310
 TRUSTED_PROXY_COUNT=1
 EOF
 }
+load_env_file(){
+  local line key value
+  [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
+    key="${line%%=*}"; value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
+    [[ "$key" != line && "$key" != key && "$key" != value ]] || die "Reserved environment key: $key"
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$ENV_FILE"
+}
+build_env_args(){
+  ENV_ARGS=()
+  local line key value
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
+    key="${line%%=*}"; value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
+    ENV_ARGS+=("$key=$value")
+  done < "$ENV_FILE"
+}
 apply_config(){
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
   cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
   chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
-  set -a; . "$ENV_FILE"; set +a
+  load_env_file
   [[ ${#secretKey} -ge 32 && ${#TURN_SECRET} -ge 32 ]] || die "Secrets missing or too short."
-  sudo -u "$APP_USER" env $(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | sed 's/[[:space:]]*#.*$//') NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
+  build_env_args
+  sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
   install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my-telegram-web.service
   install -m 0644 "$APP_DIR/deploy/my-telegram-socket.service" /etc/systemd/system/my-telegram-socket.service
   systemctl daemon-reload; systemctl enable --now redis-server
   systemctl enable clamav-daemon || true; systemctl restart clamav-daemon || true
   cd "$APP_DIR"; sudo -u "$APP_USER" npm ci
-  sudo -u "$APP_USER" env $(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' "$ENV_FILE" | sed 's/[[:space:]]*#.*$//') NODE_ENV=production npm run build
+  sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
   systemctl enable --now my-telegram-web my-telegram-socket; systemctl restart my-telegram-web my-telegram-socket
   sleep 3
   systemctl is-active --quiet my-telegram-web || die "Web service failed; check journalctl."
