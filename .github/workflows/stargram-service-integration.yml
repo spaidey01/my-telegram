@@ -1,0 +1,176 @@
+name: Stargram service integration
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "server/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/stargram-service-integration.yml"
+  push:
+    branches: [feature/setup-wizard-runner]
+    paths:
+      - "src/**"
+      - "server/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/stargram-service-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stargram-service-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: MongoDB, Redis, S3, build and runtime smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: production
+      secretKey: stargram-ci-secret-key-at-least-32-characters
+      MONGODB_URI: mongodb://127.0.0.1:27017/stargram_ci
+      REDIS_URL: redis://127.0.0.1:6379
+      S3_ACCESS_KEY: stargramci
+      S3_SECRET_KEY: stargram-ci-s3-secret-0123456789
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_BUCKET_NAME: stargram-ci
+      CLIENT_ORIGIN: https://chat.example.test
+      NEXT_PUBLIC_APP_URL: https://chat.example.test
+      NEXT_PUBLIC_SOCKET_SERVER_URL: https://chat.example.test
+      TURN_URL: turn:127.0.0.1:3478
+      TURN_SECRET: stargram-ci-turn-secret-at-least-32-characters
+      TURN_CREDENTIAL_TTL_SECONDS: "600"
+      TURN_REALM: ci.turn.stargram.local
+      CLAMAV_HOST: 127.0.0.1
+      CLAMAV_PORT: "3310"
+      TRUSTED_PROXY_COUNT: "0"
+      SOCKET_PORT: "3101"
+      SOCKET_HANDSHAKE_IP_LIMIT: "1000"
+      SOCKET_HANDSHAKE_USER_LIMIT: "1000"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Start isolated MinIO and create test bucket
+        run: |
+          docker run -d --name stargram-minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER="$S3_ACCESS_KEY" \
+            -e MINIO_ROOT_PASSWORD="$S3_SECRET_KEY" \
+            minio/minio:latest server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:9000/minio/health/ready
+          docker run --rm --network host minio/mc:latest \
+            alias set ci http://127.0.0.1:9000 "$S3_ACCESS_KEY" "$S3_SECRET_KEY"
+          docker run --rm --network host minio/mc:latest \
+            mb --ignore-existing ci/"$S3_BUCKET_NAME"
+
+      - name: Validate production configuration
+        run: npm run validate:production-env
+
+      - name: Lint and type-check
+        run: |
+          npm run lint
+          npx tsc --noEmit
+
+      - name: Build production application
+        run: npm run build
+
+      - name: Exercise S3-compatible storage
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+          const client = new S3Client({
+            endpoint: process.env.S3_ENDPOINT,
+            region: "us-east-1",
+            forcePathStyle: true,
+            credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY },
+          });
+          const key = "ci-smoke-test.txt";
+          try {
+            await client.send(new PutObjectCommand({ Bucket: process.env.S3_BUCKET_NAME, Key: key, Body: "stargram-s3-ok" }));
+            const response = await client.send(new GetObjectCommand({ Bucket: process.env.S3_BUCKET_NAME, Key: key }));
+            assert.equal(await response.Body.transformToString(), "stargram-s3-ok");
+            console.log("S3 put/get passed");
+          } finally {
+            await client.send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET_NAME, Key: key })).catch(() => {});
+            client.destroy();
+          }
+          NODE
+
+      - name: Run socket integration against MongoDB and Redis
+        run: npm run test:integration
+
+      - name: Start production web and Socket.IO processes
+        run: |
+          npm start > /tmp/stargram-web.log 2>&1 &
+          WEB_PID=$!
+          node server/index.js > /tmp/stargram-socket.log 2>&1 &
+          SOCKET_PID=$!
+          cleanup() {
+            kill "$WEB_PID" "$SOCKET_PID" 2>/dev/null || true
+            wait "$WEB_PID" "$SOCKET_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000/ -o /tmp/stargram-home.html; then
+              break
+            fi
+            if ! kill -0 "$WEB_PID" 2>/dev/null; then
+              cat /tmp/stargram-web.log
+              exit 1
+            fi
+            sleep 2
+          done
+          test -s /tmp/stargram-home.html || { cat /tmp/stargram-web.log; exit 1; }
+          grep -q "html" /tmp/stargram-home.html
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:3101/socket.io/?EIO=4&transport=polling" -o /tmp/stargram-socket-response.txt; then
+              break
+            fi
+            sleep 1
+          done
+          grep -q "sid" /tmp/stargram-socket-response.txt || { cat /tmp/stargram-socket.log; exit 1; }
+          echo "Web root and Socket.IO polling handshake passed"
