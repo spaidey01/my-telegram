@@ -176,7 +176,7 @@ jobs:
           for i in $(seq 1 45); do
             scan_status=0
             scan_output="$(docker exec stargram-clamav clamdscan --no-summary /tmp/stargram-eicar.com 2>&1)" || scan_status=$?
-            if echo "$scan_output" | grep -qi "Eicar-Signature.*FOUND"; then
+            if echo "$scan_output" | grep -qi "Eicar-.*Signature.*FOUND"; then
               echo "$scan_output"
               echo "ClamAV detected the EICAR test signature"
               break
@@ -184,7 +184,7 @@ jobs:
             sleep 2
           done
           echo "$scan_output"
-          echo "$scan_output" | grep -qi "Eicar-Signature.*FOUND" || { docker logs stargram-clamav; exit 1; }
+          echo "$scan_output" | grep -qi "Eicar-.*Signature.*FOUND" || { docker logs stargram-clamav; exit 1; }
       - name: Run real-browser WebRTC and TURN recovery tests
         run: |
           sudo apt-get update
