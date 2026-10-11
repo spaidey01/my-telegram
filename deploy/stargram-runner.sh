@@ -182,8 +182,6 @@ write_manual_env(){
   [[ "$mongo" == mongodb://* || "$mongo" == mongodb+srv://* ]] || die "Invalid MongoDB URI."
   [[ "$s3" == https://* || "$s3" == http://127.0.0.1:* ]] || die "S3 must use HTTPS or loopback HTTP."
   [[ -n "$bucket" && -n "$access" && -n "$secret" && -n "$turn" && \${#turnsecret} -ge 32 && -n "$realm" ]] || die "Missing required values."
-  [[ "$app" == https://* || "$app" == http://* ]] || die "Invalid app URL."
-  [[ "$socket" == https://* || "$socket" == http://* ]] || die "Invalid socket URL."
   cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 secretKey=$(randhex 32)
@@ -193,9 +191,7 @@ S3_ENDPOINT=$s3
 S3_BUCKET_NAME=$bucket
 S3_ACCESS_KEY=$access
 S3_SECRET_KEY=$secret
-CLIENT_ORIGIN=$app
-NEXT_PUBLIC_APP_URL=$app
-NEXT_PUBLIC_SOCKET_SERVER_URL=$socket
+$(cat /run/stargram-network.env)
 TURN_URL=$turn
 TURN_SECRET=$turnsecret
 TURN_CREDENTIAL_TTL_SECONDS=600
@@ -232,8 +228,9 @@ apply_config(){
 echo "Stargram Setup Runner"
 echo "1) Automatic install (local MongoDB, MinIO/S3, Redis, Coturn, ClamAV)"
 echo "2) Manual service credentials; remaining dependencies install automatically"
-echo "3) Edit configuration after install"
-echo "4) Validate/build/restart current configuration"
+echo "3) Network / domain / HTTPS setup or update"
+echo "4) Edit configuration after install"
+echo "5) Validate/build/restart current configuration"
 echo "0) Exit"
 choice="$(ask "Choose" "1")"
 case "$choice" in
