@@ -213,9 +213,13 @@ jobs:
             sleep 1
           done
           test "$ready" = 1 || { cat /tmp/stargram-coturn.log; exit 1; }
-          npm install --no-save --package-lock=false @playwright/test
-          timeout 8m npx playwright install chromium
-          timeout 8m npm run test:webrtc-e2e
+          npm install --prefix /tmp/stargram-playwright --no-save --package-lock=false @playwright/test
+          mkdir -p node_modules/@playwright
+          ln -sfn /tmp/stargram-playwright/node_modules/@playwright/test node_modules/@playwright/test
+          ln -sfn /tmp/stargram-playwright/node_modules/playwright node_modules/playwright
+          ln -sfn /tmp/stargram-playwright/node_modules/playwright-core node_modules/playwright-core
+          timeout 8m /tmp/stargram-playwright/node_modules/.bin/playwright install chromium
+          timeout 8m /tmp/stargram-playwright/node_modules/.bin/playwright test tests/webrtc.e2e.spec.mjs --workers=1
 
       - name: Start production web and Socket.IO processes
         run: |
