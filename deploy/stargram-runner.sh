@@ -173,12 +173,12 @@ STARGRAM_ALLOW_HTTP=$([[ "$url" == http://* ]] && echo true || echo false)
 EOF
 }
 write_manual_env(){
-  local mongo redis s3 bucket access secret app socket turn turnsecret realm
+  local mongo redis s3 bucket access secret turn turnsecret realm
   mongo="$(ask "MongoDB URI" "")"; redis="$(ask "Redis URL" "redis://127.0.0.1:6379")"
-  s3="$(ask "S3 endpoint (HTTPS or local loopback HTTP)" "")"; bucket="$(ask "S3 bucket" "")
-  access="$(ask "S3 access key" "")"; secret="$(ask "S3 secret key" "")
-  app="$(ask "App URL" "")"; socket="$(ask "Socket URL" "$app")"; turn="$(ask "TURN URL(s)" "")
-  turnsecret="$(ask "TURN secret (32+ chars)" "")"; realm="$(ask "TURN realm" "")
+  s3="$(ask "S3 endpoint (HTTPS or local loopback HTTP)" "")"; bucket="$(ask "S3 bucket" "")"
+  access="$(ask "S3 access key" "")"; secret="$(ask "S3 secret key" "")"
+  turn="$(ask "TURN URL(s)" "")"; turnsecret="$(ask "TURN secret (32+ chars)" "")"; realm="$(ask "TURN realm" "")"
+
   [[ "$mongo" == mongodb://* || "$mongo" == mongodb+srv://* ]] || die "Invalid MongoDB URI."
   [[ "$s3" == https://* || "$s3" == http://127.0.0.1:* ]] || die "S3 must use HTTPS or loopback HTTP."
   [[ -n "$bucket" && -n "$access" && -n "$secret" && -n "$turn" && ${#turnsecret} -ge 32 && -n "$realm" ]] || die "Missing required values."
