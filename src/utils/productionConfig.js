@@ -28,7 +28,7 @@ export const validateProductionEnv = (env = process.env) => {
   const localHttpS3 = /^http:\/\//i.test(endpoint)
     && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname);
   if (!/^https:\/\//i.test(endpoint) && !localHttpS3) {
-    throw new Error("S3_ENDPOINT must use https:// in production (HTTP is allowed only for loopback S3 in explicit HTTP test mode)");
+    throw new Error("S3_ENDPOINT must use https:// in production (HTTP is allowed only for loopback S3)");
   }
   required(env, "S3_BUCKET_NAME");
 
