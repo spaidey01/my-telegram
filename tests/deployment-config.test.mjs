@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const setup = readFileSync(new URL("../deploy/setup-vps.sh", import.meta.url), "utf8");
 const runner = readFileSync(new URL("../deploy/stargram-runner.sh", import.meta.url), "utf8");
+const deploy = readFileSync(new URL("../deploy/deploy-vps.sh", import.meta.url), "utf8");
 
 test("VPS setup uses the Node.js major required by package.json", () => {
   const engine = packageJson.engines?.node ?? "";
@@ -23,6 +24,11 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(runner, /BRANCH="\$\{BRANCH:-stargram_clone\}"/);
   assert.match(runner, /checkout "\$BRANCH"/);
   assert.match(runner, /checkout -b "\$BRANCH" "origin\/\$BRANCH"/);
+  assert.match(runner, /merge --ff-only "origin\/\$BRANCH"/);
+  assert.match(deploy, /BRANCH="\$\{BRANCH:-stargram_clone\}"/);
+  assert.match(deploy, /status --porcelain/);
+  assert.match(deploy, /checkout -b "\$BRANCH" "origin\/\$BRANCH"/);
+  assert.match(deploy, /merge --ff-only "origin\/\$BRANCH"/);
 });
 
 test("runner does not use floating latest container tags", () => {
