@@ -4,13 +4,41 @@ const required = (env, key) => {
   return value;
 };
 
-const requireHttpsUrl = (env, key) => {
+const isLoopbackHost = (hostname) =>
+  hostname === "localhost" ||
+  hostname === "127.0.0.1" ||
+  hostname === "[::1]";
+
+const requirePublicUrl = (env, key) => {
   const value = required(env, key);
   const urls = value.split(",").map((item) => item.trim()).filter(Boolean);
-  if (urls.some((url) => !/^https:\/\//i.test(url))) {
-    throw new Error(`${key} must use https:// in production`);
+  if (urls.length === 0) throw new Error(`${key} must contain at least one URL`);
+
+  for (const rawUrl of urls) {
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      throw new Error(`${key} contains an invalid URL`);
+    }
+    if (parsed.protocol === "https:") continue;
+    if (parsed.protocol === "http:" && env.STARGRAM_ALLOW_HTTP === "true") continue;
+    throw new Error(`${key} must use https:// in production unless STARGRAM_ALLOW_HTTP=true is explicitly set`);
   }
   return value;
+};
+
+const requireS3Endpoint = (env) => {
+  const value = required(env, "S3_ENDPOINT");
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("S3_ENDPOINT must be a valid URL");
+  }
+  if (parsed.protocol === "https:") return value;
+  if (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname)) return value;
+  throw new Error("S3_ENDPOINT must use https://, or http:// on loopback only");
 };
 
 export const validateProductionEnv = (env = process.env) => {
@@ -23,13 +51,12 @@ export const validateProductionEnv = (env = process.env) => {
   required(env, "REDIS_URL");
   required(env, "S3_ACCESS_KEY");
   required(env, "S3_SECRET_KEY");
-  const endpoint = required(env, "S3_ENDPOINT");
-  if (!/^https:\/\//i.test(endpoint)) throw new Error("S3_ENDPOINT must use https:// in production");
+  requireS3Endpoint(env);
   required(env, "S3_BUCKET_NAME");
 
-  requireHttpsUrl(env, "CLIENT_ORIGIN");
-  requireHttpsUrl(env, "NEXT_PUBLIC_APP_URL");
-  requireHttpsUrl(env, "NEXT_PUBLIC_SOCKET_SERVER_URL");
+  requirePublicUrl(env, "CLIENT_ORIGIN");
+  requirePublicUrl(env, "NEXT_PUBLIC_APP_URL");
+  requirePublicUrl(env, "NEXT_PUBLIC_SOCKET_SERVER_URL");
 
   required(env, "TURN_URL");
   required(env, "TURN_SECRET");
