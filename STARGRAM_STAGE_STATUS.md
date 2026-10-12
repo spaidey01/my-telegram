@@ -130,3 +130,33 @@ package.json on main declares Node.js >=22.0.0 <23, but deploy/setup-vps.sh expl
 - Passing CI on the runner branch does not prove production network/firewall/DNS/TLS setup or successful WebRTC between independent networks.
 - No branch was merged and main was not changed during this audit.
 - Remaining work: inspect the rest of the branch list and PR diffs, check all security-sensitive route/server changes, validate test coverage against behavior rather than token-presence tests, and record each finding with severity and a reproducible test before any integration.
+
+
+## Third-pass audit of remaining security branches (2026-10-12)
+
+| Branch | Compared against main | Evidence-based disposition |
+|---|---|---|
+| audit-fixes | server/index.js (437 lines vs 2256 on main), auth/currentuser and users/find routes | Stale implementation. The branch server is far behind current Socket.IO/session/call/security functionality; currentuser route lacks newer CSRF, rate-limit and session-version checks visible on main. Do not merge wholesale. |
+| production-fixes | server/index.js (739 lines vs 2256 on main), auth/files and package/workflow changes | Broad, stale fork of production code. Its large apparent diff is not a ready-made patch; merging risks deleting many current features and security fixes. Mine individual fixes only after reproducing the underlying issue. |
+| security-hardening | auth/login, auth/register, TokenDecoder, server and upload utilities | The branch versions of login/register lack current rate limiting, CSRF and session logic. Its TokenDecoder calls verify without the current explicit HS256 algorithm restriction and does not reject socket-scoped tokens in the same way as main. Do not merge wholesale; main has the stronger/current implementation in these inspected areas. |
+| restore-security-hardening | GitHub compare reports no changed files against main despite divergent commit history | No content delta surfaced in the compare response; likely redundant in tree content. Verify branch tree SHA if considering cleanup; no merge is needed to recover code that is already identical. |
+| security-hardening-v2 | file access/delete/verify, proxy and file schema | Several route files are older than main and omit current session/privacy/CSRF behavior. The proxy and schema had no text differences in the sampled comparison, but that does not make the rest of the branch safe. |
+| security-fixes-upload-dm-link (v1) and (v2) | presign/verify, users/find, server | Both diverge from current main. v2 has the same older server architecture and predates current session/CSRF protections. Treat as historical evidence, not merge candidates. |
+| fix/audit-p0 | 16 changed files including server, file access, rate limiter, UI and schemas | Divergent and older. The current main rate limiter includes Redis connection-failure handling and fail-closed behavior absent from the inspected branch version. Review each claimed P0 against current main rather than reapplying the branch. |
+
+## Branch-level feature inventory (not a merge recommendation)
+
+- feature/turn-system: TURN setup/credential/call changes are largely already present on main; check the exact 10-file delta before considering any isolated patch.
+- feature/call-reliability: call recovery is substantially represented on main, but this branch also changes server/index.js and many UI files. PR #10 is based on feature/turn-system rather than main, so its PR diff includes dependency-branch content; do not treat every changed line as unique call-reliability work.
+- feature/backlog-completion: comparison reports 590 commits ahead and 4 behind, with many deployment, docs, tests and application files. Main already contains much of the named backlog and test surface, but the histories are divergent; perform a content-by-content diff rather than merging this branch.
+- feature/setup-wizard-runner: 38 commits ahead and no commits behind in the earlier comparison; the runner/workflows are the clearest missing standalone capability. Latest Validate and service-integration CI runs at 0e625ec663cc3425b7ed7eb9f9a062fc8bec0da4 both succeeded.
+- fix-trusted-proxy-ip: single-file patch only, but the changed default is a security-sensitive behavior and should not be accepted without proxy-chain tests.
+- audit-fixes, production-fixes, security-hardening, security-hardening-v2, security-fixes-upload-dm-link, security-fixes-upload-dm-link-v2 and fix/audit-p0: current main has moved substantially beyond these branches; these are not safe whole-branch merge candidates.
+
+## Test-quality observation
+
+tests/call-reliability.test.mjs checks for the presence of expected source-code strings. This is useful as a regression smoke check, but it does not prove that reconnect, ICE restart, state rollback, multi-node recovery or call cleanup actually behave correctly at runtime. Keep it, but rely on browser-level/runtime tests for behavior and expand those tests for the failure/reconnect cases. The Playwright WebRTC test and service integration CI are stronger evidence, but neither substitutes for a real public VPS/network verification.
+
+## Current conclusion
+
+The initial branch audit now has concrete source-level evidence across all named branch families, and identifies multiple stale branches that would regress main if merged wholesale. The main confirmed deployment blocker is the Node 20 vs Node 22 mismatch in deploy/setup-vps.sh. The setup runner is a separate feature candidate with passing CI but still needs a disposable-VPS run and operational review. This audit is still not a claim that every line of all 14 branches has received a full manual review; before release integration, complete the remaining per-file diff and behavior tests, then produce a prioritized patch list with reproduction evidence.
