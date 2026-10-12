@@ -186,3 +186,9 @@ Changes committed on `stargram_clone`:
 - `269102d8d32800f058ab1dc1646594a7ed1f1cf8`: added service integration workflow with push trigger on `stargram_clone`.
 
 Additional checks are being added to keep the Node.js/branch/image assumptions from silently regressing. Remote CI and a real VPS run remain unverified at this point; the current container cannot reach GitHub to clone the branch, so local shell execution was not possible here. Do not consider Phase A complete until the GitHub Actions checks and a disposable-VPS rehearsal are confirmed.
+
+
+- Follow-up fix `7c7ee301920c872bb4a79b983f5d044863943653`: made `deploy/setup-vps.sh` create/reset the local tracking branch from `origin/stargram_clone` after fetching, so an existing checkout without a local `stargram_clone` branch does not fail at checkout.
+- Follow-up regression assertion `a146b075b1927dc40efa4307cd7a3c659e365708`: deployment config tests now assert this checkout behavior as well.
+- Source/config checks via GitHub file reads confirm: Node.js engine is `>=22.0.0 <23`; both installers default to `stargram_clone`; runner images no longer use `latest`; validation and integration workflows trigger on `stargram_clone`; `test:deployment` includes syntax checks plus the new deployment config tests.
+- Verification boundary: these are source-level assertions only. The current combined commit status endpoint reports Vercel deployment contexts as pending and does not expose the GitHub Actions job result; local clone/testing was blocked by this environment's DNS/network inability to reach github.com. Therefore no shellcheck, npm test, full CI, or real VPS pass is claimed yet. Phase A remains in progress until those checks are observed and a disposable-VPS rehearsal is done.
