@@ -221,6 +221,8 @@ load_env_file(){
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
     [[ "$key" != line && "$key" != key && "$key" != value ]] || die "Reserved environment key: $key"
     printf -v "$key" '%s' "$value"
+    # The variable name is loaded dynamically from the validated env-file key.
+    # shellcheck disable=SC2163
     export "$key"
   done < "$ENV_FILE"
 }
@@ -240,6 +242,8 @@ apply_config(){
   cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
   chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
   load_env_file
+  # secretKey is populated by load_env_file via printf -v.
+  # shellcheck disable=SC2154
   [[ ${#secretKey} -ge 32 && ${#TURN_SECRET} -ge 32 ]] || die "Secrets missing or too short."
   build_env_args
   sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
