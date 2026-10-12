@@ -31,7 +31,8 @@ for (const [name, mutate] of [
   ["missing Redis", (env) => { delete env.REDIS_URL; }],
   ["missing ClamAV", (env) => { delete env.CLAMAV_HOST; }],
   ["missing ephemeral TURN secret", (env) => { delete env.TURN_SECRET; }],
-  ["HTTP public app URL", (env) => { env.NEXT_PUBLIC_APP_URL = "http://chat.example.com"; }],
+  ["HTTP public app URL without explicit opt-in", (env) => { env.NEXT_PUBLIC_APP_URL = "http://chat.example.com"; }],
+  ["HTTP S3 endpoint outside loopback", (env) => { env.S3_ENDPOINT = "http://storage.example.com"; }],
   ["weak application secret", (env) => { env.secretKey = "short"; }],
   ["invalid proxy count", (env) => { env.TRUSTED_PROXY_COUNT = "1.5"; }],
 ]) {
@@ -68,4 +69,18 @@ test("file deletion is bound to the active session and browser request policy", 
   assert.match(route, /revokedAt: null/);
   assert.match(route, /sessionVersion/);
   assert.match(route, /sessionId/);
+});
+
+test("explicit HTTP test mode permits HTTP app URLs only when opted in", () => {
+  const env = { ...valid, STARGRAM_ALLOW_HTTP: "true", CLIENT_ORIGIN: "http://chat.example.test", NEXT_PUBLIC_APP_URL: "http://chat.example.test", NEXT_PUBLIC_SOCKET_SERVER_URL: "http://chat.example.test" };
+  assert.deepEqual(validateProductionEnv(env), { ok: true });
+});
+
+test("HTTP S3 endpoint is permitted on loopback for local MinIO/LocalStack only", () => {
+  assert.deepEqual(validateProductionEnv({ ...valid, S3_ENDPOINT: "http://127.0.0.1:9000" }), { ok: true });
+  assert.deepEqual(validateProductionEnv({ ...valid, S3_ENDPOINT: "http://localhost:4566" }), { ok: true });
+});
+
+test("HTTP S3 endpoint is rejected for a non-loopback host even in HTTP test mode", () => {
+  assert.throws(() => validateProductionEnv({ ...valid, STARGRAM_ALLOW_HTTP: "true", S3_ENDPOINT: "http://storage.example.com" }), /loopback only/);
 });
