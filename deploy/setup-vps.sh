@@ -6,7 +6,7 @@ APP_USER="${APP_USER:-telegram}"
 APP_GROUP="${APP_GROUP:-telegram}"
 ENV_FILE="${ENV_FILE:-/etc/my-telegram.env}"
 REPO_URL="${REPO_URL:-https://github.com/spaidey01/my-telegram.git}"
-BRANCH="${BRANCH:-main}"
+BRANCH="${BRANCH:-stargram_clone}"
 
 log() { printf '\n==> %s\n' "$1"; }
 die() { echo "ERROR: $1" >&2; exit 1; }
@@ -22,14 +22,14 @@ else
   die "This installer currently supports Debian/Ubuntu VPS only."
 fi
 
-log "Installing Node.js 20"
-if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.split(".")[0]')" != "20" ]]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+log "Installing Node.js 22"
+if ! command -v node >/dev/null 2>&1 || [[ "$(node -p 'process.versions.node.split(".")[0]')" != "22" ]]; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
 fi
 
 node_major="$(node -p 'process.versions.node.split(".")[0]')"
-[[ "$node_major" == "20" ]] || die "Node.js 20 is required; detected $(node -v)."
+[[ "$node_major" == "22" ]] || die "Node.js 22 is required; detected $(node -v)."
 
 log "Creating application user"
 if ! id "$APP_USER" >/dev/null 2>&1; then
