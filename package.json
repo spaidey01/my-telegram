@@ -20,7 +20,7 @@
     "validate:production-env": "node ./scripts/validate-production-env.mjs",
     "test:production-config": "node --test tests/production-config.test.mjs",
     "validate:production-network": "node ./scripts/validate-production-network.mjs",
-    "test:deployment": "bash -n deploy/setup-vps.sh deploy/deploy-vps.sh deploy/stargram-runner.sh"
+    "test:deployment": "bash -n deploy/setup-vps.sh deploy/deploy-vps.sh deploy/stargram-runner.sh && node --test tests/deployment-config.test.mjs"
   },
   "dependencies": {
     "aos": "^2.3.4",
