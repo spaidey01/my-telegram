@@ -1,17 +1,16 @@
 # Stargram Stage Status & Branch Audit
 
-> **Current phase: Stage 1 — baseline inventory and integration audit.**
-> This file is deliberately explicit so nobody mistakes the backup snapshot for a release-ready integrated build.
+> **Current phase: Phase A — deployment/install integration on `stargram_clone`.**
+> `stargram_clone` is the active development and test branch. `main` remains unchanged until implementation, full debugging, final verification, and explicit approval.
 
-## Safety snapshot
+## Development branch and release safety
 
 - Repository: `spaidey01/my-telegram`
-- Backup branch: `stargram_clone`
-- Snapshot source: `main` at `b40f6f37783f26a54e37e3e3dc952de21190f07e`
-- Snapshot created: 2026-10-12
-- Purpose: preserve the current `main` code before evaluating branch-only changes.
-- This snapshot does not merge any feature branch and does not modify `main`.
-- Treat this branch as a backup/audit baseline, **not** as a verified release.
+- Active integration/test branch: `stargram_clone`
+- Initial baseline: `main` at `b40f6f37783f26a54e37e3e3dc952de21190f07e`
+- `stargram_clone` is now the branch for implementing, adapting, testing, and debugging all requested capabilities against the current codebase.
+- `main` must remain unchanged until all seven priority areas are implemented/reviewed, a complete regression/debug pass and final checks are done, and the owner explicitly approves promotion.
+- Do not treat any branch or CI result as production-ready without verifying the exact commit and test evidence.
 
 ## User-requested workflow
 
@@ -162,16 +161,14 @@ tests/call-reliability.test.mjs checks for the presence of expected source-code 
 The initial branch audit now has concrete source-level evidence across all named branch families, and identifies multiple stale branches that would regress main if merged wholesale. The main confirmed deployment blocker is the Node 20 vs Node 22 mismatch in deploy/setup-vps.sh. The setup runner is a separate feature candidate with passing CI but still needs a disposable-VPS run and operational review. This audit is still not a claim that every line of all 14 branches has received a full manual review; before release integration, complete the remaining per-file diff and behavior tests, then produce a prioritized patch list with reproduction evidence.
 
 
-## Decision update — rebuild on the audited baseline (2026-10-12)
+## Decision update — active integration on `stargram_clone` (2026-10-12)
 
-The project owner prefers rebuilding/revalidating needed capabilities on the current baseline instead of merging the divergent feature/security branches wholesale. Adopt this as the working strategy:
+The owner has explicitly directed that `stargram_clone` be the active integration/test branch. All seven priority areas remain in scope. Adapt and validate capabilities against the current code rather than merging divergent branches wholesale. Keep `main` unchanged until all implementation and debugging is complete and the owner explicitly approves promotion. Phase A starts with the Node.js mismatch, interactive runner, runner CI, and deployment validation. Passing CI is not a substitute for a disposable-VPS rehearsal.
 
-1. Keep `stargram_clone` as the immutable reference snapshot for the audit stage; do not turn it into the development branch.
-2. Keep `main` unchanged until an explicitly approved change is ready.
-3. Do not merge the old divergent branches wholesale. Treat them as historical reference only; extract a requirement or test idea only when useful.
-4. Implement each genuinely needed capability as a small, reviewable patch based on current main, with regression tests and evidence.
-5. First priority is the verified Node.js 20-vs-22 installer mismatch. Next priorities are behavior-level tests for auth/session, upload/file access, trusted proxy IP, TURN and call recovery, followed by a disposable-VPS installation rehearsal.
-6. Before each implementation, confirm the current main code does not already provide the behavior. Avoid duplicate implementations and avoid replacing newer code with older branch copies.
-7. After a patch passes relevant CI and review, present its exact files, commit SHA, test results, risk and rollback approach for approval before changing main or merging.
 
-This decision changes the integration strategy, not the feature inventory: existing working capabilities on main should be retained and verified, not rewritten merely for the sake of rebuilding.
+## Phase A execution log
+
+- Started: 2026-10-12.
+- Branch role corrected: `stargram_clone` is the active integration/test branch, not an immutable snapshot.
+- Confirmed baseline issue: `deploy/setup-vps.sh` installs/requires Node.js 20 while `package.json` requires Node `>=22.0.0 <23`.
+- Pending Phase A validation: shellcheck/syntax, production config tests, CI runs, runner review, and a disposable-VPS installation rehearsal. No VPS run is claimed by this report.
