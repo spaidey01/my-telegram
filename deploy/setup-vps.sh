@@ -54,8 +54,6 @@ chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 log "Installing dependencies and building"
 cd "$APP_DIR"
 sudo -u "$APP_USER" npm ci
-sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
-
 log "Installing systemd units"
 install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my-telegram-web.service
 install -m 0644 "$APP_DIR/deploy/my-telegram-socket.service" /etc/systemd/system/my-telegram-socket.service
@@ -82,7 +80,7 @@ if ! grep -q '^secretKey=' "$ENV_FILE" || grep -q '^secretKey=replace-with' "$EN
 else
   ENV_ARGS=()
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \\#* ]] && continue
+    [[ -z "$line" || "$line" == \#* ]] && continue
     [[ "$line" == *=* ]] || die "Invalid environment line in $ENV_FILE."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key in $ENV_FILE."
