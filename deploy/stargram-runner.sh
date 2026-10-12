@@ -60,8 +60,7 @@ checkout_app(){
   if [[ -d "$APP_DIR/.git" ]]; then
     [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
     git -C "$APP_DIR" fetch origin "$BRANCH"
-    [[ "$(git -C "$APP_DIR" branch --show-current)" == "$BRANCH" ]] || die "Checkout is not on $BRANCH."
-    git -C "$APP_DIR" merge --ff-only "origin/$BRANCH"
+    git -C "$APP_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
   elif [[ -e "$APP_DIR" ]]; then die "$APP_DIR exists and is not a Git checkout."
   else git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"; fi
   id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "/home/$APP_USER" --shell /usr/sbin/nologin "$APP_USER"
