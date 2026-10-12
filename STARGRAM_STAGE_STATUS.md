@@ -51,13 +51,13 @@ The branch `feature/backlog-completion` has a large/diverged history relative to
 
 | Area | What to compare | Current status |
 |---|---|---|
-| Core messaging/auth/privacy | `main` versus backlog/security branches; review current source, not branch name | Pending source review |
-| TURN credentials and deployment | `main` versus #9, including env/config/docs/tests | Pending detailed file diff |
-| Call reconnect/ICE recovery | `main` versus #10 and its #9 base | Pending detailed file diff |
-| Proxy/IP trust | `src/utils/rateLimit.ts` and actual reverse-proxy topology | Pending security review |
-| Runner/install flow | `deploy/stargram-runner.sh`, service units, package test scripts and CI | Runner absent from baseline package syntax test; integration pending |
-| File upload / ClamAV | presign, verify, access, delete routes and scanner fail-closed behavior | Pending source review |
-| Tests and CI | workflow coverage, dependency lockfile, real browser/media scope | Pending complete CI review |
+| Core messaging/auth/privacy | `main` has extensive server, session, privacy and scheduled-message code; compare exact security branch diffs for regressions | Partial source review; branch-by-branch review pending |
+| TURN credentials and deployment | `main` already contains `src/utils/turnCredentials.js`, `src/app/api/calls/turn-credentials/route.ts`, `.env.example` TURN keys, and `tests/turn-credentials.test.mjs` | Feature is present on baseline; PR #9 is not a reason to re-add files blindly. Verify runtime/deployment deltas and tests |
+| Call reconnect/ICE recovery | `main` `CallOverlay.tsx` contains reconnecting/failed states, persisted call state, ICE restart, stats/quality, and `tests/call-reliability.test.mjs` exists | Major reliability feature already present on baseline; compare exact remaining server/client differences from #10 |
+| Proxy/IP trust | `main` defaults `TRUSTED_PROXY_COUNT` to `0`, trusts forwarding headers only when explicitly configured, and checks `X-Real-IP` only when configured | Baseline behavior is conservative; PR #5's different default and indexing need security review, do not apply wholesale |
+| Runner/install flow | `deploy/stargram-runner.sh` exists only on `feature/setup-wizard-runner`, not `main`; current `main` `test:deployment` syntax-checks only `setup-vps.sh` and `deploy-vps.sh` | Runner is not in baseline; also baseline setup script says Node.js 20 while `package.json` requires Node >=22 <23. Must fix/verify before install |
+| File upload / ClamAV | `main` has presign/verify/access/delete paths and pending-upload storage helpers; CI claims need rechecked against latest runs | Partial source review; test fail-closed paths and security branch deltas pending |
+| Tests and CI | Baseline `package.json` includes TURN, call reliability, backlog, security, multi-node and Playwright WebRTC test scripts; `test:deployment` omits the runner | Some work from feature branches is already on `main`; verify workflow execution and actual runtime behavior before calling complete |
 
 ## Rules while auditing
 
@@ -71,3 +71,31 @@ The branch `feature/backlog-completion` has a large/diverged history relative to
 ## Next action
 
 Continue the audit from the exact `stargram_clone` snapshot: inspect current implementations and compare focused branch diffs one area at a time. Update this matrix with concrete file paths, tests, findings, and evidence before changing application code.
+
+
+## Source-level audit findings (first pass, 2026-10-12)
+
+### Confirmed present on the `stargram_clone` baseline
+
+- TURN credential helper: `src/utils/turnCredentials.js`.
+- Authenticated TURN endpoint: `src/app/api/calls/turn-credentials/route.ts`. Current baseline validates token subject/session version/session id, checks an active session record, rate-limits requests, and disables caching.
+- TURN tests: `tests/turn-credentials.test.mjs`.
+- Call recovery client code: `src/components/CallOverlay.tsx` includes `reconnecting` / `failed` states, persisted call identity, ICE restart, network online/offline listeners, and connection-quality reporting.
+- Call reliability contract tests: `tests/call-reliability.test.mjs`.
+- Real-browser WebRTC test: `tests/webrtc.e2e.spec.mjs`.
+- Proxy trust default: `TRUSTED_PROXY_COUNT` defaults to `0`, which avoids trusting forwarded client headers on a direct deployment by default.
+
+### Confirmed missing or inconsistent on the baseline
+
+- `deploy/stargram-runner.sh` is not present on `main`; it exists on `feature/setup-wizard-runner`.
+- `package.json` requires Node `>=22.0.0 <23`, but `deploy/setup-vps.sh` currently logs/installs Node.js 20. This is a deployment blocker until the installer is corrected and validated.
+- `npm run test:deployment` on baseline checks shell syntax only for `deploy/setup-vps.sh` and `deploy/deploy-vps.sh`, not the interactive Runner.
+- Existing TURN and call-reliability code means PR #9/#10 must be reviewed for only genuinely missing changes, fixes, or tests; re-applying the full PRs would risk duplicating or overwriting newer baseline logic.
+
+### Security review note: proxy PR #5
+
+The branch patch changes the default trusted proxy count from `0` to `1` and changes how the selected forwarded IP is indexed. The current baseline is safer for direct exposure by default. Do not apply this patch wholesale. First confirm the exact reverse-proxy topology and add tests for forged `X-Forwarded-For`, too-short chains, and both direct and proxied deployments.
+
+### Still not yet concluded
+
+This is a first-pass, file-backed audit—not the complete review of every branch. No feature branch has been merged into `stargram_clone` or `main` as part of this first pass. Next review the remaining security/backlog branches by their changed files, run/inspect current CI, and record concrete defects and conflicts before any code integration.
