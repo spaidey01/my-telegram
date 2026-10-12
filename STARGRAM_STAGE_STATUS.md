@@ -192,3 +192,19 @@ Additional checks are being added to keep the Node.js/branch/image assumptions f
 - Follow-up regression assertion `a146b075b1927dc40efa4307cd7a3c659e365708`: deployment config tests now assert this checkout behavior as well.
 - Source/config checks via GitHub file reads confirm: Node.js engine is `>=22.0.0 <23`; both installers default to `stargram_clone`; runner images no longer use `latest`; validation and integration workflows trigger on `stargram_clone`; `test:deployment` includes syntax checks plus the new deployment config tests.
 - Verification boundary: these are source-level assertions only. The current combined commit status endpoint reports Vercel deployment contexts as pending and does not expose the GitHub Actions job result; local clone/testing was blocked by this environment's DNS/network inability to reach github.com. Therefore no shellcheck, npm test, full CI, or real VPS pass is claimed yet. Phase A remains in progress until those checks are observed and a disposable-VPS rehearsal is done.
+
+
+### Phase A follow-up — installer compatibility and non-destructive updates (2026-10-12)
+
+Additional source-level issues found while continuing review and fixes committed on `stargram_clone`:
+
+- `e7e8d492554e8832f98250bb4d5170aba33d8cc9`: production URL validation now permits local S3-compatible endpoints over HTTP only on loopback, which is needed by the automatic MinIO setup and the LocalStack CI service. Public app URLs remain HTTPS-only unless the explicit `STARGRAM_ALLOW_HTTP=true` test-mode switch is set.
+- `7359a31cd581706c36d8df6d6f99d279efac11e3`: added regression tests for explicit HTTP test mode, loopback S3 endpoints, and rejection of non-loopback HTTP S3.
+- `cc23121dbf55893645442fc04624502d7462cd61`: `deploy/deploy-vps.sh` now defaults to `stargram_clone`.
+- `bc23e2c1dad952a06b175b8adf451f11028534ec` and `24928fc97356713974b66a19d2af2f2ebbde3c89`: runner checkout handling was reviewed and adjusted so a clean existing checkout can select/create the test branch and advance only with a fast-forward; dirty working trees are refused.
+- `11d7e7992ebb45bb6a627a013675d562f11a1bdf`: validation workflow path filters now include both VPS scripts and deployment config tests.
+- `c92a7b49c59af968537c92d942bf4132b5ac33a7`: firewall setup falls back to allowing SSH port 22 if it cannot infer the active SSH port from `SSH_CONNECTION`.
+- `4921c8b336097dd886c2fe21b41ca06aae59d047` and `deaa12bf7f6f8cd8d18c77dd6fcab56825191c0b`: setup and update scripts now refuse dirty checkouts, fetch the configured branch, create the local tracking branch if needed, and use fast-forward-only updates instead of forcibly replacing the checkout.
+- `c82a931025d0a2b91181543ff0c5be9528051d69`: deployment source assertions expanded to cover safe branch selection/update behavior.
+
+Source reads confirm these changes are present on `stargram_clone`. The current combined-status API still only exposes pending Vercel contexts for the latest commit and does not give the Actions job result. This environment also cannot clone/fetch GitHub for local execution. No successful ShellCheck/npm/Actions/VPS run is claimed. Phase A is still in progress; the next gate is observing the actual Actions workflow result and running the installer on a disposable Debian/Ubuntu VPS.
