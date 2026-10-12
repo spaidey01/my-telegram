@@ -172,3 +172,17 @@ The owner has explicitly directed that `stargram_clone` be the active integratio
 - Branch role corrected: `stargram_clone` is the active integration/test branch, not an immutable snapshot.
 - Confirmed baseline issue: `deploy/setup-vps.sh` installs/requires Node.js 20 while `package.json` requires Node `>=22.0.0 <23`.
 - Pending Phase A validation: shellcheck/syntax, production config tests, CI runs, runner review, and a disposable-VPS installation rehearsal. No VPS run is claimed by this report.
+
+
+### Phase A implementation update (2026-10-12)
+
+Changes committed on `stargram_clone`:
+
+- `20043e38ac1906d82123943ded8774864495c0b2`: updated this status document so `stargram_clone` is the active integration/test branch; `main` remains protected.
+- `3047ba7db26c62e3bb5e008518ee6633e8e2834e`: corrected `deploy/setup-vps.sh` from Node.js 20 to Node.js 22 and changed its default checkout branch to `stargram_clone`.
+- `87dc1a8d58e4a19143ed4d994d818d0420c85a8f`: expanded `test:deployment` to include the runner (subsequently extended to run deployment config assertions).
+- `813b550bd0e90d10588faaa7a4d47760d1127afe`: added `deploy/stargram-runner.sh` to the active branch, defaulting to `stargram_clone`, exposing configurable image refs and using version-tagged MongoDB/MinIO images instead of `latest`.
+- `1ace0f71697308b5db3c93ba04dce17bfc83739f`: added runner validation workflow with push trigger on `stargram_clone`.
+- `269102d8d32800f058ab1dc1646594a7ed1f1cf8`: added service integration workflow with push trigger on `stargram_clone`.
+
+Additional checks are being added to keep the Node.js/branch/image assumptions from silently regressing. Remote CI and a real VPS run remain unverified at this point; the current container cannot reach GitHub to clone the branch, so local shell execution was not possible here. Do not consider Phase A complete until the GitHub Actions checks and a disposable-VPS rehearsal are confirmed.
