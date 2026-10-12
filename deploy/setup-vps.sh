@@ -17,7 +17,7 @@ if command -v apt-get >/dev/null 2>&1; then
   log "Installing base packages"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
-  apt-get install -y ca-certificates curl git build-essential nginx redis-server clamav clamav-daemon coturn
+  apt-get install -y ca-certificates curl git build-essential nginx redis-server clamav clamav-daemon coturn sudo
 else
   die "This installer currently supports Debian/Ubuntu VPS only."
 fi
