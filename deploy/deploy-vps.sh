@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/my-telegram}"
-BRANCH="${BRANCH:-main}"
+BRANCH="${BRANCH:-stargram_clone}"
 ENV_FILE="${ENV_FILE:-/etc/my-telegram.env}"
 APP_USER="${APP_USER:-telegram}"
 
@@ -14,7 +14,7 @@ die() { echo "ERROR: $1" >&2; exit 1; }
 
 log "Updating source"
 git -C "$APP_DIR" fetch origin "$BRANCH"
-git -C "$APP_DIR" checkout "$BRANCH"
+git -C "$APP_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
 git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 
 log "Installing dependencies"
