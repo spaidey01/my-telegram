@@ -26,14 +26,18 @@ sudo -u "$APP_USER" npm ci
 
 log "Validating production environment"
 [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE"
-set -a
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a
-sudo -u "$APP_USER" env NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
+ENV_ARGS=()
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ -z "$line" || "$line" == \\#* ]] && continue
+  [[ "$line" == *=* ]] || die "Invalid environment line in $ENV_FILE."
+  key="${line%%=*}"; value="${line#*=}"
+  [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key in $ENV_FILE."
+  ENV_ARGS+=("$key=$value")
+done < "$ENV_FILE"
+sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
 
 log "Building"
-sudo -u "$APP_USER" npm run build
+sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
 
 log "Restarting Stargram"
 systemctl daemon-reload
