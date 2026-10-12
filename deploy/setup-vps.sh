@@ -40,7 +40,7 @@ APP_GROUP="$(id -gn "$APP_USER")"
 log "Installing Stargram"
 if [[ -d "$APP_DIR/.git" ]]; then
   git -C "$APP_DIR" fetch origin "$BRANCH"
-  git -C "$APP_DIR" checkout "$BRANCH"
+  git -C "$APP_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
   git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 else
   git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
