@@ -19,6 +19,8 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(setup, /BRANCH="\$\{BRANCH:-stargram_clone\}"/);
   assert.match(setup, /checkout -B "\$BRANCH" "origin\/\$BRANCH"/);
   assert.match(runner, /BRANCH="\$\{BRANCH:-stargram_clone\}"/);
+  assert.match(runner, /checkout "\$BRANCH"/);
+  assert.match(runner, /checkout -b "\$BRANCH" "origin\/\$BRANCH"/);
 });
 
 test("runner does not use floating latest container tags", () => {
