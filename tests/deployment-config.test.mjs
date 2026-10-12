@@ -17,6 +17,7 @@ test("VPS setup uses the Node.js major required by package.json", () => {
 
 test("deployment targets stargram_clone by default, not main", () => {
   assert.match(setup, /BRANCH="\$\{BRANCH:-stargram_clone\}"/);
+  assert.match(setup, /checkout -B "\$BRANCH" "origin\/\$BRANCH"/);
   assert.match(runner, /BRANCH="\$\{BRANCH:-stargram_clone\}"/);
 });
 
