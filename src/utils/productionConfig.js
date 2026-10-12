@@ -4,11 +4,12 @@ const required = (env, key) => {
   return value;
 };
 
-const requireHttpsUrl = (env, key) => {
+const requirePublicUrl = (env, key) => {
   const value = required(env, key);
   const urls = value.split(",").map((item) => item.trim()).filter(Boolean);
-  if (urls.some((url) => !/^https:\/\//i.test(url))) {
-    throw new Error(`${key} must use https:// in production`);
+  const allowHttp = env.STARGRAM_ALLOW_HTTP === "true";
+  if (urls.some((url) => !/^https:\/\//i.test(url) && !(allowHttp && /^http:\/\//i.test(url)))) {
+    throw new Error(`${key} must use https:// in production unless STARGRAM_ALLOW_HTTP=true is explicitly set`);
   }
   return value;
 };
@@ -24,12 +25,16 @@ export const validateProductionEnv = (env = process.env) => {
   required(env, "S3_ACCESS_KEY");
   required(env, "S3_SECRET_KEY");
   const endpoint = required(env, "S3_ENDPOINT");
-  if (!/^https:\/\//i.test(endpoint)) throw new Error("S3_ENDPOINT must use https:// in production");
+  const localHttpS3 = /^http:\/\//i.test(endpoint)
+    && ["127.0.0.1", "localhost", "[::1]"].includes(new URL(endpoint).hostname);
+  if (!/^https:\/\//i.test(endpoint) && !localHttpS3) {
+    throw new Error("S3_ENDPOINT must use https:// in production (HTTP is allowed only for loopback S3)");
+  }
   required(env, "S3_BUCKET_NAME");
 
-  requireHttpsUrl(env, "CLIENT_ORIGIN");
-  requireHttpsUrl(env, "NEXT_PUBLIC_APP_URL");
-  requireHttpsUrl(env, "NEXT_PUBLIC_SOCKET_SERVER_URL");
+  requirePublicUrl(env, "CLIENT_ORIGIN");
+  requirePublicUrl(env, "NEXT_PUBLIC_APP_URL");
+  requirePublicUrl(env, "NEXT_PUBLIC_SOCKET_SERVER_URL");
 
   required(env, "TURN_URL");
   required(env, "TURN_SECRET");

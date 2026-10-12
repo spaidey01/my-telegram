@@ -117,3 +117,26 @@ sudo env APP_DIR=/srv/stargram bash /opt/my-telegram/deploy/setup-vps.sh
 ```
 
 The runner does not create or guess secrets, MongoDB credentials, S3 credentials, DNS records, TLS certificates, or public TURN credentials. Those remain explicit deployment inputs.
+
+
+## Stargram interactive setup runner
+
+The new interactive runner is available on the `feature/setup-wizard-runner` branch:
+
+```bash
+sudo bash deploy/stargram-runner.sh
+```
+
+It offers these workflows:
+
+1. **Automatic install:** installs Node.js 22, Docker, Redis, ClamAV, Coturn and Nginx; creates private persistent MongoDB and MinIO (S3-compatible) containers; generates secrets; configures TURN; asks for an optional domain and can request a Let's Encrypt certificate; configures host firewall rules; builds and starts the web and Socket.IO services.
+2. **Manual service configuration:** accepts an existing MongoDB URI, S3 endpoint/credentials, Redis URL and TURN details, while installing the host dependencies and configuring the web/HTTPS layer.
+3. **Network/HTTPS update:** changes the domain/IP and Nginx/Let's Encrypt configuration after installation.
+4. **Edit configuration:** opens `/etc/my-telegram.env` after making a backup.
+5. **Validate/build/restart:** validates the current environment, rebuilds and restarts Stargram.
+
+The runner intentionally does not expose MongoDB, Redis, MinIO or Node ports to the public network. It opens HTTP/HTTPS and TURN/relay ports using UFW or firewalld. When it has to enable UFW, it first adds an SSH allow rule; still verify the provider-level firewall/security-group rules in the VPS control panel, because the operating-system firewall cannot change those.
+
+**Important limits:** IP + HTTP is a testing mode; modern browsers usually block microphone/camera access from public HTTP IP origins, so public voice/video calling should use HTTPS. Let's Encrypt succeeds only after DNS points to the VPS and inbound port 80 is reachable. The runner does not control provider firewalls or user networks. A running Coturn service is not proof of successful calls; test with two browsers on independent networks and force TURN relay.
+
+The runner avoids hard-resetting an existing checkout and refuses to overwrite an existing configuration during a fresh automatic install. It backs up configuration before updates. Review the script and take a VPS snapshot before first production use. The automated runner has not yet been executed against a real VPS as part of this change.
