@@ -160,3 +160,18 @@ tests/call-reliability.test.mjs checks for the presence of expected source-code 
 ## Current conclusion
 
 The initial branch audit now has concrete source-level evidence across all named branch families, and identifies multiple stale branches that would regress main if merged wholesale. The main confirmed deployment blocker is the Node 20 vs Node 22 mismatch in deploy/setup-vps.sh. The setup runner is a separate feature candidate with passing CI but still needs a disposable-VPS run and operational review. This audit is still not a claim that every line of all 14 branches has received a full manual review; before release integration, complete the remaining per-file diff and behavior tests, then produce a prioritized patch list with reproduction evidence.
+
+
+## Decision update — rebuild on the audited baseline (2026-10-12)
+
+The project owner prefers rebuilding/revalidating needed capabilities on the current baseline instead of merging the divergent feature/security branches wholesale. Adopt this as the working strategy:
+
+1. Keep `stargram_clone` as the immutable reference snapshot for the audit stage; do not turn it into the development branch.
+2. Keep `main` unchanged until an explicitly approved change is ready.
+3. Do not merge the old divergent branches wholesale. Treat them as historical reference only; extract a requirement or test idea only when useful.
+4. Implement each genuinely needed capability as a small, reviewable patch based on current main, with regression tests and evidence.
+5. First priority is the verified Node.js 20-vs-22 installer mismatch. Next priorities are behavior-level tests for auth/session, upload/file access, trusted proxy IP, TURN and call recovery, followed by a disposable-VPS installation rehearsal.
+6. Before each implementation, confirm the current main code does not already provide the behavior. Avoid duplicate implementations and avoid replacing newer code with older branch copies.
+7. After a patch passes relevant CI and review, present its exact files, commit SHA, test results, risk and rollback approach for approval before changing main or merging.
+
+This decision changes the integration strategy, not the feature inventory: existing working capabilities on main should be retained and verified, not rewritten merely for the sake of rebuilding.
