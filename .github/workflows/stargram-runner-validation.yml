@@ -16,6 +16,9 @@ on:
     branches: [stargram_clone]
     paths:
       - "deploy/stargram-runner.sh"
+      - "deploy/setup-vps.sh"
+      - "deploy/deploy-vps.sh"
+      - "tests/deployment-config.test.mjs"
       - "src/utils/productionConfig.js"
       - "tests/production-config.test.mjs"
       - "package.json"
