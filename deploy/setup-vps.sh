@@ -39,9 +39,12 @@ APP_GROUP="$(id -gn "$APP_USER")"
 
 log "Installing Stargram"
 if [[ -d "$APP_DIR/.git" ]]; then
+  [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
   git -C "$APP_DIR" fetch origin "$BRANCH"
-  git -C "$APP_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
-  git -C "$APP_DIR" reset --hard "origin/$BRANCH"
+  if ! git -C "$APP_DIR" checkout "$BRANCH"; then
+    git -C "$APP_DIR" checkout -b "$BRANCH" "origin/$BRANCH"
+  fi
+  git -C "$APP_DIR" merge --ff-only "origin/$BRANCH"
 else
   git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
 fi
