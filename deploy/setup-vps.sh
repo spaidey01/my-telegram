@@ -54,7 +54,7 @@ chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 log "Installing dependencies and building"
 cd "$APP_DIR"
 sudo -u "$APP_USER" npm ci
-sudo -u "$APP_USER" npm run build
+sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
 
 log "Installing systemd units"
 install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my-telegram-web.service
@@ -80,11 +80,16 @@ log "Checking configuration"
 if ! grep -q '^secretKey=' "$ENV_FILE" || grep -q '^secretKey=replace-with' "$ENV_FILE"; then
   echo "WARNING: configure $ENV_FILE before starting Stargram."
 else
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
-  sudo -u "$APP_USER" env NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
+  ENV_ARGS=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \\#* ]] && continue
+    [[ "$line" == *=* ]] || die "Invalid environment line in $ENV_FILE."
+    key="${line%%=*}"; value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key in $ENV_FILE."
+    ENV_ARGS+=("$key=$value")
+  done < "$ENV_FILE"
+  sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
+  sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
   systemctl restart my-telegram-web my-telegram-socket
 fi
 
