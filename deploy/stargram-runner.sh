@@ -24,6 +24,7 @@ open_ports(){
   log "Opening required ports using the host firewall"
   local ssh_port=""
   [[ -n "${SSH_CONNECTION:-}" ]] && ssh_port="$(awk '{print $4}' <<<"$SSH_CONNECTION")"
+  [[ -n "$ssh_port" ]] || ssh_port=22
   if command -v ufw >/dev/null && ufw status | grep -q '^Status: active'; then
     [[ -n "$ssh_port" ]] && ufw allow "$ssh_port/tcp" >/dev/null
     ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 3478/tcp; ufw allow 3478/udp; ufw allow 5349/tcp
