@@ -208,3 +208,9 @@ Additional source-level issues found while continuing review and fixes committed
 - `c82a931025d0a2b91181543ff0c5be9528051d69`: deployment source assertions expanded to cover safe branch selection/update behavior.
 
 Source reads confirm these changes are present on `stargram_clone`. The current combined-status API still only exposes pending Vercel contexts for the latest commit and does not give the Actions job result. This environment also cannot clone/fetch GitHub for local execution. No successful ShellCheck/npm/Actions/VPS run is claimed. Phase A is still in progress; the next gate is observing the actual Actions workflow result and running the installer on a disposable Debian/Ubuntu VPS.
+
+
+- `2dbf6e311f2d70f7722b74bbc32101031409111b`, `a272d75204e782aa97d5fc1ffee84249ccabdad6`, `c04d3fe0bf73c002b03b37d16678109ee5886608`, and `e8dd03241bb02df629da9f373ffb18cb1deaa04f`: deployment scripts no longer evaluate the environment file as shell code; they parse KEY=VALUE lines and pass the values explicitly to validation/build. This also fixes the setup script trying to use the build environment before the environment file had been parsed. The setup script now builds only after production config validation passes.
+- `180383e3317fe5c265385051157e9fdabc0df823` and `fe7e1e6c4f1dd745438b9f8645541063a02db023`: deployment source tests now include safe env-file parsing and verify production env is passed to the build.
+- `850bbae819f94c765672a2c87b1877d9d0dc02a2`: validation workflow also triggers for changes to the deployment config test in pull requests targeting main.
+- Final evidence boundary remains unchanged: GitHub file reads verify the edits, but no ShellCheck, Node test, build, GitHub Actions success, or VPS install has been executed/confirmed in this session. Do not promote this branch to main until those checks are green.
