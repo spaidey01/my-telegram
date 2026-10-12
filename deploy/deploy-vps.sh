@@ -28,7 +28,7 @@ log "Validating production environment"
 [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE"
 ENV_ARGS=()
 while IFS= read -r line || [[ -n "$line" ]]; do
-  [[ -z "$line" || "$line" == \\#* ]] && continue
+  [[ -z "$line" || "$line" == \#* ]] && continue
   [[ "$line" == *=* ]] || die "Invalid environment line in $ENV_FILE."
   key="${line%%=*}"; value="${line#*=}"
   [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key in $ENV_FILE."
