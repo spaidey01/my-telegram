@@ -67,3 +67,13 @@ test("legacy VPS setup keeps the environment file root-owned and non-writable by
   assert.match(setup, /install -m 0640 -o root -g "\$APP_GROUP" "\$APP_DIR\/\.env\.example" "\$ENV_FILE"/);
   assert.match(setup, /chown "root:\$APP_GROUP" "\$ENV_FILE"\s*chmod 0640 "\$ENV_FILE"/);
 });
+
+test("runner refuses existing containers and persistent volumes before creating resources", () => {
+  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_manual_services\(\)/)[0] ?? "";
+  const containerGuard = serviceSetup.indexOf('docker container inspect stargram-mongodb');
+  const volumeGuard = serviceSetup.indexOf('docker volume inspect stargram-mongodb-data');
+  const volumeCreate = serviceSetup.indexOf('docker volume create stargram-mongodb-data');
+  assert.ok(containerGuard >= 0 && volumeGuard >= 0 && volumeCreate >= 0, "service setup must validate existing resources");
+  assert.ok(containerGuard < volumeCreate, "existing containers must be checked before resource creation");
+  assert.ok(volumeGuard < volumeCreate, "existing volumes must be checked before resource creation");
+});
