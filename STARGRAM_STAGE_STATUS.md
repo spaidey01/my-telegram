@@ -214,3 +214,13 @@ Source reads confirm these changes are present on `stargram_clone`. The current 
 - `180383e3317fe5c265385051157e9fdabc0df823` and `fe7e1e6c4f1dd745438b9f8645541063a02db023`: deployment source tests now include safe env-file parsing and verify production env is passed to the build.
 - `850bbae819f94c765672a2c87b1877d9d0dc02a2`: validation workflow also triggers for changes to the deployment config test in pull requests targeting main.
 - Final evidence boundary remains unchanged: GitHub file reads verify the edits, but no ShellCheck, Node test, build, GitHub Actions success, or VPS install has been executed/confirmed in this session. Do not promote this branch to main until those checks are green.
+
+## Phase A continuation — 2026-10-13
+
+- Reviewed actual GitHub Actions run history on `stargram_clone`, rather than relying only on source reads.
+- Runner validation succeeded at `e8dd03241bb02df629da9f373ffb18cb1deaa04f` (run [38237351209](https://github.com/spaidey01/my-telegram/actions/runs/38237351209)); ShellCheck, deployment syntax/config tests, and production-config tests all passed on that SHA.
+- Service integration succeeded at `2bb306fad0ea3d8edefcb8d0b14064d74f8367ae` (run [38237199790](https://github.com/spaidey01/my-telegram/actions/runs/38237199790)): locked dependency install, MongoDB/Redis, LocalStack S3 put/get, production build, socket integration, ClamAV EICAR detection, browser WebRTC/TURN recovery tests, and web/socket smoke checks passed. This is CI evidence, not a real VPS or public-network call test.
+- Investigated earlier runner validation failures: the failed run at `32f70b90864a2d9bfea604787a90c9865332a93c` failed specifically at the deployment script test step; later run `e8dd03241bb02df629da9f373ffb18cb1deaa04f` passed the same workflow.
+- Found a runner UX defect in option 4: after editing `/etc/my-telegram.env`, the script exited without validating, building, and restarting. Fixed on `stargram_clone` in commit `4aa3fd0fc283a9d5682b21e86f40aae8d7e8b8d4` so it calls `apply_config` after the editor, and added a regression assertion in `5e844bbb1202b8d7da6f84689005be38cf39bd40`.
+- The new change has just been pushed; its new Actions result must be checked before claiming the regression test is green. The latest branch tip and this change are not yet evidence of a successful rerun.
+- Phase A remains in progress: next validate the new test run, continue installer idempotency/rollback and security review, and arrange a disposable Debian/Ubuntu VPS rehearsal. Do not run this installer on the production host, do not claim production readiness, and keep `main` unchanged.
