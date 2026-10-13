@@ -1,0 +1,66 @@
+name: Stargram dependency preflight
+
+on:
+  push:
+    branches: [stargram_clone]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/stargram-dependency-preflight.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stargram-dependency-preflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit locked npm dependency tree
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --include=dev
+      - name: Collect audit report without hiding findings
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > npm-audit.json
+          audit_status=$?
+          set -e
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const report = JSON.parse(fs.readFileSync("npm-audit.json", "utf8"));
+          const counts = report.metadata?.vulnerabilities ?? {};
+          console.log("npm audit counts:", JSON.stringify(counts));
+          for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            console.log(JSON.stringify({
+              name,
+              severity: item.severity,
+              direct: item.isDirect,
+              range: item.range,
+              fixAvailable: item.fixAvailable,
+              via: (item.via ?? []).map(v => typeof v === "string" ? v : { title: v.title, url: v.url, range: v.range }),
+              nodes: item.nodes
+            }));
+          }
+          NODE
+          echo "npm audit exit code: $audit_status"
+      - name: Upload full audit JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stargram-npm-audit
+          path: npm-audit.json
+          if-no-files-found: error
+          retention-days: 14
