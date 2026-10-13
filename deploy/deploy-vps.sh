@@ -22,7 +22,7 @@ git -C "$APP_DIR" merge --ff-only "origin/$BRANCH"
 
 log "Installing dependencies"
 cd "$APP_DIR"
-sudo -u "$APP_USER" npm ci
+sudo -u "$APP_USER" npm ci --include=dev
 
 log "Validating production environment"
 [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE"
@@ -38,6 +38,9 @@ sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production node "$APP_DIR/scri
 
 log "Building"
 sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
+
+log "Removing development-only dependencies from the production server"
+sudo -u "$APP_USER" npm prune --omit=dev
 
 log "Restarting Stargram"
 systemctl daemon-reload
