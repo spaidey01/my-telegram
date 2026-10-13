@@ -47,6 +47,10 @@ test("runner applies edited configuration instead of exiting after the editor", 
   assert.match(optionFour, /"\$\{EDITOR:-nano\}" "\$ENV_FILE"; apply_config/);
 });
 
+test("runner preserves SSH access when configuring firewalld", () => {
+  assert.match(runner, /firewall-cmd --permanent --add-port="\\$\\{ssh_port\\}\\/tcp"/);
+});
+
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
   assert.match(runner, /if ! certbot --nginx -d "\$domain" --email "\$email" --agree-tos --non-interactive --redirect; then[\s\S]*?die "HTTPS certificate issuance failed\. Refusing to downgrade a domain deployment to public HTTP/);
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
