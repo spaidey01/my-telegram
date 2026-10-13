@@ -30,6 +30,8 @@ open_ports(){
     ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 3478/tcp; ufw allow 3478/udp; ufw allow 5349/tcp
     ufw allow "$TURN_MIN_PORT:$TURN_MAX_PORT/udp"; ufw reload
   elif command -v firewall-cmd >/dev/null && firewall-cmd --state >/dev/null 2>&1; then
+    # Preserve the active SSH path before enabling the application ports.
+    firewall-cmd --permanent --add-port="${ssh_port}/tcp"
     firewall-cmd --permanent --add-service=http; firewall-cmd --permanent --add-service=https
     firewall-cmd --permanent --add-port=3478/tcp; firewall-cmd --permanent --add-port=3478/udp
     firewall-cmd --permanent --add-port=5349/tcp; firewall-cmd --permanent --add-port="$TURN_MIN_PORT-$TURN_MAX_PORT/udp"
