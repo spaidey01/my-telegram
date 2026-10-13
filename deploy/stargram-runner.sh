@@ -248,7 +248,7 @@ build_env_args(){
 apply_config(){
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
   cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
-  chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
+  chown "root:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
   load_env_file
   # secretKey is populated by load_env_file via printf -v.
   # shellcheck disable=SC2154
@@ -302,7 +302,7 @@ EOF
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
      sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
      cat /run/stargram-network.env >> "$ENV_FILE"
-     chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
+     chown "root:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
      apply_config ;;
   4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE"; apply_config ;;
   5) install_packages; checkout_app; apply_config ;;
