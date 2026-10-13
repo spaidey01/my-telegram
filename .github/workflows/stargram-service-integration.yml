@@ -131,6 +131,26 @@ jobs:
           NODE
           echo "npm audit exit status: $audit_status (report only; remediation must be reviewed separately)"
 
+      - name: Enforce production dependency audit
+        run: |
+          audit_status=0
+          npm audit --omit=dev --audit-level=high --json > /tmp/stargram-production-audit.json || audit_status=$?
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const report = JSON.parse(readFileSync("/tmp/stargram-production-audit.json", "utf8"));
+          console.log("Production dependency audit:", JSON.stringify(report.metadata?.vulnerabilities ?? {}, null, 2));
+          for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            console.log(JSON.stringify({
+              package: name,
+              severity: item.severity,
+              range: item.range,
+              fixAvailable: item.fixAvailable,
+              advisories: (item.via ?? []).map((via) => typeof via === "string" ? via : ({ title: via.title, url: via.url, range: via.range, severity: via.severity })),
+            }));
+          }
+          NODE
+          test "$audit_status" -eq 0 || { echo "Production dependency audit failed with exit status $audit_status"; exit "$audit_status"; }
+
       - name: Start isolated LocalStack S3 and create test bucket
         run: |
           docker run -d --name stargram-s3 \
@@ -168,6 +188,12 @@ jobs:
         run: |
           npm run lint
           npx tsc --noEmit
+
+      - name: Run security and installer configuration tests
+        run: |
+          npm run test:security
+          npm run test:production-config
+          npm run test:deployment
 
       - name: Build production application
         run: npm run build
