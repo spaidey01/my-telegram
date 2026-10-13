@@ -88,3 +88,17 @@ test("VPS deploy prunes development dependencies after building and before servi
   assert.match(deploy, /npm ci --include=dev/);
   assert.match(deploy, /npm run build[\s\S]*?npm prune --omit=dev[\s\S]*?systemctl restart my-telegram-web my-telegram-socket/);
 });
+
+
+test("setup runner installs dev tools for the build and prunes them before starting production services", () => {
+  const applyConfig = runner.split(/apply_config\(\)\{/)[1]?.split(/\necho "Stargram Setup Runner"/)[0] ?? "";
+  assert.match(applyConfig, /npm ci --include=dev[\s\S]*?npm run build[\s\S]*?npm prune --omit=dev[\s\S]*?systemctl enable --now my-telegram-web my-telegram-socket/);
+});
+
+test("configuration editor backs up the original environment before opening the editor", () => {
+  const optionFour = runner.split(/\n\s*4\) /)[1]?.split(/\n\s*5\) /)[0] ?? "";
+  assert.ok(optionFour.indexOf('cp -a "$ENV_FILE"') >= 0);
+  assert.ok(optionFour.indexOf('cp -a "$ENV_FILE"') < optionFour.indexOf('"${EDITOR:-nano}" "$ENV_FILE"'));
+  const applyConfig = runner.split(/apply_config\(\)\{/)[1]?.split(/\necho "Stargram Setup Runner"/)[0] ?? "";
+  assert.doesNotMatch(applyConfig, /cp -a "\$ENV_FILE" "\$BACKUP_DIR\/my-telegram\.env/);
+});
