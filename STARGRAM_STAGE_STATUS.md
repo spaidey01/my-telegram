@@ -240,3 +240,14 @@ Source reads confirm these changes are present on `stargram_clone`. The current 
 - Added a regression test for root ownership in commit `bcce8b3b69b6865951db4c29fd4a90c321d54a87`. The current test formatting is corrected at `5d78575f20f26f32a7a8bd71c5b1952233d02092`.
 - Runner validation on `1fd53a9323bbea2843dcd94c052f97854a464741` passed, including the corrected option-4 assertion. The latest validation and integration runs for `5d78575f20f26f32a7a8bd71c5b1952233d02092` were still in progress at the time of this note; verify their final conclusions before any Phase A completion claim.
 - Remaining Phase A gates: green current-head runner + integration workflows; review the five high-severity npm audit findings and apply only compatible fixes; rehearse clean install, rerun, and failure handling on a disposable Debian/Ubuntu VPS. A real VPS rehearsal has not been performed in this environment, so Phase A is not yet marked complete and `main` must remain unchanged.
+
+
+## Phase A implementation hardening — 2026-10-13 (latest)
+
+- Fixed a privileged environment parsing risk in `deploy/stargram-runner.sh`: the root runner now reads only `secretKey` and `TURN_SECRET` into its own shell. All other configuration keys are passed only to the unprivileged application process, preventing environment-file entries such as `PATH`, `BASH_ENV`, or `LD_PRELOAD` from altering the root runner's environment.
+- Fixed `deploy/setup-vps.sh` to keep `/etc/my-telegram.env` owned by `root:<app-group>` with mode `0640`, instead of allowing the application account to write the secrets file.
+- Added regression tests for both protections.
+- The added firewalld SSH-port regression assertion initially contained an invalid regular expression; corrected it to a literal string assertion in commit `564ab8067219e11a80f8d1cd61253796fd381313`.
+- Current runner-validation workflow for that commit is green: [run 38449555314](https://github.com/spaidey01/my-telegram/actions/runs/38449555314). It passed ShellCheck, deployment syntax/config tests, and production configuration tests.
+- The matching service integration workflow [run 38449555319](https://github.com/spaidey01/my-telegram/actions/runs/38449555319) is still running; do not treat it as green until its conclusion is recorded.
+- Implementation status: source-level Phase A changes and targeted runner CI are complete. Full Phase A sign-off is intentionally held for the user's requested combined test window: real VPS installation/re-run/failure recovery and npm high-severity advisory triage remain outstanding. No production host changes and no promotion to `main`.
