@@ -40,5 +40,5 @@ test("runner does not use floating latest container tags", () => {
 
 test("runner applies edited configuration instead of exiting after the editor", () => {
   const optionFour = runner.split(/\n\s*4\) /)[1]?.split(/\n\s*5\) /)[0] ?? "";
-  assert.match(optionFour, /\$\{EDITOR:-nano\} "\$ENV_FILE"; apply_config/);
+  assert.match(optionFour, /"\$\{EDITOR:-nano\}" "\$ENV_FILE"; apply_config/);
 });
