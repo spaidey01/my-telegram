@@ -46,3 +46,8 @@ test("runner applies edited configuration instead of exiting after the editor", 
   const optionFour = runner.split(/\n\s*4\) /)[1]?.split(/\n\s*5\) /)[0] ?? "";
   assert.match(optionFour, /"\$\{EDITOR:-nano\}" "\$ENV_FILE"; apply_config/);
 });
+
+test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
+  assert.match(runner, /if ! certbot --nginx -d "\$domain" --email "\$email" --agree-tos --non-interactive --redirect; then[\s\S]*?die "HTTPS certificate issuance failed\. Refusing to downgrade a domain deployment to public HTTP/);
+  assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
+});
