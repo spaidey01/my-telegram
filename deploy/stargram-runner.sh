@@ -304,7 +304,7 @@ EOF
      cat /run/stargram-network.env >> "$ENV_FILE"
      chown "$APP_USER:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
      apply_config ;;
-  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE" ;;
+  4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."; cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"; "${EDITOR:-nano}" "$ENV_FILE"; apply_config ;;
   5) install_packages; checkout_app; apply_config ;;
   0) exit 0 ;;
   *) die "Invalid option." ;;
