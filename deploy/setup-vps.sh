@@ -59,11 +59,14 @@ install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my
 install -m 0644 "$APP_DIR/deploy/my-telegram-socket.service" /etc/systemd/system/my-telegram-socket.service
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  install -m 0640 -o "$APP_USER" -g "$APP_GROUP" "$APP_DIR/.env.example" "$ENV_FILE"
+  install -m 0640 -o root -g "$APP_GROUP" "$APP_DIR/.env.example" "$ENV_FILE"
   echo
   echo "Created $ENV_FILE from .env.example."
   echo "Edit it with production secrets before starting Stargram."
 fi
+# Secrets are managed by root and only readable (not writable) by the app group.
+chown "root:$APP_GROUP" "$ENV_FILE"
+chmod 0640 "$ENV_FILE"
 
 systemctl daemon-reload
 systemctl enable my-telegram-web my-telegram-socket redis-server
