@@ -53,7 +53,7 @@ chown -R "$APP_USER:$APP_GROUP" "$APP_DIR"
 
 log "Installing dependencies and building"
 cd "$APP_DIR"
-sudo -u "$APP_USER" npm ci
+sudo -u "$APP_USER" npm ci --include=dev
 log "Installing systemd units"
 install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my-telegram-web.service
 install -m 0644 "$APP_DIR/deploy/my-telegram-socket.service" /etc/systemd/system/my-telegram-socket.service
@@ -91,6 +91,8 @@ else
   done < "$ENV_FILE"
   sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production node "$APP_DIR/scripts/validate-production-env.mjs"
   sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
+  log "Removing development-only dependencies from the production server"
+  sudo -u "$APP_USER" npm prune --omit=dev
   systemctl restart my-telegram-web my-telegram-socket
 fi
 
