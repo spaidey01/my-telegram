@@ -77,3 +77,14 @@ test("runner refuses existing containers and persistent volumes before creating 
   assert.ok(containerGuard < volumeCreate, "existing containers must be checked before resource creation");
   assert.ok(volumeGuard < volumeCreate, "existing volumes must be checked before resource creation");
 });
+
+
+test("VPS setup installs dev dependencies only for building, then prunes them before starting services", () => {
+  assert.match(setup, /npm ci --include=dev/);
+  assert.match(setup, /npm run build[\s\S]*?npm prune --omit=dev[\s\S]*?systemctl restart my-telegram-web my-telegram-socket/);
+});
+
+test("VPS deploy prunes development dependencies after building and before service restart", () => {
+  assert.match(deploy, /npm ci --include=dev/);
+  assert.match(deploy, /npm run build[\s\S]*?npm prune --omit=dev[\s\S]*?systemctl restart my-telegram-web my-telegram-socket/);
+});
