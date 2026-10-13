@@ -55,3 +55,15 @@ test("runner refuses to downgrade failed domain HTTPS provisioning to public HTT
   assert.match(runner, /if ! certbot --nginx -d "\$domain" --email "\$email" --agree-tos --non-interactive --redirect; then[\s\S]*?die "HTTPS certificate issuance failed\. Refusing to downgrade a domain deployment to public HTTP/);
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
 });
+
+test("runner does not export arbitrary environment-file keys into its root shell", () => {
+  const loader = runner.split(/load_env_file\(\)\{/)[1]?.split(/\nbuild_env_args\(\)\{/)[0] ?? "";
+  assert.match(loader, /case "\$key" in[\s\S]*secretKey\)[\s\S]*TURN_SECRET\)/);
+  assert.doesNotMatch(loader, /export "\$key"/);
+  assert.match(loader, /Only copy the two values the root runner itself needs/);
+});
+
+test("legacy VPS setup keeps the environment file root-owned and non-writable by the app", () => {
+  assert.match(setup, /install -m 0640 -o root -g "\$APP_GROUP" "\$APP_DIR\/\.env\.example" "\$ENV_FILE"/);
+  assert.match(setup, /chown "root:\$APP_GROUP" "\$ENV_FILE"\s*chmod 0640 "\$ENV_FILE"/);
+});
