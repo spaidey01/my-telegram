@@ -228,11 +228,14 @@ load_env_file(){
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
-    [[ "$key" != line && "$key" != key && "$key" != value ]] || die "Reserved environment key: $key"
-    printf -v "$key" '%s' "$value"
-    # The variable name is loaded dynamically from the validated env-file key.
-    # shellcheck disable=SC2163
-    export "$key"
+    # Only copy the two values the root runner itself needs. All other keys are
+    # passed to the unprivileged application process by build_env_args().
+    # This prevents env-file keys such as PATH, BASH_ENV, or LD_PRELOAD from
+    # changing the root runner's own execution environment.
+    case "$key" in
+      secretKey) printf -v secretKey '%s' "$value" ;;
+      TURN_SECRET) printf -v TURN_SECRET '%s' "$value" ;;
+    esac
   done < "$ENV_FILE"
 }
 build_env_args(){
