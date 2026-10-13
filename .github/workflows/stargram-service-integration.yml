@@ -110,6 +110,27 @@ jobs:
           }
           NODE
 
+      - name: Audit locked dependencies (non-blocking triage report)
+        run: |
+          audit_status=0
+          npm audit --json > /tmp/stargram-npm-audit.json || audit_status=$?
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const report = JSON.parse(readFileSync("/tmp/stargram-npm-audit.json", "utf8"));
+          console.log("npm audit summary:", JSON.stringify(report.metadata?.vulnerabilities ?? {}, null, 2));
+          for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            console.log(JSON.stringify({
+              package: name,
+              severity: item.severity,
+              direct: item.isDirect,
+              installedRange: item.range,
+              fixAvailable: item.fixAvailable,
+              advisories: (item.via ?? []).map((via) => typeof via === "string" ? via : ({ title: via.title, url: via.url, range: via.range, severity: via.severity })),
+            }));
+          }
+          NODE
+          echo "npm audit exit status: $audit_status (report only; remediation must be reviewed separately)"
+
       - name: Start isolated LocalStack S3 and create test bucket
         run: |
           docker run -d --name stargram-s3 \
