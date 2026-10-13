@@ -38,7 +38,7 @@ test("runner does not use floating latest container tags", () => {
   assert.match(runner, /MINIO_MC_IMAGE="\$\{MINIO_MC_IMAGE:-quay\.io\/minio\/mc:RELEASE\.[^}]+\}"/);
 });
 
-test("runner applies edited configuration instead of exiting after the editor", () => {
+test("runner keeps production environment root-owned and group-readable", () => {\n  assert.equal((runner.match(/chown "root:\$\(id -gn "\$APP_USER"\)" "\$ENV_FILE"; chmod 0640 "\$ENV_FILE"/g) ?? []).length, 2);\n});\n\ntest("runner applies edited configuration instead of exiting after the editor", () => {
   const optionFour = runner.split(/\n\s*4\) /)[1]?.split(/\n\s*5\) /)[0] ?? "";
   assert.match(optionFour, /"\$\{EDITOR:-nano\}" "\$ENV_FILE"; apply_config/);
 });
