@@ -232,3 +232,11 @@ Source reads confirm these changes are present on `stargram_clone`. The current 
 - CI runs for the intermediate malformed test commit `39e28dc222df20ca935d95f9d901b9bc397117b0` failed; they must not be counted as green. Waiting for fresh Actions runs on the corrected head before declaring test validation complete.
 - `npm ci` in CI reported five high-severity audit findings. They are not yet triaged; do not apply `npm audit fix --force` blindly. Review the advisory paths and compatible upgrades before deciding fixes.
 - Phase A is not complete until current-head CI is green and the installer has been rehearsed on a disposable Debian/Ubuntu VPS, including failure/re-run behavior. No production VPS changes and no promotion to `main` are authorized.
+
+## Phase A security hardening — 2026-10-13 (latest)
+
+- During a deeper permissions review, found that the runner previously changed `/etc/my-telegram.env` ownership to the application user. Since the runner reads and exports env-file keys in a root shell, this would allow the app account to alter a privileged config file and potentially influence root-run subprocess environments.
+- Fixed both ownership changes in commit `1463b64efc5ef681bfee9028cb98d1f3ba9dac93`: the file is now `root:<application-group>` with mode `0640`, preserving app read access without app write access.
+- Added a regression test for root ownership in commit `bcce8b3b69b6865951db4c29fd4a90c321d54a87`. The current test formatting is corrected at `5d78575f20f26f32a7a8bd71c5b1952233d02092`.
+- Runner validation on `1fd53a9323bbea2843dcd94c052f97854a464741` passed, including the corrected option-4 assertion. The latest validation and integration runs for `5d78575f20f26f32a7a8bd71c5b1952233d02092` were still in progress at the time of this note; verify their final conclusions before any Phase A completion claim.
+- Remaining Phase A gates: green current-head runner + integration workflows; review the five high-severity npm audit findings and apply only compatible fixes; rehearse clean install, rerun, and failure handling on a disposable Debian/Ubuntu VPS. A real VPS rehearsal has not been performed in this environment, so Phase A is not yet marked complete and `main` must remain unchanged.
