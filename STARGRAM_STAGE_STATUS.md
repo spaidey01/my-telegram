@@ -224,3 +224,11 @@ Source reads confirm these changes are present on `stargram_clone`. The current 
 - Found a runner UX defect in option 4: after editing `/etc/my-telegram.env`, the script exited without validating, building, and restarting. Fixed on `stargram_clone` in commit `4aa3fd0fc283a9d5682b21e86f40aae8d7e8b8d4` so it calls `apply_config` after the editor, and added a regression assertion in `5e844bbb1202b8d7da6f84689005be38cf39bd40`.
 - The new change has just been pushed; its new Actions result must be checked before claiming the regression test is green. The latest branch tip and this change are not yet evidence of a successful rerun.
 - Phase A remains in progress: next validate the new test run, continue installer idempotency/rollback and security review, and arrange a disposable Debian/Ubuntu VPS rehearsal. Do not run this installer on the production host, do not claim production readiness, and keep `main` unchanged.
+
+## Phase A continuation — follow-up test repair
+
+- New regression test for runner menu option 4 exposed a test-authoring mistake, not an application runtime failure: the assertion initially matched across the wrong source range; a follow-up edit briefly inserted a literal escaped newline into the test source.
+- Corrected the test source in commit `2aa1bcd898e323fda14f9f1e31ee4ff079b620cf`. The current assertion scopes option 4 and verifies it invokes `apply_config` after the editor.
+- CI runs for the intermediate malformed test commit `39e28dc222df20ca935d95f9d901b9bc397117b0` failed; they must not be counted as green. Waiting for fresh Actions runs on the corrected head before declaring test validation complete.
+- `npm ci` in CI reported five high-severity audit findings. They are not yet triaged; do not apply `npm audit fix --force` blindly. Review the advisory paths and compatible upgrades before deciding fixes.
+- Phase A is not complete until current-head CI is green and the installer has been rehearsed on a disposable Debian/Ubuntu VPS, including failure/re-run behavior. No production VPS changes and no promotion to `main` are authorized.
