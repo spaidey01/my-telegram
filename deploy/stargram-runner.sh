@@ -170,8 +170,7 @@ EOF
   if [[ -n "$domain" ]]; then
     apt-get install -y certbot python3-certbot-nginx
     if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then
-      echo "WARNING: certificate issuance failed (usually DNS or inbound port 80). Keeping HTTP test mode for now."
-      url="http://$ip"
+      die "HTTPS certificate issuance failed. Refusing to downgrade a domain deployment to public HTTP; fix DNS/firewall and rerun option 3."
     fi
     systemctl enable --now certbot.timer || true
     if [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
