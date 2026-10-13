@@ -48,7 +48,7 @@ test("runner applies edited configuration instead of exiting after the editor", 
 });
 
 test("runner preserves SSH access when configuring firewalld", () => {
-  assert.match(runner, /firewall-cmd --permanent --add-port="\\$\\{ssh_port\\}\\/tcp"/);
+  assert.ok(runner.includes('firewall-cmd --permanent --add-port="${ssh_port}/tcp"'));
 });
 
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
