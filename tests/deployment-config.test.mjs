@@ -37,3 +37,7 @@ test("runner does not use floating latest container tags", () => {
   assert.match(runner, /MINIO_IMAGE="\$\{MINIO_IMAGE:-quay\.io\/minio\/minio:RELEASE\.[^}]+\}"/);
   assert.match(runner, /MINIO_MC_IMAGE="\$\{MINIO_MC_IMAGE:-quay\.io\/minio\/mc:RELEASE\.[^}]+\}"/);
 });
+
+test("runner applies edited configuration instead of exiting after the editor", () => {
+  assert.match(runner, /4\) \[\[ -f "\$ENV_FILE" \]\].*\$\{EDITOR:-nano\} "\$ENV_FILE"; apply_config/);
+});
