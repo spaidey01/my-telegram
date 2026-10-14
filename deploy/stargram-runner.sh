@@ -276,7 +276,7 @@ configure_clamav(){
   systemctl restart clamav-daemon
   local reply=""
   for _ in $(seq 1 30); do
-    reply="$( (exec 3<>/dev/tcp/127.0.0.1/3310 && printf 'PING\\n' >&3 && IFS= read -r -t 2 reply <&3 && printf '%s' "$reply") 2>/dev/null || true)"
+    reply="$( (exec 3<>/dev/tcp/127.0.0.1/3310 && printf 'PING\n' >&3 && IFS= read -r -t 2 reply <&3 && printf '%s' "$reply") 2>/dev/null || true)"
     [[ "$reply" == "PONG" ]] && break
     sleep 2
   done
@@ -314,7 +314,7 @@ build_env_args(){
 verify_s3_storage(){
   log "Verifying authenticated S3 bucket with a real upload/download/delete cycle"
   cd "$APP_DIR"
-  if ! sudo -u "$APP_USER" env "${ENV_ARGS[@]}" node --input-type=module <<'NODE'
+  if ! sudo -u "$APP_USER" env "${ENV_ARGS[@]}" S3_ENDPOINT=http://127.0.0.1:8333 node --input-type=module <<'NODE'
 import { randomUUID } from "node:crypto";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
