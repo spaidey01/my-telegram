@@ -248,6 +248,40 @@ CLAMAV_PORT=3310
 TRUSTED_PROXY_COUNT=1
 EOF
 }
+configure_clamav(){
+  log "Configuring and verifying fail-closed ClamAV scanner"
+  local conf=/etc/clamav/clamd.conf freshclam_conf=/etc/clamav/freshclam.conf
+  [[ -f "$conf" ]] || die "ClamAV daemon configuration is missing."
+  # The application talks to clamd over loopback TCP; Debian defaults to a Unix socket.
+  if grep -qE '^[[:space:]]*TCPSocket[[:space:]]+' "$conf"; then
+    sed -i -E 's/^[[:space:]]*TCPSocket[[:space:]]+.*/TCPSocket 3310/' "$conf"
+  else
+    printf '\nTCPSocket 3310\n' >> "$conf"
+  fi
+  if grep -qE '^[[:space:]]*TCPAddr[[:space:]]+' "$conf"; then
+    sed -i -E 's/^[[:space:]]*TCPAddr[[:space:]]+.*/TCPAddr 127.0.0.1/' "$conf"
+  else
+    printf 'TCPAddr 127.0.0.1\n' >> "$conf"
+  fi
+  # Try to refresh signatures once. A network/CDN failure is acceptable only when
+  # a usable, non-empty signature database is already installed.
+  if command -v freshclam >/dev/null 2>&1; then
+    systemctl stop clamav-freshclam >/dev/null 2>&1 || true
+    timeout 180 freshclam --stdout --verbose || log "FreshClam update failed; checking whether existing signatures are usable"
+  fi
+  local version
+  version="$(clamscan --version 2>/dev/null || true)"
+  [[ "$version" =~ (daily|main|bytecode) ]] || die "ClamAV signature database is missing or unusable. Fix FreshClam/network access before continuing."
+  systemctl enable clamav-daemon >/dev/null
+  systemctl restart clamav-daemon
+  local reply=""
+  for _ in $(seq 1 30); do
+    reply="$( (exec 3<>/dev/tcp/127.0.0.1/3310 && printf 'PING\\n' >&3 && IFS= read -r -t 2 reply <&3 && printf '%s' "$reply") 2>/dev/null || true)"
+    [[ "$reply" == "PONG" ]] && break
+    sleep 2
+  done
+  [[ "$reply" == "PONG" ]] || die "ClamAV clamd did not answer PING on 127.0.0.1:3310; refusing to start Stargram without scanning."
+}
 load_env_file(){
   local line key value
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
@@ -289,7 +323,7 @@ apply_config(){
   install -m 0644 "$APP_DIR/deploy/my-telegram-web.service" /etc/systemd/system/my-telegram-web.service
   install -m 0644 "$APP_DIR/deploy/my-telegram-socket.service" /etc/systemd/system/my-telegram-socket.service
   systemctl daemon-reload; systemctl enable --now redis-server
-  systemctl enable clamav-daemon || true; systemctl restart clamav-daemon || true
+  configure_clamav
   cd "$APP_DIR"; sudo -u "$APP_USER" npm ci --include=dev
   sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
   log "Removing development-only dependencies from the production server"
