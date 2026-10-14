@@ -151,6 +151,11 @@ setup_network(){
     url="http://$ip"
     echo "WARNING: public HTTP over IP normally blocks browser microphone/camera. HTTPS is needed for public calls."
   fi
+  # Browser uploads use S3 presigned URLs, so the public endpoint must resolve
+  # through this Nginx host while the S3 listener itself remains loopback-only.
+  if [[ -f /run/stargram-generated.env ]]; then
+    sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$url|" /run/stargram-generated.env
+  fi
   if [[ -e /etc/nginx/sites-available/stargram ]]; then cp -a /etc/nginx/sites-available/stargram "$BACKUP_DIR/nginx-stargram.$(date +%Y%m%d%H%M%S).bak"; fi
   if [[ -L /etc/nginx/sites-enabled/default || -e /etc/nginx/sites-enabled/default ]]; then
     cp -a /etc/nginx/sites-enabled/default "$BACKUP_DIR/nginx-default-enabled.$(date +%Y%m%d%H%M%S).bak"
@@ -162,6 +167,16 @@ server {
  listen [::]:80 default_server;
  server_name ${domain:-_};
  client_max_body_size 30m;
+ location ^~ /stargram {
+  proxy_pass http://127.0.0.1:8333;
+  proxy_http_version 1.1;
+  proxy_set_header Host \$host;
+  proxy_set_header X-Real-IP \$remote_addr;
+  proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+  proxy_request_buffering off;
+  proxy_buffering off;
+  proxy_read_timeout 300s;
+ }
  location /socket.io/ {
   proxy_pass http://127.0.0.1:3001/socket.io/;
   proxy_http_version 1.1;
