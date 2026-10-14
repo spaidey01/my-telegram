@@ -52,6 +52,10 @@ test("runner preserves SSH access when configuring firewalld", () => {
   assert.ok(runner.includes('firewall-cmd --permanent --add-port="${ssh_port}/tcp"'));
 });
 
+test("runner rolls back Nginx config if nginx -t rejects the generated site", () => {
+  assert.match(runner, /if ! nginx -t; then[\\s\\S]*?restoring the previous site configuration[\\s\\S]*?previous configuration was restored/);
+});
+
 test("runner restores the previous Nginx configuration when certificate provisioning fails", () => {
   assert.match(runner, /local domain email ip url nginx_backup="" default_backup=""/);
   assert.match(runner, /if ! certbot --nginx[\\s\\S]*?restoring the previous Nginx site configuration[\\s\\S]*?cp -a "\$nginx_backup" \/etc\/nginx\/sites-available\/stargram[\\s\\S]*?nginx -t[\\s\\S]*?die "HTTPS certificate issuance failed/);
