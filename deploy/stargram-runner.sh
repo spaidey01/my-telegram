@@ -206,7 +206,21 @@ server {
 }
 EOF
   ln -sfn /etc/nginx/sites-available/stargram /etc/nginx/sites-enabled/stargram; rm -f /etc/nginx/sites-enabled/default
-  nginx -t; systemctl enable --now nginx; systemctl reload nginx
+  if ! nginx -t; then
+    log "New Nginx configuration is invalid; restoring the previous site configuration"
+    if [[ -n "$nginx_backup" && -f "$nginx_backup" ]]; then
+      cp -a "$nginx_backup" /etc/nginx/sites-available/stargram
+      ln -sfn /etc/nginx/sites-available/stargram /etc/nginx/sites-enabled/stargram
+    else
+      rm -f /etc/nginx/sites-enabled/stargram /etc/nginx/sites-available/stargram
+    fi
+    if [[ -n "$default_backup" && -e "$default_backup" ]]; then
+      cp -a "$default_backup" /etc/nginx/sites-enabled/default
+    fi
+    nginx -t && systemctl reload nginx || true
+    die "Nginx configuration validation failed; previous configuration was restored."
+  fi
+  systemctl enable --now nginx; systemctl reload nginx
   if [[ -n "$domain" ]]; then
     apt-get install -y certbot python3-certbot-nginx
     if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then
