@@ -90,8 +90,8 @@ setup_auto_services(){
   docker volume create stargram-seaweedfs-data >/dev/null
   docker run -d --name stargram-mongodb --restart unless-stopped -p 127.0.0.1:27017:27017 -e MONGO_INITDB_ROOT_USERNAME=stargram -e MONGO_INITDB_ROOT_PASSWORD="$mongo_pw" -e MONGO_INITDB_DATABASE=stargram -v stargram-mongodb-data:/data/db "$MONGO_IMAGE" >/dev/null
   docker run -d --name stargram-seaweedfs --restart unless-stopped -p 127.0.0.1:8333:8333 -v stargram-seaweedfs-data:/data -e AWS_ACCESS_KEY_ID="$s3_user" -e AWS_SECRET_ACCESS_KEY="$s3_pw" -e S3_BUCKET=stargram "$SEAWEEDFS_IMAGE" mini -dir=/data >/dev/null
-  for _ in $(seq 1 60); do docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping}).ok' >/dev/null 2>&1 && break; sleep 2; done
-  docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping}).ok' >/dev/null 2>&1 || die "MongoDB did not become ready."
+  for _ in $(seq 1 60); do docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok' >/dev/null 2>&1 && break; sleep 2; done
+  docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok' >/dev/null 2>&1 || die "MongoDB did not become ready."
   local s3_http_code=""
   for _ in $(seq 1 60); do
     s3_http_code="$(curl -sS -o /dev/null --max-time 3 -w '%{http_code}' http://127.0.0.1:8333/ 2>/dev/null || true)"
