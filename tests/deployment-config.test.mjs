@@ -40,9 +40,9 @@ test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
 });
 
 test("runner MongoDB readiness check uses a valid mongosh ping command", () => {
-  const serviceSetup = runner.split(/setup_auto_services\\(\\)\\{/)[1]?.split(/\\n\\}\\nsetup_manual_services\\(\\)/)[0] ?? "";
-  assert.equal((serviceSetup.match(/db\\.adminCommand\\(\\{ping: 1\\}\\)\\.ok/g) ?? []).length, 2);
-  assert.doesNotMatch(serviceSetup, /db\\.adminCommand\\(\\{ping\\}\\)\\.ok/);
+  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_manual_services\(\)/)[0] ?? "";
+  assert.equal((serviceSetup.match(/db\.adminCommand\(\{ping: 1\}\)\.ok/g) ?? []).length, 2);
+  assert.doesNotMatch(serviceSetup, /db\.adminCommand\(\{ping\}\)\.ok/);
 });
 
 test("runner keeps production environment root-owned and group-readable", () => {
