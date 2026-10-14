@@ -81,6 +81,10 @@ setup_auto_services(){
   docker container inspect stargram-seaweedfs >/dev/null 2>&1 && die "Existing SeaweedFS container found; refusing to guess credentials."
   docker volume inspect stargram-mongodb-data >/dev/null 2>&1 && die "Existing MongoDB volume found; refusing to reuse unknown data."
   docker volume inspect stargram-seaweedfs-data >/dev/null 2>&1 && die "Existing SeaweedFS volume found; refusing to reuse unknown data."
+  # Pull all required images before creating persistent resources, so registry failures
+  # cannot leave a half-installed database behind.
+  docker pull "$MONGO_IMAGE"
+  docker pull "$SEAWEEDFS_IMAGE"
   # Legacy stargram-minio-data is deliberately left untouched and is not reused.
   docker volume create stargram-mongodb-data >/dev/null
   docker volume create stargram-seaweedfs-data >/dev/null
