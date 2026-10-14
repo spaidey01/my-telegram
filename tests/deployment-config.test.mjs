@@ -39,6 +39,12 @@ test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
   assert.match(runner, /Legacy stargram-minio-data is deliberately left untouched and is not reused/);
 });
 
+test("runner MongoDB readiness check uses a valid mongosh ping command", () => {
+  const serviceSetup = runner.split(/setup_auto_services\\(\\)\\{/)[1]?.split(/\\n\\}\\nsetup_manual_services\\(\\)/)[0] ?? "";
+  assert.equal((serviceSetup.match(/db\\.adminCommand\\(\\{ping: 1\\}\\)\\.ok/g) ?? []).length, 2);
+  assert.doesNotMatch(serviceSetup, /db\\.adminCommand\\(\\{ping\\}\\)\\.ok/);
+});
+
 test("runner keeps production environment root-owned and group-readable", () => {
   assert.equal((runner.match(/chown "root:\$\(id -gn "\$APP_USER"\)" "\$ENV_FILE"; chmod 0640 "\$ENV_FILE"/g) ?? []).length, 2);
 });
