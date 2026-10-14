@@ -145,7 +145,7 @@ EOF
   chmod 600 /run/stargram-generated.env
 }
 setup_network(){
-  local domain email ip url
+  local domain email ip url nginx_backup="" default_backup=""
   domain="$(ask "Domain (blank = IP/HTTP test mode)" "")"
   ip="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
   if [[ -n "$domain" ]]; then
@@ -162,9 +162,13 @@ setup_network(){
   if [[ -f /run/stargram-generated.env ]]; then
     sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$url|" /run/stargram-generated.env
   fi
-  if [[ -e /etc/nginx/sites-available/stargram ]]; then cp -a /etc/nginx/sites-available/stargram "$BACKUP_DIR/nginx-stargram.$(date +%Y%m%d%H%M%S).bak"; fi
+  if [[ -e /etc/nginx/sites-available/stargram ]]; then
+    nginx_backup="$BACKUP_DIR/nginx-stargram.$(date +%Y%m%d%H%M%S).bak"
+    cp -a /etc/nginx/sites-available/stargram "$nginx_backup"
+  fi
   if [[ -L /etc/nginx/sites-enabled/default || -e /etc/nginx/sites-enabled/default ]]; then
-    cp -a /etc/nginx/sites-enabled/default "$BACKUP_DIR/nginx-default-enabled.$(date +%Y%m%d%H%M%S).bak"
+    default_backup="$BACKUP_DIR/nginx-default-enabled.$(date +%Y%m%d%H%M%S).bak"
+    cp -a /etc/nginx/sites-enabled/default "$default_backup"
     rm -f /etc/nginx/sites-enabled/default
   fi
   cat > /etc/nginx/sites-available/stargram <<EOF
@@ -206,7 +210,18 @@ EOF
   if [[ -n "$domain" ]]; then
     apt-get install -y certbot python3-certbot-nginx
     if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then
-      die "HTTPS certificate issuance failed. Refusing to downgrade a domain deployment to public HTTP; fix DNS/firewall and rerun option 3."
+      log "Certificate issuance failed; restoring the previous Nginx site configuration"
+      if [[ -n "$nginx_backup" && -f "$nginx_backup" ]]; then
+        cp -a "$nginx_backup" /etc/nginx/sites-available/stargram
+        ln -sfn /etc/nginx/sites-available/stargram /etc/nginx/sites-enabled/stargram
+      else
+        rm -f /etc/nginx/sites-enabled/stargram /etc/nginx/sites-available/stargram
+      fi
+      if [[ -n "$default_backup" && -e "$default_backup" ]]; then
+        cp -a "$default_backup" /etc/nginx/sites-enabled/default
+      fi
+      if nginx -t; then systemctl reload nginx || true; fi
+      die "HTTPS certificate issuance failed. Previous Nginx configuration was restored; fix DNS/firewall and rerun option 3."
     fi
     systemctl enable --now certbot.timer || true
     if [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
