@@ -80,6 +80,14 @@ test("runner refuses existing containers and persistent volumes before creating 
 });
 
 
+test("runner performs authenticated S3 round-trip verification before building", () => {
+  assert.match(runner, /verify_s3_storage\(\)\{/);
+  assert.match(runner, /PutObjectCommand/);
+  assert.match(runner, /GetObjectCommand/);
+  assert.match(runner, /DeleteObjectCommand/);
+  assert.match(runner, /npm ci --include=dev\n\s+verify_s3_storage\n\s+sudo -u "\$APP_USER" env "\$\{ENV_ARGS\[@\]\}" NODE_ENV=production npm run build/);
+  assert.match(runner, /S3 storage failed authenticated upload\/download verification/);
+});
 test("runner configures ClamAV TCP and fails closed when scanner or signatures are unavailable", () => {
   assert.match(runner, /configure_clamav\(\)\{/);
   assert.match(runner, /TCPSocket 3310/);
