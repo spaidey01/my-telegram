@@ -63,12 +63,6 @@ jobs:
             -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
             -e AWS_DEFAULT_REGION=us-east-1 \
             amazon/aws-cli:2.27.41 s3api list-buckets --endpoint-url http://127.0.0.1:18333
-          docker run --rm --network host \
-            -e AWS_ACCESS_KEY_ID=stargramsmoketest \
-            -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
-            -e AWS_DEFAULT_REGION=us-east-1 \
-            amazon/aws-cli:2.27.41 s3api create-bucket \
-            --endpoint-url http://127.0.0.1:18333 --bucket stargram
           printf 'stargram-smoke-payload\n' > /tmp/stargram-smoke.txt
           docker run --rm --network host \
             -e AWS_ACCESS_KEY_ID=stargramsmoketest \
