@@ -37,8 +37,8 @@ const requireS3Endpoint = (env) => {
     throw new Error("S3_ENDPOINT must be a valid URL");
   }
   if (parsed.protocol === "https:") return value;
-  if (parsed.protocol === "http:" && isLoopbackHost(parsed.hostname)) return value;
-  throw new Error("S3_ENDPOINT must use https://, or http:// on loopback only");
+  if (parsed.protocol === "http:" && (isLoopbackHost(parsed.hostname) || env.STARGRAM_ALLOW_HTTP === "true")) return value;
+  throw new Error("S3_ENDPOINT must use https://, or http:// on loopback only unless STARGRAM_ALLOW_HTTP=true is explicitly set");
 };
 
 export const validateProductionEnv = (env = process.env) => {
