@@ -63,9 +63,10 @@ test("runner refuses to downgrade failed domain HTTPS provisioning to public HTT
 });
 
 test("runner initializes strict-mode secret variables before loading and validating env", () => {
-  assert.match(runner, /secretKey=""/);
-  assert.match(runner, /TURN_SECRET=""/);
-  assert.match(runner, /secretKey="";[\s\S]*?TURN_SECRET=""/);
+  const secretKeyInit = runner.indexOf('secretKey=""');
+  const turnSecretInit = runner.indexOf('TURN_SECRET=""');
+  assert.ok(secretKeyInit >= 0, "secretKey must be initialized");
+  assert.ok(turnSecretInit > secretKeyInit, "TURN_SECRET must be initialized after secretKey");
 });
 
 test("runner does not export arbitrary environment-file keys into its root shell", () => {
