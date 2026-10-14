@@ -126,3 +126,8 @@ test("configuration editor backs up the original environment before opening the 
   const applyConfig = runner.split(/apply_config\(\)\{/)[1]?.split(/\necho "Stargram Setup Runner"/)[0] ?? "";
   assert.doesNotMatch(applyConfig, /cp -a "\$ENV_FILE" "\$BACKUP_DIR\/my-telegram\.env/);
 });
+
+test("runner sends a newline-terminated ClamAV PING and uses loopback for S3 health checks", () => {
+  assert.match(runner, /printf 'PING\\\\n' >&3/);
+  assert.match(runner, /env "\$\{ENV_ARGS\[@\]\}" S3_ENDPOINT=http:\/\/127\.0\.0\.1:8333 node --input-type=module/);
+});
