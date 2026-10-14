@@ -314,7 +314,7 @@ build_env_args(){
 verify_s3_storage(){
   log "Verifying authenticated S3 bucket with a real upload/download/delete cycle"
   cd "$APP_DIR"
-  sudo -u "$APP_USER" env "${ENV_ARGS[@]}" node --input-type=module <<'NODE'
+  if ! sudo -u "$APP_USER" env "${ENV_ARGS[@]}" node --input-type=module <<'NODE'
 import { randomUUID } from "node:crypto";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
@@ -339,7 +339,9 @@ try {
   process.exitCode = 1;
 } finally { client.destroy(); }
 NODE
-  die "S3 storage failed authenticated upload/download verification."
+  then
+    die "S3 storage failed authenticated upload/download verification."
+  fi
 }
 apply_config(){
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
