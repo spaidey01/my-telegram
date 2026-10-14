@@ -80,6 +80,12 @@ test("runner refuses existing containers and persistent volumes before creating 
 });
 
 
+test("runner MongoDB readiness check uses a valid mongosh ping command", () => {
+  const serviceSetup = runner.split(/setup_auto_services\\(\\)\\{/)[1]?.split(/\\n\\}\\nsetup_manual_services\\(\\)/)[0] ?? "";
+  assert.equal((serviceSetup.match(/db\\.adminCommand\\(\\{ping: 1\\}\\)\\.ok/g) ?? []).length, 2);
+  assert.doesNotMatch(serviceSetup, /db\\.adminCommand\\(\\{ping\\}\\)\\.ok/);
+});
+
 test("VPS setup installs dev dependencies only for building, then prunes them before starting services", () => {
   assert.match(setup, /npm ci --include=dev/);
   assert.match(setup, /npm run build[\s\S]*?npm prune --omit=dev[\s\S]*?systemctl restart my-telegram-web my-telegram-socket/);
