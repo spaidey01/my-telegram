@@ -1,0 +1,91 @@
+name: SeaweedFS Runner Smoke Test
+
+on:
+  push:
+    branches: [stargram_clone]
+    paths:
+      - "deploy/stargram-runner.sh"
+      - ".github/workflows/seaweedfs-runner-smoke.yml"
+  pull_request:
+    branches: [stargram_clone]
+    paths:
+      - "deploy/stargram-runner.sh"
+      - ".github/workflows/seaweedfs-runner-smoke.yml"
+
+jobs:
+  runner-static-and-s3-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate runner syntax and assumptions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/stargram-runner.sh
+          grep -Fq 'chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d' deploy/stargram-runner.sh
+          grep -Fq '"$SEAWEEDFS_IMAGE" mini -dir=/data' deploy/stargram-runner.sh
+          grep -Fq 'S3_ENDPOINT=http://127.0.0.1:8333' deploy/stargram-runner.sh
+          ! grep -Fq 'quay.io/minio/' deploy/stargram-runner.sh
+
+      - name: Pull and start pinned SeaweedFS image
+        shell: bash
+        run: |
+          set -euo pipefail
+          image='chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d'
+          docker pull "$image"
+          docker run -d --name stargram-seaweedfs-smoke \
+            -p 127.0.0.1:18333:8333 \
+            -v stargram-seaweedfs-smoke-data:/data \
+            -e AWS_ACCESS_KEY_ID=stargramsmoketest \
+            -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
+            -e S3_BUCKET=stargram \
+            "$image" mini -dir=/data
+          for _ in $(seq 1 60); do
+            code="$(curl -sS -o /dev/null --max-time 3 -w '%{http_code}' http://127.0.0.1:18333/ 2>/dev/null || true)"
+            if [[ "$code" =~ ^[234][0-9][0-9]$ ]]; then break; fi
+            sleep 2
+          done
+          [[ "${code:-}" =~ ^[234][0-9][0-9]$ ]] || { docker logs stargram-seaweedfs-smoke; exit 1; }
+
+      - name: Verify authenticated S3 operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID=stargramsmoketest \
+            -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            amazon/aws-cli:2 s3api list-buckets --endpoint-url http://127.0.0.1:18333
+          printf 'stargram-smoke-payload\n' > /tmp/stargram-smoke.txt
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID=stargramsmoketest \
+            -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            -v /tmp:/tmp amazon/aws-cli:2 s3api put-object \
+            --endpoint-url http://127.0.0.1:18333 --bucket stargram \
+            --key runner-smoke.txt --body /tmp/stargram-smoke.txt
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID=stargramsmoketest \
+            -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            -v /tmp:/tmp amazon/aws-cli:2 s3api get-object \
+            --endpoint-url http://127.0.0.1:18333 --bucket stargram \
+            --key runner-smoke.txt /tmp/stargram-smoke-downloaded.txt
+          cmp /tmp/stargram-smoke.txt /tmp/stargram-smoke-downloaded.txt
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID=stargramsmoketest \
+            -e AWS_SECRET_ACCESS_KEY=stargram-smoke-secret-0123456789 \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            amazon/aws-cli:2 s3api delete-object \
+            --endpoint-url http://127.0.0.1:18333 --bucket stargram \
+            --key runner-smoke.txt
+
+      - name: Cleanup smoke-test container
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f stargram-seaweedfs-smoke 2>/dev/null || true
+          docker volume rm stargram-seaweedfs-smoke-data 2>/dev/null || true
