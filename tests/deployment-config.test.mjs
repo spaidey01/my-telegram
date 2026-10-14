@@ -129,5 +129,7 @@ test("configuration editor backs up the original environment before opening the 
 
 test("runner sends a newline-terminated ClamAV PING and uses loopback for S3 health checks", () => {
   assert.match(runner, /printf 'PING\\n' >&3/);
-  assert.match(runner, /env "\$\{ENV_ARGS\[@\]\}" S3_ENDPOINT=http:\/\/127\.0\.0\.1:8333 node --input-type=module/);
+  assert.match(runner, /S3_HEALTH_ENDPOINT="\$\{S3_ENDPOINT_VALUE:-\}"/);
+  assert.match(runner, /docker container inspect stargram-seaweedfs[\s\S]*?S3_HEALTH_ENDPOINT=http:\/\/127\.0\.0\.1:8333/);
+  assert.match(runner, /env "\$\{ENV_ARGS\[@\]\}" S3_ENDPOINT="\$S3_HEALTH_ENDPOINT" node --input-type=module/);
 });
