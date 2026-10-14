@@ -311,6 +311,36 @@ build_env_args(){
     ENV_ARGS+=("$key=$value")
   done < "$ENV_FILE"
 }
+verify_s3_storage(){
+  log "Verifying authenticated S3 bucket with a real upload/download/delete cycle"
+  cd "$APP_DIR"
+  sudo -u "$APP_USER" env "${ENV_ARGS[@]}" node --input-type=module <<'NODE'
+import { randomUUID } from "node:crypto";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+
+const bucket = process.env.S3_BUCKET_NAME;
+const client = new S3Client({
+  endpoint: process.env.S3_ENDPOINT,
+  region: process.env.AWS_REGION || "us-east-1",
+  forcePathStyle: true,
+  credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY },
+});
+const key = `.stargram-healthcheck-${randomUUID()}.txt`;
+const body = `stargram-s3-healthcheck-${randomUUID()}`;
+try {
+  await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body }));
+  const downloaded = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (await downloaded.Body.transformToString() !== body) throw new Error("S3 round-trip content mismatch");
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+  console.log("S3 authenticated round-trip passed.");
+} catch (error) {
+  try { await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); } catch {}
+  console.error("S3 authenticated health check failed:", error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+} finally { client.destroy(); }
+NODE
+  [[ "$?" -eq 0 ]] || die "S3 storage failed authenticated upload/download verification."
+}
 apply_config(){
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
   chown "root:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
@@ -325,6 +355,7 @@ apply_config(){
   systemctl daemon-reload; systemctl enable --now redis-server
   configure_clamav
   cd "$APP_DIR"; sudo -u "$APP_USER" npm ci --include=dev
+  verify_s3_storage
   sudo -u "$APP_USER" env "${ENV_ARGS[@]}" NODE_ENV=production npm run build
   log "Removing development-only dependencies from the production server"
   sudo -u "$APP_USER" npm prune --omit=dev
