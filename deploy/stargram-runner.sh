@@ -156,8 +156,6 @@ setup_network(){
   # it for the managed local SeaweedFS deployment; never overwrite a manual S3 URL.
   if [[ -f /run/stargram-generated.env ]]; then
     sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$url|" /run/stargram-generated.env
-  elif [[ -f "$ENV_FILE" ]] && docker container inspect stargram-seaweedfs >/dev/null 2>&1; then
-    sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$url|" "$ENV_FILE"
   fi
   if [[ -e /etc/nginx/sites-available/stargram ]]; then cp -a /etc/nginx/sites-available/stargram "$BACKUP_DIR/nginx-stargram.$(date +%Y%m%d%H%M%S).bak"; fi
   if [[ -L /etc/nginx/sites-enabled/default || -e /etc/nginx/sites-enabled/default ]]; then
@@ -405,6 +403,11 @@ EOF
   3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
      install_packages; open_ports; setup_network
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
+     if docker container inspect stargram-seaweedfs >/dev/null 2>&1; then
+       s3_public_endpoint="$(sed -n 's/^CLIENT_ORIGIN=//p' /run/stargram-network.env)"
+       [[ -n "$s3_public_endpoint" ]] || die "Could not determine public S3 endpoint."
+       sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$s3_public_endpoint|" "$ENV_FILE"
+     fi
      sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
      cat /run/stargram-network.env >> "$ENV_FILE"
      chown "root:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
