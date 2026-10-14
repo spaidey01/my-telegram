@@ -250,7 +250,7 @@ EOF
 }
 configure_clamav(){
   log "Configuring and verifying fail-closed ClamAV scanner"
-  local conf=/etc/clamav/clamd.conf freshclam_conf=/etc/clamav/freshclam.conf
+  local conf=/etc/clamav/clamd.conf
   [[ -f "$conf" ]] || die "ClamAV daemon configuration is missing."
   # The application talks to clamd over loopback TCP; Debian defaults to a Unix socket.
   if grep -qE '^[[:space:]]*TCPSocket[[:space:]]+' "$conf"; then
@@ -339,7 +339,7 @@ try {
   process.exitCode = 1;
 } finally { client.destroy(); }
 NODE
-  [[ "$?" -eq 0 ]] || die "S3 storage failed authenticated upload/download verification."
+  die "S3 storage failed authenticated upload/download verification."
 }
 apply_config(){
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
