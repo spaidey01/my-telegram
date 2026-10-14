@@ -12,6 +12,11 @@ SEAWEEDFS_IMAGE="${SEAWEEDFS_IMAGE:-chrislusf/seaweedfs@sha256:4e61d15fd35994cb1
 TURN_MIN_PORT=49160
 TURN_MAX_PORT=49200
 BACKUP_DIR=/var/backups/stargram-runner
+# Initialize values read from the protected env file so `set -u` reports
+# missing secrets through the explicit validation below, not an unbound-variable crash.
+secretKey=""
+TURN_SECRET=""
+S3_ENDPOINT_VALUE=""
 log(){ printf '\n==> %s\n' "$*"; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
 ask(){ local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
