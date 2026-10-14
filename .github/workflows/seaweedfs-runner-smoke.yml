@@ -5,6 +5,7 @@ on:
     branches: [stargram_clone]
     paths:
       - "deploy/stargram-runner.sh"
+      - "src/utils/productionConfig.js"
       - ".github/workflows/seaweedfs-runner-smoke.yml"
   pull_request:
     branches: [stargram_clone]
@@ -28,6 +29,9 @@ jobs:
           grep -Fq 'chrislusf/seaweedfs@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d' deploy/stargram-runner.sh
           grep -Fq '"$SEAWEEDFS_IMAGE" mini -dir=/data' deploy/stargram-runner.sh
           grep -Fq 'S3_ENDPOINT=http://127.0.0.1:8333' deploy/stargram-runner.sh
+          grep -Fq 'location ^~ /stargram' deploy/stargram-runner.sh
+          grep -Fq 'S3_ENDPOINT=$url' deploy/stargram-runner.sh
+          grep -Fq 'env.STARGRAM_ALLOW_HTTP === "true"' src/utils/productionConfig.js
           ! grep -Fq 'quay.io/minio/' deploy/stargram-runner.sh
 
       - name: Pull and start pinned SeaweedFS image
