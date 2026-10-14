@@ -81,6 +81,7 @@ test("HTTP S3 endpoint is permitted on loopback for local MinIO/LocalStack only"
   assert.deepEqual(validateProductionEnv({ ...valid, S3_ENDPOINT: "http://localhost:4566" }), { ok: true });
 });
 
-test("HTTP S3 endpoint is rejected for a non-loopback host even in HTTP test mode", () => {
-  assert.throws(() => validateProductionEnv({ ...valid, STARGRAM_ALLOW_HTTP: "true", S3_ENDPOINT: "http://storage.example.com" }), /loopback only/);
+test("HTTP S3 endpoint on a public host requires explicit HTTP test-mode opt-in", () => {
+  assert.throws(() => validateProductionEnv({ ...valid, S3_ENDPOINT: "http://storage.example.com" }), /STARGRAM_ALLOW_HTTP=true/);
+  assert.deepEqual(validateProductionEnv({ ...valid, STARGRAM_ALLOW_HTTP: "true", S3_ENDPOINT: "http://storage.example.com" }), { ok: true });
 });
