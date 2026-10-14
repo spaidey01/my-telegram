@@ -52,6 +52,11 @@ test("runner preserves SSH access when configuring firewalld", () => {
   assert.ok(runner.includes('firewall-cmd --permanent --add-port="${ssh_port}/tcp"'));
 });
 
+test("runner restores the previous Nginx configuration when certificate provisioning fails", () => {
+  assert.match(runner, /local domain email ip url nginx_backup="" default_backup=""/);
+  assert.match(runner, /if ! certbot --nginx[\\s\\S]*?restoring the previous Nginx site configuration[\\s\\S]*?cp -a "\$nginx_backup" \/etc\/nginx\/sites-available\/stargram[\\s\\S]*?nginx -t[\\s\\S]*?die "HTTPS certificate issuance failed/);
+});
+
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
   assert.match(runner, /if ! certbot --nginx -d "\$domain" --email "\$email" --agree-tos --non-interactive --redirect; then[\s\S]*?die "HTTPS certificate issuance failed\. Refusing to downgrade a domain deployment to public HTTP/);
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
