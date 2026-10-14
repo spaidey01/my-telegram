@@ -60,7 +60,7 @@ test("runner refuses to downgrade failed domain HTTPS provisioning to public HTT
 test("runner initializes strict-mode secret variables before loading and validating env", () => {
   assert.match(runner, /secretKey=""/);
   assert.match(runner, /TURN_SECRET=""/);
-  assert.match(runner, /secretKey="";[\\s\\S]*?TURN_SECRET=""/);
+  assert.match(runner, /secretKey="";[\s\S]*?TURN_SECRET=""/);
 });
 
 test("runner does not export arbitrary environment-file keys into its root shell", () => {
