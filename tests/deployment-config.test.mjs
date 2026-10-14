@@ -31,11 +31,12 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(deploy, /merge --ff-only "origin\/\$BRANCH"/);
 });
 
-test("runner does not use floating latest container tags", () => {
-  assert.doesNotMatch(runner, /(?:mongo|quay\.io\/minio\/(?:minio|mc)):\s*latest/);
-  assert.match(runner, /MONGO_IMAGE="\$\{MONGO_IMAGE:-mongo:[0-9.]+\}"/);
-  assert.match(runner, /MINIO_IMAGE="\$\{MINIO_IMAGE:-quay\.io\/minio\/minio:RELEASE\.[^}]+\}"/);
-  assert.match(runner, /MINIO_MC_IMAGE="\$\{MINIO_MC_IMAGE:-quay\.io\/minio\/mc:RELEASE\.[^}]+\}"/);
+test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
+  assert.doesNotMatch(runner, /:latest\\b/);
+  assert.match(runner, /MONGO_IMAGE=.*mongo:/);
+  assert.match(runner, /SEAWEEDFS_IMAGE=.*seaweedfs@sha256:[a-f0-9]{64}/);
+  assert.match(runner, /docker run -d --name stargram-seaweedfs/);
+  assert.match(runner, /Legacy stargram-minio-data is deliberately left untouched and is not reused/);
 });
 
 test("runner keeps production environment root-owned and group-readable", () => {
