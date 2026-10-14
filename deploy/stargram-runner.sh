@@ -271,7 +271,7 @@ configure_clamav(){
   fi
   local version
   version="$(clamscan --version 2>/dev/null || true)"
-  [[ "$version" =~ (daily|main|bytecode) ]] || die "ClamAV signature database is missing or unusable. Fix FreshClam/network access before continuing."
+  [[ "$version" =~ ClamAV[[:space:]].*/[1-9][0-9]*/ ]] || die "ClamAV signature database is missing or unusable. Fix FreshClam/network access before continuing."
   systemctl enable clamav-daemon >/dev/null
   systemctl restart clamav-daemon
   local reply=""
