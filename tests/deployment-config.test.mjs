@@ -80,6 +80,15 @@ test("runner refuses existing containers and persistent volumes before creating 
 });
 
 
+test("runner configures ClamAV TCP and fails closed when scanner or signatures are unavailable", () => {
+  assert.match(runner, /configure_clamav\(\)\{/);
+  assert.match(runner, /TCPSocket 3310/);
+  assert.match(runner, /TCPAddr 127\.0\.0\.1/);
+  assert.match(runner, /ClamAV signature database is missing or unusable/);
+  assert.match(runner, /ClamAV clamd did not answer PING on 127\.0\.0\.1:3310/);
+  assert.match(runner, /configure_clamav\n\s+cd "\$APP_DIR"; sudo -u "\$APP_USER" npm ci/);
+});
+
 test("runner MongoDB readiness check uses a valid mongosh ping command", () => {
   const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_manual_services\(\)/)[0] ?? "";
   assert.equal((serviceSetup.match(/db\.adminCommand\(\{ping: 1\}\)\.ok/g) ?? []).length, 2);
