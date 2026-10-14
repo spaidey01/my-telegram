@@ -7,8 +7,8 @@ ENV_FILE=/etc/my-telegram.env
 BRANCH="${BRANCH:-stargram_clone}"
 REPO_URL="${REPO_URL:-https://github.com/spaidey01/my-telegram.git}"
 MONGO_IMAGE="${MONGO_IMAGE:-mongo:8.0.12}"
-MINIO_IMAGE="${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z}"
-MINIO_MC_IMAGE="${MINIO_MC_IMAGE:-quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z}"
+SEAWEEDFS_IMAGE="${SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:latest}"
+
 TURN_MIN_PORT=49160
 TURN_MAX_PORT=49200
 BACKUP_DIR=/var/backups/stargram-runner
@@ -77,18 +77,24 @@ setup_auto_services(){
   mongo_pw="$(randhex 24)"; s3_user="stargram$(randhex 8)"; s3_pw="$(randhex 32)"
   # Refuse to adopt existing services before creating any persistent resources.
   docker container inspect stargram-mongodb >/dev/null 2>&1 && die "Existing MongoDB container found; refusing to guess credentials."
-  docker container inspect stargram-minio >/dev/null 2>&1 && die "Existing MinIO container found; refusing to guess credentials."
+  docker container inspect stargram-minio >/dev/null 2>&1 && die "Legacy MinIO container found; refusing to adopt it."
+  docker container inspect stargram-seaweedfs >/dev/null 2>&1 && die "Existing SeaweedFS container found; refusing to guess credentials."
   docker volume inspect stargram-mongodb-data >/dev/null 2>&1 && die "Existing MongoDB volume found; refusing to reuse unknown data."
-  docker volume inspect stargram-minio-data >/dev/null 2>&1 && die "Existing MinIO volume found; refusing to reuse unknown data."
+  docker volume inspect stargram-seaweedfs-data >/dev/null 2>&1 && die "Existing SeaweedFS volume found; refusing to reuse unknown data."
+  # Legacy stargram-minio-data is deliberately left untouched and is not reused.
   docker volume create stargram-mongodb-data >/dev/null
-  docker volume create stargram-minio-data >/dev/null
+  docker volume create stargram-seaweedfs-data >/dev/null
   docker run -d --name stargram-mongodb --restart unless-stopped -p 127.0.0.1:27017:27017 -e MONGO_INITDB_ROOT_USERNAME=stargram -e MONGO_INITDB_ROOT_PASSWORD="$mongo_pw" -e MONGO_INITDB_DATABASE=stargram -v stargram-mongodb-data:/data/db "$MONGO_IMAGE" >/dev/null
-  docker run -d --name stargram-minio --restart unless-stopped -p 127.0.0.1:9000:9000 -p 127.0.0.1:9001:9001 -e MINIO_ROOT_USER="$s3_user" -e MINIO_ROOT_PASSWORD="$s3_pw" -v stargram-minio-data:/data "$MINIO_IMAGE" server /data --console-address ':9001' >/dev/null
+  docker run -d --name stargram-seaweedfs --restart unless-stopped -p 127.0.0.1:8333:8333 -v stargram-seaweedfs-data:/data -e AWS_ACCESS_KEY_ID="$s3_user" -e AWS_SECRET_ACCESS_KEY="$s3_pw" -e S3_BUCKET=stargram "$SEAWEEDFS_IMAGE" >/dev/null
   for _ in $(seq 1 60); do docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping}).ok' >/dev/null 2>&1 && break; sleep 2; done
   docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping}).ok' >/dev/null 2>&1 || die "MongoDB did not become ready."
-  for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1 && break; sleep 2; done
-  curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null 2>&1 || die "MinIO did not become ready."
-  docker run --rm --network host -e MC_HOST_stargram="http://$s3_user:$s3_pw@127.0.0.1:9000" "$MINIO_MC_IMAGE" mb --ignore-existing stargram/stargram >/dev/null
+  local s3_http_code=""
+  for _ in $(seq 1 60); do
+    s3_http_code="$(curl -sS -o /dev/null --max-time 3 -w '%{http_code}' http://127.0.0.1:8333/ 2>/dev/null || true)"
+    [[ "$s3_http_code" =~ ^[234][0-9][0-9]$ ]] && break
+    sleep 2
+  done
+  [[ "$s3_http_code" =~ ^[234][0-9][0-9]$ ]] || { docker logs --tail 60 stargram-seaweedfs >&2 || true; die "SeaweedFS S3 endpoint did not become ready on 127.0.0.1:8333."; }
   public_ip="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
   realm="$(ask "TURN realm (public IP or hostname)" "$public_ip")"; turn_secret="$(randhex 32)"
   if [[ -f /etc/turnserver.conf ]]; then cp -a /etc/turnserver.conf "$BACKUP_DIR/turnserver.conf.$(date +%Y%m%d%H%M%S).bak"; fi
@@ -118,7 +124,7 @@ EOF
 MONGODB_URI=mongodb://stargram:$mongo_pw@127.0.0.1:27017/stargram?authSource=admin
 S3_ACCESS_KEY=$s3_user
 S3_SECRET_KEY=$s3_pw
-S3_ENDPOINT=http://127.0.0.1:9000
+S3_ENDPOINT=http://127.0.0.1:8333
 S3_BUCKET_NAME=stargram
 TURN_URL=turn:$realm:3478?transport=udp,turn:$realm:3478?transport=tcp
 TURN_SECRET=$turn_secret
@@ -280,10 +286,9 @@ apply_config(){
 echo "Stargram Setup Runner"
 echo "Target branch: $BRANCH"
 echo "Mongo image: $MONGO_IMAGE"
-echo "MinIO image: $MINIO_IMAGE"
-echo "MinIO client image: $MINIO_MC_IMAGE"
+echo "SeaweedFS image: $SEAWEEDFS_IMAGE"
 echo "WARNING: run first on a disposable Debian/Ubuntu VPS, not a production host."
-echo "1) Automatic install (local MongoDB, MinIO/S3, Redis, Coturn, ClamAV)"
+echo "1) Automatic install (local MongoDB, SeaweedFS S3, Redis, Coturn, ClamAV)"
 echo "2) Manual service credentials; remaining dependencies install automatically"
 echo "3) Network / domain / HTTPS setup or update"
 echo "4) Edit configuration after install"
