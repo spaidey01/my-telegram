@@ -151,10 +151,13 @@ setup_network(){
     url="http://$ip"
     echo "WARNING: public HTTP over IP normally blocks browser microphone/camera. HTTPS is needed for public calls."
   fi
-  # Browser uploads use S3 presigned URLs, so the public endpoint must resolve
-  # through this Nginx host while the S3 listener itself remains loopback-only.
+  # Browser uploads use path-style presigned URLs (/stargram/<key>), which Nginx
+  # forwards to SeaweedFS. Keep the public endpoint in app config, but only rewrite
+  # it for the managed local SeaweedFS deployment; never overwrite a manual S3 URL.
   if [[ -f /run/stargram-generated.env ]]; then
     sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$url|" /run/stargram-generated.env
+  elif [[ -f "$ENV_FILE" ]] && docker container inspect stargram-seaweedfs >/dev/null 2>&1; then
+    sed -i "s|^S3_ENDPOINT=.*|S3_ENDPOINT=$url|" "$ENV_FILE"
   fi
   if [[ -e /etc/nginx/sites-available/stargram ]]; then cp -a /etc/nginx/sites-available/stargram "$BACKUP_DIR/nginx-stargram.$(date +%Y%m%d%H%M%S).bak"; fi
   if [[ -L /etc/nginx/sites-enabled/default || -e /etc/nginx/sites-enabled/default ]]; then
@@ -308,13 +311,16 @@ build_env_args(){
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
+    [[ "$key" == "S3_ENDPOINT" ]] && S3_ENDPOINT_VALUE="$value"
     ENV_ARGS+=("$key=$value")
   done < "$ENV_FILE"
 }
 verify_s3_storage(){
   log "Verifying authenticated S3 bucket with a real upload/download/delete cycle"
   cd "$APP_DIR"
-  if ! sudo -u "$APP_USER" env "${ENV_ARGS[@]}" S3_ENDPOINT=http://127.0.0.1:8333 node --input-type=module <<'NODE'
+  local S3_HEALTH_ENDPOINT="${S3_ENDPOINT_VALUE:-}"
+  if docker container inspect stargram-seaweedfs >/dev/null 2>&1; then S3_HEALTH_ENDPOINT=http://127.0.0.1:8333; fi
+  if ! sudo -u "$APP_USER" env "${ENV_ARGS[@]}" S3_ENDPOINT="$S3_HEALTH_ENDPOINT" node --input-type=module <<'NODE'
 import { randomUUID } from "node:crypto";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
