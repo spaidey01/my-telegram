@@ -98,10 +98,10 @@ checkout_app(){
   # Keep the checkout metadata and repository root out of the runtime user's control.
   # The runner later executes Git as root; a writable .git/hooks directory would
   # let the app user plant hooks that execute during privileged checkout/merge.
-  chown -R "$APP_USER:$app_group" "$APP_DIR"
-  chown root:root "$APP_DIR"
-  chown -R root:root "$APP_DIR/.git"
+  # Keep checked-out source and Git metadata root-owned; only build output is writable.
+  chown -R root:root "$APP_DIR"
   chmod -R go-w "$APP_DIR/.git"
+  install -d -o "$APP_USER" -g "$app_group" -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
 }
 setup_auto_services(){
   local mongo_pw s3_user s3_pw turn_secret realm public_ip
