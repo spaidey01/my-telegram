@@ -19,6 +19,51 @@ TURN_SECRET=""
 S3_ENDPOINT_VALUE=""
 log(){ printf '\n==> %s\n' "$*"; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
+NETWORK_TXN_ACTIVE=0
+NETWORK_TXN_DIR=""
+snapshot_path(){
+  local name="$1" path="$2"
+  if [[ -e "$path" || -L "$path" ]]; then
+    cp -a "$path" "$NETWORK_TXN_DIR/$name"
+    : > "$NETWORK_TXN_DIR/$name.present"
+  fi
+}
+restore_path(){
+  local name="$1" path="$2"
+  rm -f "$path"
+  if [[ -f "$NETWORK_TXN_DIR/$name.present" ]]; then
+    cp -a "$NETWORK_TXN_DIR/$name" "$path"
+  fi
+}
+begin_network_transaction(){
+  NETWORK_TXN_DIR="$(mktemp -d "$BACKUP_DIR/network-transaction.XXXXXX")"
+  chmod 700 "$NETWORK_TXN_DIR"
+  snapshot_path env "$ENV_FILE"
+  snapshot_path nginx-available /etc/nginx/sites-available/stargram
+  snapshot_path nginx-enabled /etc/nginx/sites-enabled/stargram
+  snapshot_path nginx-default /etc/nginx/sites-enabled/default
+  snapshot_path turnserver /etc/turnserver.conf
+  NETWORK_TXN_ACTIVE=1
+}
+runner_exit_handler(){
+  local status="$1"
+  if [[ "$NETWORK_TXN_ACTIVE" == 1 && "$status" -ne 0 ]]; then
+    log "Network/configuration update failed; restoring saved application, Nginx and TURN configuration"
+    restore_path env "$ENV_FILE"
+    restore_path nginx-available /etc/nginx/sites-available/stargram
+    restore_path nginx-enabled /etc/nginx/sites-enabled/stargram
+    restore_path nginx-default /etc/nginx/sites-enabled/default
+    restore_path turnserver /etc/turnserver.conf
+    if nginx -t; then systemctl reload nginx || true; fi
+    systemctl restart coturn >/dev/null 2>&1 || true
+    systemctl restart my-telegram-web my-telegram-socket >/dev/null 2>&1 || true
+    echo "Rollback snapshots retained at: $NETWORK_TXN_DIR" >&2
+  elif [[ "$NETWORK_TXN_ACTIVE" == 1 && -n "$NETWORK_TXN_DIR" ]]; then
+    rm -rf "$NETWORK_TXN_DIR"
+  fi
+  return "$status"
+}
+trap 'runner_exit_handler "$?"' EXIT
 ask(){ local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
 randhex(){ openssl rand -hex "$1"; }
 public_ipv4(){
@@ -489,8 +534,10 @@ EOF
   2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
      install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
   3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
-     install_packages; open_ports; setup_network
+     install_packages; open_ports
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
+     begin_network_transaction
+     setup_network
      if docker container inspect stargram-seaweedfs >/dev/null 2>&1; then
        s3_public_endpoint="$(sed -n 's/^CLIENT_ORIGIN=//p' /run/stargram-network.env)"
        [[ -n "$s3_public_endpoint" ]] || die "Could not determine public S3 endpoint."
@@ -499,7 +546,10 @@ EOF
      sed -i '/^CLIENT_ORIGIN=/d;/^NEXT_PUBLIC_APP_URL=/d;/^NEXT_PUBLIC_SOCKET_SERVER_URL=/d;/^TRUSTED_PROXY_COUNT=/d;/^STARGRAM_ALLOW_HTTP=/d' "$ENV_FILE"
      cat /run/stargram-network.env >> "$ENV_FILE"
      chown "root:$(id -gn "$APP_USER")" "$ENV_FILE"; chmod 0640 "$ENV_FILE"
-     apply_config ;;
+     apply_config
+     NETWORK_TXN_ACTIVE=0
+     rm -rf "$NETWORK_TXN_DIR"
+     NETWORK_TXN_DIR="" ;;
   4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
      "${EDITOR:-nano}" "$ENV_FILE"; apply_config ;;
