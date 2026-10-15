@@ -35,7 +35,9 @@ test("deployment targets stargram_clone by default, not main", () => {
 test("runner keeps source and Git root-owned while allowing only build output writes", () => {
   assert.match(runner, /chown -R root:root "\$APP_DIR"/);
   assert.match(runner, /chmod -R go-w "\$APP_DIR\/\.git"/);
-  assert.match(runner, /install -d -o "\$APP_USER" -g "\$app_group" -m 0750 "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
+  assert.match(runner, /install -d -m 0750 "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
+  assert.match(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
+  assert.match(runner, /\[\[ ! -L "\$APP_DIR\/node_modules" \]\] \|\| rm -f "\$APP_DIR\/node_modules"/);
   assert.doesNotMatch(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
 });
 
