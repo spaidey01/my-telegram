@@ -222,6 +222,7 @@ setup_auto_services(){
   # Resolve public network prerequisites before creating persistent resources.
   public_ip="$(public_ipv4)"
   realm="$(ask "TURN realm (public IP or hostname)" "$public_ip")"
+  valid_turn_realm "$realm" || die "TURN realm must be a valid IPv4 address or DNS hostname."
   turn_secret="$(randhex 32)"
   mongo_pw="$(randhex 24)"; s3_user="stargram$(randhex 8)"; s3_pw="$(randhex 32)"
   # Refuse to adopt existing services before creating any persistent resources.
@@ -301,6 +302,17 @@ valid_domain(){
 valid_email(){
   local value="$1"
   [[ ${#value} -le 254 && "$value" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ && "$value" != *..* ]]
+}
+valid_turn_realm(){
+  local realm="$1" a b c d octet
+  if [[ "$realm" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]]; then
+    IFS=. read -r a b c d <<< "$realm"
+    for octet in "$a" "$b" "$c" "$d"; do
+      [[ "$octet" =~ ^[0-9]{1,3}$ ]] && (( 10#$octet <= 255 )) || return 1
+    done
+    return 0
+  fi
+  valid_domain "$realm"
 }
 setup_network(){
   local domain email ip url nginx_backup="" default_backup=""
@@ -433,6 +445,7 @@ write_manual_env(){
   [[ "$mongo" == mongodb://* || "$mongo" == mongodb+srv://* ]] || die "Invalid MongoDB URI."
   [[ "$s3" == https://* || "$s3" == http://127.0.0.1:* ]] || die "S3 must use HTTPS or loopback HTTP."
   [[ -n "$bucket" && -n "$access" && -n "$secret" && -n "$turn" && ${#turnsecret} -ge 32 && -n "$realm" ]] || die "Missing required values."
+  valid_turn_realm "$realm" || die "TURN realm must be a valid IPv4 address or DNS hostname."
   cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 secretKey=$(randhex 32)
