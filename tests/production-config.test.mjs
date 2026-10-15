@@ -35,6 +35,8 @@ for (const [name, mutate] of [
   ["HTTP S3 endpoint outside loopback", (env) => { env.S3_ENDPOINT = "http://storage.example.com"; }],
   ["weak application secret", (env) => { env.secretKey = "short"; }],
   ["invalid proxy count", (env) => { env.TRUSTED_PROXY_COUNT = "1.5"; }],
+  ["missing trusted proxy count", (env) => { delete env.TRUSTED_PROXY_COUNT; }],
+  ["zero trusted proxy count", (env) => { env.TRUSTED_PROXY_COUNT = "0"; }],
 ]) {
   test(`production environment rejects ${name}`, () => {
     const env = { ...valid };
