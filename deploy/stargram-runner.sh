@@ -24,10 +24,10 @@ randhex(){ openssl rand -hex "$1"; }
 public_ipv4(){
   local candidate octet_a octet_b octet_c octet_d octet
   candidate="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
-  if [[ ! "$candidate" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]]; then
+  if [[ ! "$candidate" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
     candidate="$(curl -4fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]' || true)"
   fi
-  [[ "$candidate" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]] || die "Could not determine the public IPv4 address. Check outbound network access and rerun."
+  [[ "$candidate" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "Could not determine the public IPv4 address. Check outbound network access and rerun."
   IFS=. read -r octet_a octet_b octet_c octet_d <<< "$candidate"
   for octet in "$octet_a" "$octet_b" "$octet_c" "$octet_d"; do
     [[ "$octet" =~ ^[0-9]{1,3}$ ]] && (( 10#$octet <= 255 )) || die "Public IPv4 lookup returned an invalid address."
