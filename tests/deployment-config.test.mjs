@@ -112,7 +112,7 @@ test("runner validates DNS hostnames and certificate email addresses", () => {
   assert.match(runner, /valid_email\(\)\{/);
   assert.match(runner, /valid_domain "\$domain" \|\| die "Invalid domain hostname/);
   assert.match(runner, /valid_email "\$email" \|\| die "Valid email required/);
-  assert.match(runner, /value != \*\.\./);
+  assert.match(runner, /\$value" != \*\.\.\*/);
 });
 
 test("runner preflights public IP before creating persistent service resources", () => {
