@@ -153,9 +153,14 @@ checkout_app(){
   # The runner later executes Git as root; a writable .git/hooks directory would
   # let the app user plant hooks that execute during privileged checkout/merge.
   # Keep checked-out source and Git metadata root-owned; only build output is writable.
+  # Remove a pre-existing build-directory symlink rather than granting the app
+  # user write access through it to an arbitrary path outside the checkout.
+  [[ ! -L "$APP_DIR/node_modules" ]] || rm -f "$APP_DIR/node_modules"
+  [[ ! -L "$APP_DIR/.next" ]] || rm -f "$APP_DIR/.next"
   chown -R root:root "$APP_DIR"
   chmod -R go-w "$APP_DIR/.git"
-  install -d -o "$APP_USER" -g "$app_group" -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
+  install -d -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
+  chown -R "$APP_USER:$app_group" "$APP_DIR/node_modules" "$APP_DIR/.next"
 }
 setup_auto_services(){
   local mongo_pw s3_user s3_pw turn_secret realm public_ip
