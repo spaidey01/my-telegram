@@ -101,7 +101,7 @@ test("runner acquires an exclusive process lock before state-changing operations
       timeout: 2000,
     });
     assert.notEqual(second.status, 0, "a concurrent runner must be rejected");
-    assert.match(second.stderr, /Another Stargram Runner instance is already running/);
+    assert.match(second.stderr, /Another Stargram (?:setup, deployment, or Runner operation|Runner instance) is already running/);
     assert.doesNotMatch(second.stdout, /UNEXPECTEDLY_ACQUIRED/);
 
     const firstExit = await firstExitPromise;
