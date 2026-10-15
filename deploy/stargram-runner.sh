@@ -114,6 +114,10 @@ checkout_app(){
 }
 setup_auto_services(){
   local mongo_pw s3_user s3_pw turn_secret realm public_ip
+  # Resolve public network prerequisites before creating persistent resources.
+  public_ip="$(public_ipv4)"
+  realm="$(ask "TURN realm (public IP or hostname)" "$public_ip")"
+  turn_secret="$(randhex 32)"
   mongo_pw="$(randhex 24)"; s3_user="stargram$(randhex 8)"; s3_pw="$(randhex 32)"
   # Refuse to adopt existing services before creating any persistent resources.
   docker container inspect stargram-mongodb >/dev/null 2>&1 && die "Existing MongoDB container found; refusing to guess credentials."
@@ -139,8 +143,6 @@ setup_auto_services(){
     sleep 2
   done
   [[ "$s3_http_code" =~ ^[234][0-9][0-9]$ ]] || { docker logs --tail 60 stargram-seaweedfs >&2 || true; die "SeaweedFS S3 endpoint did not become ready on 127.0.0.1:8333."; }
-  public_ip="$(public_ipv4)"
-  realm="$(ask "TURN realm (public IP or hostname)" "$public_ip")"; turn_secret="$(randhex 32)"
   if [[ -f /etc/turnserver.conf ]]; then cp -a /etc/turnserver.conf "$BACKUP_DIR/turnserver.conf.$(date +%Y%m%d%H%M%S).bak"; fi
   cat > /etc/turnserver.conf <<EOF
 listening-port=3478
@@ -351,6 +353,7 @@ configure_clamav(){
   if command -v freshclam >/dev/null 2>&1; then
     systemctl stop clamav-freshclam >/dev/null 2>&1 || true
     timeout 180 freshclam --stdout --verbose || log "FreshClam update failed; checking whether existing signatures are usable"
+    systemctl enable --now clamav-freshclam || log "Could not start the FreshClam updater; scanner startup will still be validated"
   fi
   local version
   version="$(clamscan --version 2>/dev/null || true)"
@@ -367,16 +370,16 @@ configure_clamav(){
 }
 load_env_file(){
   local line key value
+  local -A seen_keys=()
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ -z "$line" || "$line" == \\#* ]] && continue
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
-    # Only copy the two values the root runner itself needs. All other keys are
-    # passed to the unprivileged application process by build_env_args().
-    # This prevents env-file keys such as PATH, BASH_ENV, or LD_PRELOAD from
-    # changing the root runner's own execution environment.
+    [[ -z "${seen_keys[$key]+x}" ]] || die "Duplicate environment key: $key"
+    seen_keys["$key"]=1
+    # Never source the env file into the privileged runner shell.
     case "$key" in
       secretKey) printf -v secretKey '%s' "$value" ;;
       TURN_SECRET) printf -v TURN_SECRET '%s' "$value" ;;
@@ -386,11 +389,14 @@ load_env_file(){
 build_env_args(){
   ENV_ARGS=()
   local line key value
+  local -A seen_keys=()
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ -z "$line" || "$line" == \\#* ]] && continue
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
+    [[ -z "${seen_keys[$key]+x}" ]] || die "Duplicate environment key: $key"
+    seen_keys["$key"]=1
     [[ "$key" == "S3_ENDPOINT" ]] && S3_ENDPOINT_VALUE="$value"
     ENV_ARGS+=("$key=$value")
   done < "$ENV_FILE"
