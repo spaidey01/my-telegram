@@ -27,11 +27,25 @@ APP_TREE_PROTECTED=0
 AUTO_TURN_CONFIG_TOUCHED=0
 AUTO_TURN_CONFIG_EXISTED=0
 AUTO_TURN_BACKUP=""
+AUTO_MONGO_VOLUME_CREATED=0
+AUTO_SEAWEEDFS_VOLUME_CREATED=0
+AUTO_MONGO_CONTAINER_CREATED=0
+AUTO_SEAWEEDFS_CONTAINER_CREATED=0
 rollback_auto_setup(){
   [[ "$AUTO_SETUP_ACTIVE" == 1 ]] || return 0
-  log "Automatic service setup failed; removing only resources created by this attempt"
-  docker rm -f stargram-seaweedfs stargram-mongodb >/dev/null 2>&1 || true
-  docker volume rm stargram-seaweedfs-data stargram-mongodb-data >/dev/null 2>&1 || true
+  log "Automatic service setup failed; removing resources confirmed created by this attempt"
+  if [[ "$AUTO_SEAWEEDFS_CONTAINER_CREATED" == 1 ]]; then
+    docker rm -f stargram-seaweedfs >/dev/null 2>&1 || true
+  fi
+  if [[ "$AUTO_MONGO_CONTAINER_CREATED" == 1 ]]; then
+    docker rm -f stargram-mongodb >/dev/null 2>&1 || true
+  fi
+  if [[ "$AUTO_SEAWEEDFS_VOLUME_CREATED" == 1 ]]; then
+    docker volume rm stargram-seaweedfs-data >/dev/null 2>&1 || true
+  fi
+  if [[ "$AUTO_MONGO_VOLUME_CREATED" == 1 ]]; then
+    docker volume rm stargram-mongodb-data >/dev/null 2>&1 || true
+  fi
   rm -f /run/stargram-generated.env /run/stargram-network.env
   if [[ "$AUTO_TURN_CONFIG_TOUCHED" == 1 ]]; then
     if [[ "$AUTO_TURN_CONFIG_EXISTED" == 1 && -n "$AUTO_TURN_BACKUP" && -f "$AUTO_TURN_BACKUP" ]]; then
@@ -281,9 +295,13 @@ setup_auto_services(){
   AUTO_SETUP_ACTIVE=1
   # Legacy stargram-minio-data is deliberately left untouched and is not reused.
   docker volume create stargram-mongodb-data >/dev/null
+  AUTO_MONGO_VOLUME_CREATED=1
   docker volume create stargram-seaweedfs-data >/dev/null
+  AUTO_SEAWEEDFS_VOLUME_CREATED=1
   docker run -d --name stargram-mongodb --restart unless-stopped -p 127.0.0.1:27017:27017 -e MONGO_INITDB_ROOT_USERNAME=stargram -e MONGO_INITDB_ROOT_PASSWORD="$mongo_pw" -e MONGO_INITDB_DATABASE=stargram -v stargram-mongodb-data:/data/db "$MONGO_IMAGE" >/dev/null
+  AUTO_MONGO_CONTAINER_CREATED=1
   docker run -d --name stargram-seaweedfs --restart unless-stopped -p 127.0.0.1:8333:8333 -v stargram-seaweedfs-data:/data -e AWS_ACCESS_KEY_ID="$s3_user" -e AWS_SECRET_ACCESS_KEY="$s3_pw" -e S3_BUCKET=stargram "$SEAWEEDFS_IMAGE" mini -dir=/data >/dev/null
+  AUTO_SEAWEEDFS_CONTAINER_CREATED=1
   for _ in $(seq 1 60); do docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok' >/dev/null 2>&1 && break; sleep 2; done
   docker exec stargram-mongodb mongosh --quiet --username stargram --password "$mongo_pw" --authenticationDatabase admin --eval 'db.adminCommand({ping: 1}).ok' >/dev/null 2>&1 || die "MongoDB did not become ready."
   local s3_http_code=""
