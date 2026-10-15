@@ -163,7 +163,7 @@ public_ipv4
   for (const address of [
     "0.1.2.3", "100.64.1.2", "169.254.1.2", "192.0.0.8",
     "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.7",
-    "203.0.113.4", "224.0.0.1", "240.0.0.1",
+    "203.0.113.4", "192.52.193.1", "192.175.48.1", "224.0.0.1", "240.0.0.1",
   ]) {
     const rejected = run({ IPIFY: address, FALLBACK: "" });
     assert.notEqual(rejected.status, 0, `special-use IPv4 ${address} must be rejected`);
@@ -228,6 +228,7 @@ test("runner configures ClamAV TCP and fails closed when scanner or signatures a
   assert.match(runner, /ClamAV signature database is missing or unusable/);
   assert.match(runner, /ClamAV clamd did not answer PING on 127\.0\.0\.1:3310/);
   assert.match(runner, /systemctl enable --now clamav-freshclam/);
+  assert.match(runner, /FreshClam updater could not be enabled/);
   assert.match(runner, /configure_clamav\n\s+cd "\$APP_DIR"; sudo -u "\$APP_USER" npm ci/);
 });
 
