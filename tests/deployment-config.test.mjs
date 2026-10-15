@@ -537,3 +537,38 @@ load_env_file
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+
+test("Runner snapshot helpers restore previous files and remove paths that did not exist", () => {
+  const snapshot = runner.split(/\nsnapshot_path\(\)\{/)[1]?.split(/\nbegin_network_transaction\(\)\{/)[0] ?? "";
+  const restore = runner.split(/\nrestore_path\(\)\{/)[1]?.split(/\nbegin_network_transaction\(\)\{/)[0] ?? "";
+  assert.ok(snapshot.includes("cp -a"));
+  assert.ok(restore.includes("rm -f") && restore.includes(".present"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-rollback-"));
+  const source = path.join(dir, "config");
+  const restored = path.join(dir, "restored");
+  const absent = path.join(dir, "new-config");
+  const backup = path.join(dir, "backup");
+  fs.mkdirSync(backup, { mode: 0o700 });
+  fs.writeFileSync(source, "before=original\n");
+  const script = `
+NETWORK_TXN_DIR="$1"
+snapshot_path(){ local name="$1" path="$2"; if [[ -e "$path" || -L "$path" ]]; then cp -a "$path" "$NETWORK_TXN_DIR/$name"; : > "$NETWORK_TXN_DIR/$name.present"; fi; }
+restore_path(){ local name="$1" path="$2"; rm -f "$path"; if [[ -f "$NETWORK_TXN_DIR/$name.present" ]]; then cp -a "$NETWORK_TXN_DIR/$name" "$path"; fi; }
+snapshot_path config "$2"
+snapshot_path absent "$3"
+printf 'before=mutated\\n' > "$2"
+printf 'created=true\\n' > "$3"
+restore_path config "$4"
+restore_path absent "$3"
+`;
+  try {
+    const result = spawnSync("bash", ["-c", script, "test", backup, source, absent, restored], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(source, "utf8"), "before=mutated\n");
+    assert.equal(fs.readFileSync(restored, "utf8"), "before=original\n");
+    assert.equal(fs.existsSync(absent), false, "rollback should remove a path that was absent before the transaction");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
