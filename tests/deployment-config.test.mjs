@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -455,9 +458,6 @@ build_env_args
 printf 'SECRET=%s\\nTURN=%s\\nS3=%s\\n' "$secretKey" "$TURN_SECRET" "$S3_ENDPOINT_VALUE"
 printf 'ARGS=%s\\n' "${ENV_ARGS[*]}"
 `;
-  const fs = await import("node:fs");
-  const os = await import("node:os");
-  const path = await import("node:path");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-parser-"));
   const envFile = path.join(dir, "test.env");
   const marker = path.join(dir, "should-not-exist");
@@ -498,9 +498,6 @@ ${builder}
 load_env_file
 build_env_args
 `;
-  const fs = await import("node:fs");
-  const os = await import("node:os");
-  const path = await import("node:path");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-duplicate-"));
   const envFile = path.join(dir, "duplicate.env");
   fs.writeFileSync(envFile, "NODE_ENV=production\\nNODE_ENV=development\\n");
@@ -519,9 +516,6 @@ test("environment parser rejects malformed lines and invalid key names", () => {
     { text: "NOT_AN_ASSIGNMENT\\n", error: /expected KEY=VALUE/ },
     { text: "BAD-KEY=value\\n", error: /Invalid environment key: BAD-KEY/ }
   ];
-  const fs = await import("node:fs");
-  const os = await import("node:os");
-  const path = await import("node:path");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-invalid-"));
   const envFile = path.join(dir, "invalid.env");
   try {
