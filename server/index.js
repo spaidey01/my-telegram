@@ -1659,7 +1659,8 @@ io.on("connection", (socket) => {
   on("call:ice", async ({ callId, candidate }) => {
     if (!(await allowEvent(userID, "call:ice", 300, 60_000))) return;
     const c = await getActiveCall(callId);
-    if (!c || !candidate) return;
+    if (!c || !candidate || typeof candidate !== "object") return;
+    // Only the currently registered socket for a call participant may relay ICE data.
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
     if (!isCaller && !isCallee) return;
