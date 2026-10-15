@@ -37,6 +37,8 @@ test("runner keeps source and Git root-owned while allowing only build output wr
   assert.match(runner, /chmod -R go-w "\$APP_DIR\/\.git"/);
   assert.match(runner, /install -d -m 0750 "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
   assert.match(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
+  assert.match(runner, /touch "\$APP_DIR\/next-env\.d\.ts" "\$APP_DIR\/tsconfig\.tsbuildinfo"/);
+  assert.match(runner, /chown "\$APP_USER:\$app_group" "\$APP_DIR\/next-env\.d\.ts" "\$APP_DIR\/tsconfig\.tsbuildinfo"/);
   assert.match(runner, /\[\[ ! -L "\$APP_DIR\/node_modules" \]\] \|\| rm -f "\$APP_DIR\/node_modules"/);
   assert.doesNotMatch(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
 });
