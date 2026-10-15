@@ -100,7 +100,9 @@ export const getRequestIp = (req: Request) => {
   const forwarded = req.headers.get("x-forwarded-for");
   if (n > 0 && forwarded) {
     const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
-    if (values.length) return values[Math.max(0, values.length - n)];
+    // X-Forwarded-For is ordered client first, then each proxy. Skip the
+    // configured trusted proxies from the right and select the client-side hop.
+    if (values.length > n) return values[values.length - n - 1];
   }
   if (n > 0) {
     const realIp = req.headers.get("x-real-ip")?.trim();
