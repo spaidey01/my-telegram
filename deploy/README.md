@@ -89,17 +89,17 @@ CI must remain green before changes are merged to `main`.
 For a fresh Debian/Ubuntu VPS, `setup-vps.sh` installs Node.js 22 and the baseline host packages. The interactive `stargram-runner.sh` additionally supports automatic local MongoDB + SeaweedFS S3 provisioning, firewall/network setup, and transactional configuration rollback. Run the interactive runner only on a fresh or disposable VPS first:
 
 ```bash
-sudo bash /opt/my-telegram/deploy/setup-vps.sh
+sudo bash /opt/my-telegram/deploy/stargram-runner.sh
 ```
 
 If the repository is not installed yet, clone it first:
 
 ```bash
 sudo git clone --branch stargram_clone --single-branch https://github.com/spaidey01/my-telegram.git /opt/my-telegram
-sudo bash /opt/my-telegram/deploy/setup-vps.sh
+sudo bash /opt/my-telegram/deploy/stargram-runner.sh
 ```
 
-The first run creates `/etc/my-telegram.env` from `.env.example` when it does not exist. **Edit that file with real production values before starting the services.** The runner validates the production environment before starting Stargram.
+Choose automatic local services or manual credentials in the interactive menu. The runner creates `/etc/my-telegram.env`, validates the production environment, verifies S3 with a real round-trip, builds the application, and starts Stargram. Options 3 and 4 are transactional network/configuration updates. For the simpler baseline installer, use `setup-vps.sh` directly; it creates the environment file from `.env.example` and requires you to fill in real values before services can start.
 
 For subsequent releases, use:
 
