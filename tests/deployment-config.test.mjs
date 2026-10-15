@@ -102,7 +102,9 @@ test("runner removes partial auto-created containers and volumes when setup fail
   assert.match(runner, /docker volume rm stargram-seaweedfs-data stargram-mongodb-data/);
   assert.match(runner, /AUTO_TURN_CONFIG_TOUCHED=1/);
   assert.match(runner, /if \[\[ "\$status" -ne 0 && "\$AUTO_SETUP_ACTIVE" == 1 \]\]; then\s+rollback_auto_setup/);
-  assert.match(runner, /AUTO_SETUP_ACTIVE=0\n\}\nsetup_network\(\)/);
+  const setupComplete = runner.indexOf("AUTO_SETUP_ACTIVE=0", runner.indexOf("chmod 600 /run/stargram-generated.env"));
+  const networkSetup = runner.indexOf("valid_domain(){");
+  assert.ok(setupComplete > 0 && networkSetup > setupComplete, "auto-service rollback must be disabled only after setup succeeds");
 });
 
 test("runner validates DNS hostnames and certificate email addresses", () => {
