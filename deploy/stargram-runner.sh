@@ -186,6 +186,9 @@ checkout_app(){
   install -d -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
   chown -R "$APP_USER:$app_group" "$APP_DIR/node_modules" "$APP_DIR/.next"
   # Next.js and TypeScript generate these ignored files at the repository root.
+  # Do not follow pre-existing symlinks while preparing writable generated files.
+  [[ ! -L "$APP_DIR/next-env.d.ts" ]] || rm -f "$APP_DIR/next-env.d.ts"
+  [[ ! -L "$APP_DIR/tsconfig.tsbuildinfo" ]] || rm -f "$APP_DIR/tsconfig.tsbuildinfo"
   # Keep tracked source immutable while allowing the build user to update generated files.
   touch "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
   chown "$APP_USER:$app_group" "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
