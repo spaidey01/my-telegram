@@ -32,15 +32,16 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(deploy, /merge --ff-only "origin\/\$BRANCH"/);
 });
 
-test("runner keeps source and Git root-owned while allowing only build output writes", () => {
-  assert.match(runner, /chown -R root:root "\$APP_DIR"/);
-  assert.match(runner, /chmod -R go-w "\$APP_DIR\/\.git"/);
-  assert.match(runner, /install -d -m 0750 "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
-  assert.match(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
-  assert.match(runner, /touch "\$APP_DIR\/next-env\.d\.ts" "\$APP_DIR\/tsconfig\.tsbuildinfo"/);
-  assert.match(runner, /chown "\$APP_USER:\$app_group" "\$APP_DIR\/next-env\.d\.ts" "\$APP_DIR\/tsconfig\.tsbuildinfo"/);
-  assert.match(runner, /\[\[ ! -L "\$APP_DIR\/node_modules" \]\] \|\| rm -f "\$APP_DIR\/node_modules"/);
-  assert.doesNotMatch(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
+test("runner separates root-owned Git metadata from the writable runtime tree", () => {
+  assert.match(runner, /GIT_DIR=\/opt\/my-telegram\.git/);
+  assert.match(runner, /git clone --separate-git-dir="\$GIT_DIR"/);
+  assert.match(runner, /git -c core\.hooksPath=\/dev\/null/);
+  assert.match(runner, /chown -R root:root "\$GIT_DIR"/);
+  assert.match(runner, /chmod -R go-w "\$GIT_DIR"/);
+  assert.match(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
+  assert.match(runner, /install -d -o "\$APP_USER" -g "\$app_group" -m 0750 "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
+  assert.match(runner, /npm ci --include=dev/);
+  assert.doesNotMatch(runner, /chown -R root:root "\$APP_DIR"\n\s*chmod -R go-w "\$APP_DIR\/\.git"/);
 });
 
 test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
