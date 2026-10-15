@@ -1618,8 +1618,12 @@ io.on("connection", (socket) => {
       return callback({ success: false, error: "Call reservation lost" });
     }
     await setActiveCall(callId, c);
-    io.to(c.callerSocketId).emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: true });
-    if (!wasCaller) io.to(c.calleeSocketId).emit("call:peer-reconnected", { callId });
+    socket.emit("call:reconnected", { callId, roomID: c.roomID, type: c.type, ready: true });
+    const peerSocketId = wasCaller ? c.calleeSocketId : c.callerSocketId;
+    if (peerSocketId) {
+      io.to(peerSocketId).emit("call:peer-reconnected", { callId });
+      io.to(peerSocketId).emit("call:peer-reconnecting", { callId });
+    }
     callback({ success: true, ready: true });
   });
 
