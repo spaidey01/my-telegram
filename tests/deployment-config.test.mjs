@@ -311,6 +311,15 @@ test("runner initializes strict-mode secret variables before loading and validat
   assert.ok(turnSecretInit > secretKeyInit, "TURN_SECRET must be initialized after secretKey");
 });
 
+test("runner correctly skips ordinary comment lines in env files", () => {
+  const loader = runner.split(/load_env_file\(\)\{/)[1]?.split(/\nbuild_env_args\(\)\{/)[0] ?? "";
+  const builder = runner.split(/build_env_args\(\)\{/)[1]?.split(/\nverify_s3_storage\(\)\{/)[0] ?? "";
+  assert.ok(loader.includes(String.raw`line" == \#*`), "secret loader must recognize lines beginning with #");
+  assert.ok(builder.includes(String.raw`line" == \#*`), "environment builder must recognize lines beginning with #");
+  assert.ok(!loader.includes(String.raw`line" == \\#*`), "secret loader must not require a literal backslash before comments");
+  assert.ok(!builder.includes(String.raw`line" == \\#*`), "environment builder must not require a literal backslash before comments");
+});
+
 test("runner does not source arbitrary env keys and rejects duplicate keys", () => {
   const loader = runner.split(/load_env_file\(\)\{/)[1]?.split(/\nbuild_env_args\(\)\{/)[0] ?? "";
   assert.match(loader, /case "\$key" in[\s\S]*secretKey\)[\s\S]*TURN_SECRET\)/);
