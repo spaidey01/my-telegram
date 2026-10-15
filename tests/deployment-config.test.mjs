@@ -81,8 +81,8 @@ test("runner accepts only the expected separate-Git-dir pointer on repeat instal
 });
 
 test("setup and deploy scripts support runner-managed .git pointer files", () => {
-  assert.match(setup, /if \\[\\[ -d "\$APP_DIR\/.git" \\|\\| -f "\$APP_DIR\/.git" \\]\\]; then/);
-  assert.match(deploy, /\\[\\[ -d "\$APP_DIR\/.git" \\|\\| -f "\$APP_DIR\/.git" \\]\\] \\|\\| die/);
+  assert.match(setup, /if \[\[ -d "\$APP_DIR\/.git" \|\| -f "\$APP_DIR\/.git" \]\]; then/);
+  assert.match(deploy, /\[\[ -d "\$APP_DIR\/.git" \|\| -f "\$APP_DIR\/.git" \]\] \|\| die/);
 });
 
 test("editing configuration is transactional and restores the prior environment on failure", () => {
@@ -106,7 +106,7 @@ test("runner keeps production environment root-owned and group-readable", () => 
 
 test("runner applies edited configuration instead of exiting after the editor", () => {
   const optionFour = runner.split(/\n\s*4\) /)[1]?.split(/\n\s*5\) /)[0] ?? "";
-  assert.match(optionFour, /"\$\{EDITOR:-nano\}" "\$ENV_FILE"; apply_config/);
+  assert.match(optionFour, /"\$\{EDITOR:-nano\}" "\$ENV_FILE"\s+apply_config/);
 });
 
 test("runner preserves SSH access when configuring firewalld", () => {
