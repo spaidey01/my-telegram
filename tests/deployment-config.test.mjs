@@ -77,6 +77,19 @@ test("runner accepts only the expected separate-Git-dir pointer on repeat instal
   assert.ok(runner.includes('"gitdir: $GIT_DIR"'));
   assert.ok(runner.includes('Unexpected .git pointer in $APP_DIR'));
   assert.ok(runner.includes('Unsupported .git entry in $APP_DIR'));
+  assert.match(runner, /printf 'gitdir: %s\\n' "\$GIT_DIR" > "\$APP_DIR\/.git"/);
+});
+
+test("setup and deploy scripts support runner-managed .git pointer files", () => {
+  assert.match(setup, /if \\[\\[ -d "\$APP_DIR\/.git" \\|\\| -f "\$APP_DIR\/.git" \\]\\]; then/);
+  assert.match(deploy, /\\[\\[ -d "\$APP_DIR\/.git" \\|\\| -f "\$APP_DIR\/.git" \\]\\] \\|\\| die/);
+});
+
+test("editing configuration is transactional and restores the prior environment on failure", () => {
+  const optionFour = runner.split(/\\n\\s*4\\) /)[1]?.split(/\\n\\s*5\\) /)[0] ?? "";
+  assert.ok(optionFour.indexOf("begin_network_transaction") < optionFour.indexOf('"\${EDITOR:-nano}"'));
+  assert.ok(optionFour.indexOf("apply_config") < optionFour.indexOf("NETWORK_TXN_ACTIVE=0"));
+  assert.match(runner, /restore_path env "\$ENV_FILE"/);
 });
 
 test("runner pins container images and uses SeaweedFS instead of MinIO", () => {

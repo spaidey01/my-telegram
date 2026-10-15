@@ -213,6 +213,13 @@ checkout_app(){
     die "Unsupported .git entry in $APP_DIR; inspect the existing checkout before continuing."
   fi
 
+  # A migrated traditional .git directory has moved to the protected metadata
+  # path. Restore Git's standard pointer so ordinary git -C commands used by
+  # the deployment scripts continue to work after runner-managed installs.
+  if [[ -d "$GIT_DIR" && ! -e "$APP_DIR/.git" ]]; then
+    printf 'gitdir: %s\n' "$GIT_DIR" > "$APP_DIR/.git"
+  fi
+
   if [[ -d "$GIT_DIR" ]]; then
     [[ -z "$(git_app status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
     APP_TREE_PROTECTED=1
@@ -679,7 +686,11 @@ EOF
      NETWORK_TXN_DIR="" ;;
   4) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"
-     "${EDITOR:-nano}" "$ENV_FILE"; apply_config ;;
+     begin_network_transaction
+     "${EDITOR:-nano}" "$ENV_FILE"
+     apply_config
+     NETWORK_TXN_ACTIVE=0
+     rm -rf "$NETWORK_TXN_DIR"; NETWORK_TXN_DIR="" ;;
   5) install_packages; checkout_app; apply_config ;;
   0) exit 0 ;;
   *) die "Invalid option." ;;

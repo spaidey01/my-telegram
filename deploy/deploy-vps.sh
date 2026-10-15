@@ -10,7 +10,7 @@ log() { printf '\n==> %s\n' "$1"; }
 die() { echo "ERROR: $1" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Run this script as root (sudo)."
-[[ -d "$APP_DIR/.git" ]] || die "Stargram is not installed at $APP_DIR."
+[[ -d "$APP_DIR/.git" || -f "$APP_DIR/.git" ]] || die "Stargram is not installed at $APP_DIR."
 
 log "Updating source"
 [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."

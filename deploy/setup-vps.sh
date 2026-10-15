@@ -38,7 +38,7 @@ fi
 APP_GROUP="$(id -gn "$APP_USER")"
 
 log "Installing Stargram"
-if [[ -d "$APP_DIR/.git" ]]; then
+if [[ -d "$APP_DIR/.git" || -f "$APP_DIR/.git" ]]; then
   [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
   git -C "$APP_DIR" fetch origin "$BRANCH"
   if ! git -C "$APP_DIR" checkout "$BRANCH"; then
