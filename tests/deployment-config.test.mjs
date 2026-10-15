@@ -86,7 +86,7 @@ test("setup and deploy scripts support runner-managed .git pointer files", () =>
 });
 
 test("editing configuration is transactional and restores the prior environment on failure", () => {
-  const optionFour = runner.split(/\\n\\s*4\\) /)[1]?.split(/\\n\\s*5\\) /)[0] ?? "";
+  const optionFour = runner.split(/\n\s*4\) /)[1]?.split(/\n\s*5\) /)[0] ?? "";
   assert.ok(optionFour.indexOf("begin_network_transaction") < optionFour.indexOf('"\${EDITOR:-nano}"'));
   assert.ok(optionFour.indexOf("apply_config") < optionFour.indexOf("NETWORK_TXN_ACTIVE=0"));
   assert.match(runner, /restore_path env "\$ENV_FILE"/);
