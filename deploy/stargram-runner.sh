@@ -306,7 +306,7 @@ valid_email(){
 }
 valid_turn_realm(){
   local realm="$1" a b c d octet
-  if [[ "$realm" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]]; then
+  if [[ "$realm" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
     IFS=. read -r a b c d <<< "$realm"
     for octet in "$a" "$b" "$c" "$d"; do
       [[ "$octet" =~ ^[0-9]{1,3}$ ]] && (( 10#$octet <= 255 )) || return 1
