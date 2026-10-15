@@ -2,7 +2,7 @@
 import LoadingApp from "@/components/modules/ui/LoadingApp";
 import useUserStore from "@/stores/userStore";
 import axios from "axios";
-import { ReactNode, lazy, useEffect, useState } from "react";
+import { ReactNode, Suspense, lazy, useEffect, useState } from "react";
 const AuthenticationForm = lazy(
   () => import("@/components/auth/AuthenticationForm")
 );
@@ -34,7 +34,7 @@ const Authentication = ({ children }: { children: ReactNode }) => {
 
   if (isLoading) return <LoadingApp />;
 
-  return <>{isLogin ? <>{children}</> : <AuthenticationForm />}</>;
+  return <>{isLogin ? <>{children}</> : <Suspense fallback={<LoadingApp />}><AuthenticationForm /></Suspense>}</>;
 };
 
 export default Authentication;
