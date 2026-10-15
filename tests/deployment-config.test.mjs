@@ -456,7 +456,7 @@ ${builder}
 load_env_file
 build_env_args
 printf 'SECRET=%s\\nTURN=%s\\nS3=%s\\n' "$secretKey" "$TURN_SECRET" "$S3_ENDPOINT_VALUE"
-printf 'ARGS=%s\\n' "${ENV_ARGS[*]}"
+printf 'ARGS=%s\\n' "\${ENV_ARGS[*]}"
 `;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-parser-"));
   const envFile = path.join(dir, "test.env");
