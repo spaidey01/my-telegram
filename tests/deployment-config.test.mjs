@@ -99,8 +99,8 @@ test("public IPv4 helper accepts public addresses, falls back, and rejects priva
 die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
 curl(){
   case "$*" in
-    *api.ipify.org*) printf '%s' "${IPIFY:-}";;
-    *checkip.amazonaws.com*) printf '%s\\n' "${FALLBACK:-}";;
+    *api.ipify.org*) printf '%s' "\${IPIFY:-}";;
+    *checkip.amazonaws.com*) printf '%s\\n' "\${FALLBACK:-}";;
     *) return 22;;
   esac
 }
