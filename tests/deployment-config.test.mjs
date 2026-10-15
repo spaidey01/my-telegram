@@ -395,7 +395,9 @@ test("runner sends a newline-terminated ClamAV PING and uses loopback for S3 hea
 
 
 test("manual first-install path rolls back network configuration until app setup succeeds", () => {
-  const optionTwo = runner.split(/\\n\\s*2\\) /)[1]?.split(/\\n\\s*3\\) /)[0] ?? "";
+  const optionTwoStart = runner.indexOf("  2) ");
+  const optionTwoEnd = runner.indexOf("  3) ", optionTwoStart);
+  const optionTwo = runner.slice(optionTwoStart, optionTwoEnd);
   assert.ok(optionTwo.indexOf("begin_network_transaction") >= 0, "manual setup must snapshot config before network changes");
   assert.ok(optionTwo.indexOf("begin_network_transaction") < optionTwo.indexOf("setup_network"));
   assert.ok(optionTwo.indexOf("setup_network") < optionTwo.indexOf("apply_config"));
