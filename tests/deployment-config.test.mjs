@@ -53,16 +53,32 @@ test("runner preserves SSH access when configuring firewalld", () => {
 });
 
 test("runner rolls back Nginx config if nginx -t rejects the generated site", () => {
-  assert.match(runner, /if ! nginx -t; then[\\s\\S]*?restoring the previous site configuration[\\s\\S]*?previous configuration was restored/);
+  const validationFailure = runner.indexOf('if ! nginx -t; then');
+  const rollbackMessage = runner.indexOf("restoring the previous site configuration", validationFailure);
+  const failureExit = runner.indexOf("previous configuration was restored", rollbackMessage);
+  assert.ok(validationFailure >= 0, "generated Nginx config must be syntax-checked");
+  assert.ok(rollbackMessage > validationFailure, "syntax failure must trigger rollback");
+  assert.ok(failureExit > rollbackMessage, "syntax failure must report that rollback was attempted");
 });
 
 test("runner restores the previous Nginx configuration when certificate provisioning fails", () => {
-  assert.match(runner, /local domain email ip url nginx_backup="" default_backup=""/);
-  assert.match(runner, /if ! certbot --nginx[\\s\\S]*?restoring the previous Nginx site configuration[\\s\\S]*?cp -a "\$nginx_backup" \/etc\/nginx\/sites-available\/stargram[\\s\\S]*?nginx -t[\\s\\S]*?die "HTTPS certificate issuance failed/);
+  assert.ok(runner.includes('local domain email ip url nginx_backup="" default_backup=""'));
+  const certbotFailure = runner.indexOf("if ! certbot --nginx");
+  const rollbackMessage = runner.indexOf("restoring the previous Nginx site configuration", certbotFailure);
+  const restoreSite = runner.indexOf('cp -a "$nginx_backup" /etc/nginx/sites-available/stargram', rollbackMessage);
+  const validateRestoredSite = runner.indexOf("if nginx -t; then", restoreSite);
+  const failureExit = runner.indexOf('die "HTTPS certificate issuance failed.', validateRestoredSite);
+  assert.ok(certbotFailure >= 0 && rollbackMessage > certbotFailure, "Certbot failure must trigger Nginx rollback");
+  assert.ok(restoreSite > rollbackMessage, "rollback must restore the prior site config when one existed");
+  assert.ok(validateRestoredSite > restoreSite, "restored Nginx config must be validated");
+  assert.ok(failureExit > validateRestoredSite, "runner must stop after failed certificate provisioning");
 });
 
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
-  assert.match(runner, /if ! certbot --nginx -d "\$domain" --email "\$email" --agree-tos --non-interactive --redirect; then[\s\S]*?die "HTTPS certificate issuance failed\. Refusing to downgrade a domain deployment to public HTTP/);
+  const certbotFailure = runner.indexOf('if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then');
+  const refusal = runner.indexOf("Refusing to downgrade a domain deployment to public HTTP", certbotFailure);
+  assert.ok(certbotFailure >= 0, "domain HTTPS must use Certbot with redirect");
+  assert.ok(refusal > certbotFailure, "failed HTTPS issuance must stop instead of silently leaving public HTTP");
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
 });
 
