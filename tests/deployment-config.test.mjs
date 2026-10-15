@@ -76,7 +76,7 @@ test("runner restores the previous Nginx configuration when certificate provisio
 
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
   const certbotFailure = runner.indexOf('if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then');
-  const refusal = runner.indexOf("Refusing to downgrade a domain deployment to public HTTP", certbotFailure);
+  const refusal = runner.indexOf("HTTPS certificate issuance failed. Previous Nginx configuration was restored", certbotFailure);
   assert.ok(certbotFailure >= 0, "domain HTTPS must use Certbot with redirect");
   assert.ok(refusal > certbotFailure, "failed HTTPS issuance must stop instead of silently leaving public HTTP");
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
