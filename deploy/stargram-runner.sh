@@ -263,13 +263,21 @@ EOF
   chmod 600 /run/stargram-generated.env
   AUTO_SETUP_ACTIVE=0
 }
+valid_domain(){
+  local value="$1"
+  [[ ${#value} -le 253 && "$value" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]
+}
+valid_email(){
+  local value="$1"
+  [[ ${#value} -le 254 && "$value" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ && "$value" != *..* ]]
+}
 setup_network(){
   local domain email ip url nginx_backup="" default_backup=""
   domain="$(ask "Domain (blank = IP/HTTP test mode)" "")"
   ip="$(public_ipv4)"
   if [[ -n "$domain" ]]; then
-    [[ "$domain" =~ ^[A-Za-z0-9.-]+$ && "$domain" == *.* ]] || die "Invalid domain."
-    email="$(ask "Let's Encrypt email" "")"; [[ "$email" == *@*.* ]] || die "Valid email required."
+    valid_domain "$domain" || die "Invalid domain hostname; use valid DNS labels without leading/trailing hyphens."
+    email="$(ask "Let's Encrypt email" "")"; valid_email "$email" || die "Valid email required."
     url="https://$domain"
   else
     url="http://$ip"
