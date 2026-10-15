@@ -70,11 +70,11 @@ test("runner refuses symlinked checkout and Git metadata paths", () => {
 });
 
 test("runner accepts only the expected separate-Git-dir pointer on repeat installs", () => {
-  assert.match(runner, /git clone --separate-git-dir="\\$GIT_DIR"/);
-  assert.match(runner, /gitfile_content/);
-  assert.match(runner, /gitdir: \\$GIT_DIR/);
-  assert.match(runner, /Unexpected \\.git pointer in \\$APP_DIR/);
-  assert.match(runner, /Unsupported \\.git entry in \\$APP_DIR/);
+  assert.ok(runner.includes('git clone --separate-git-dir="$GIT_DIR"'));
+  assert.ok(runner.includes('gitfile_content'));
+  assert.ok(runner.includes('"gitdir: $GIT_DIR"'));
+  assert.ok(runner.includes('Unexpected .git pointer in $APP_DIR'));
+  assert.ok(runner.includes('Unsupported .git entry in $APP_DIR'));
 });
 
 test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
