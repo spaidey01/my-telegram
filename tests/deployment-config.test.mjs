@@ -50,8 +50,8 @@ test("runner acquires an exclusive process lock before state-changing operations
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-runner-lock-"));
   const lockFile = path.join(tempDir, "runner.lock");
-  const harness = `die(){ echo "$*" >&2; exit 1; }\n${lockBlock}`;
-  const first = spawn("bash", ["-c", `${harness}\nprintf 'LOCK_ACQUIRED\n'\nsleep 1.2`], {
+  const harness = 'die(){ echo "$*" >&2; exit 1; }\n' + lockBlock;
+  const first = spawn("bash", ["-c", harness + "\nprintf 'LOCK_ACQUIRED\\n'\nsleep 1.2"], {
     env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -73,11 +73,11 @@ test("runner acquires an exclusive process lock before state-changing operations
       });
       first.once("error", error => { clearTimeout(timer); reject(error); });
       first.once("exit", code => {
-        if (code !== 0) { clearTimeout(timer); reject(new Error(`first runner exited ${code}: ${firstStderr}`)); }
+        if (code !== 0) { clearTimeout(timer); reject(new Error("first runner exited " + code + ": " + firstStderr)); }
       });
     });
 
-    const second = spawnSync("bash", ["-c", `${harness}\nprintf 'UNEXPECTEDLY_ACQUIRED\n'`], {
+    const second = spawnSync("bash", ["-c", harness + "\nprintf 'UNEXPECTEDLY_ACQUIRED\\n'"], {
       encoding: "utf8",
       env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
       timeout: 2000,
@@ -90,9 +90,9 @@ test("runner acquires an exclusive process lock before state-changing operations
       first.once("error", reject);
       first.once("exit", (code, signal) => resolve({ code, signal }));
     });
-    assert.equal(firstExit.code, 0, `first runner failed: ${firstStderr}`);
+    assert.equal(firstExit.code, 0, "first runner failed: " + firstStderr);
 
-    const third = spawnSync("bash", ["-c", `${harness}\nprintf 'ACQUIRED_AFTER_RELEASE\n'`], {
+    const third = spawnSync("bash", ["-c", harness + "\nprintf 'ACQUIRED_AFTER_RELEASE\\n'"], {
       encoding: "utf8",
       env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
       timeout: 2000,
@@ -150,7 +150,7 @@ test("runner accepts only the expected separate-Git-dir pointer on repeat instal
   assert.ok(runner.includes('"gitdir: $GIT_DIR"'));
   assert.ok(runner.includes('Unexpected .git pointer in $APP_DIR'));
   assert.ok(runner.includes('Unsupported .git entry in $APP_DIR'));
-  assert.match(runner, /printf 'gitdir: %s\n' "\$GIT_DIR" > "\$APP_DIR\/.git"/);
+  assert.match(runner, /printf 'gitdir: %s\\n' "\$GIT_DIR" > "\$APP_DIR\/.git"/);
 });
 
 test("setup and deploy scripts support runner-managed .git pointer files", () => {
@@ -300,7 +300,7 @@ test("TURN external address includes the local interface address when behind NAT
   assert.ok(start >= 0 && end > start, "turn_external_ip helper must exist");
   const helper = runner.slice(start, end);
   const invoke = `
-ip(){ printf '%s\n' "$IP_ROUTE"; }
+ip(){ printf '%s\\n' "$IP_ROUTE"; }
 ${helper}
 turn_external_ip "$1"
 `;
@@ -343,11 +343,11 @@ test("public IPv4 helper accepts public addresses, falls back, and rejects priva
   assert.ok(start >= 0 && end > start, "public_ipv4 helper must exist");
   const helper = runner.slice(start, end);
   const invoke = `
-die(){ printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
 curl(){
   case "$*" in
     *api.ipify.org*) printf '%s' "\${IPIFY:-}";;
-    *checkip.amazonaws.com*) printf '%s\n' "\${FALLBACK:-}";;
+    *checkip.amazonaws.com*) printf '%s\\n' "\${FALLBACK:-}";;
     *) return 22;;
   esac
 }
@@ -494,7 +494,7 @@ test("configuration editor backs up the original environment before opening the 
 });
 
 test("runner sends a newline-terminated ClamAV PING and uses loopback for S3 health checks", () => {
-  assert.match(runner, /printf 'PING\n' >&3/);
+  assert.match(runner, /printf 'PING\\n' >&3/);
   assert.match(runner, /S3_HEALTH_ENDPOINT="\$\{S3_ENDPOINT_VALUE:-\}"/);
   assert.match(runner, /docker container inspect stargram-seaweedfs[\s\S]*?S3_HEALTH_ENDPOINT=http:\/\/127\.0\.0\.1:8333/);
   assert.match(runner, /env "\$\{ENV_ARGS\[@\]\}" S3_ENDPOINT="\$S3_HEALTH_ENDPOINT" node --input-type=module/);
@@ -637,8 +637,8 @@ snapshot_path(){ local name="$1" path="$2"; if [[ -e "$path" || -L "$path" ]]; t
 restore_path(){ local name="$1" path="$2"; rm -f "$path"; if [[ -f "$NETWORK_TXN_DIR/$name.present" ]]; then cp -a "$NETWORK_TXN_DIR/$name" "$path"; fi; }
 snapshot_path config "$2"
 snapshot_path absent "$3"
-printf 'before=mutated\n' > "$2"
-printf 'created=true\n' > "$3"
+printf 'before=mutated\\n' > "$2"
+printf 'created=true\\n' > "$3"
 restore_path config "$4"
 restore_path absent "$3"
 `;
