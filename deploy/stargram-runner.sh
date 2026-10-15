@@ -201,8 +201,14 @@ checkout_app(){
     mv "$APP_DIR/.git" "$GIT_DIR"
     git --git-dir="$GIT_DIR" config core.bare false
     git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
+  elif [[ -f "$APP_DIR/.git" ]]; then
+    # git clone --separate-git-dir intentionally leaves a regular .git pointer
+    # in the work tree. Accept only the exact metadata directory managed here.
+    local gitfile_content
+    IFS= read -r gitfile_content < "$APP_DIR/.git" || true
+    [[ "$gitfile_content" == "gitdir: $GIT_DIR" ]] || die "Unexpected .git pointer in $APP_DIR; refusing to use untrusted Git metadata."
   elif [[ -e "$APP_DIR/.git" ]]; then
-    die "Unsupported .git file in $APP_DIR; inspect the existing checkout before continuing."
+    die "Unsupported .git entry in $APP_DIR; inspect the existing checkout before continuing."
   fi
 
   if [[ -d "$GIT_DIR" ]]; then
