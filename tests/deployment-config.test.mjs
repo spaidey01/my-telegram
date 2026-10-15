@@ -37,16 +37,23 @@ test("deployment targets stargram_clone by default, not main", () => {
 
 
 test("runner acquires an exclusive process lock before state-changing operations", async () => {
-  const lockStart = runner.indexOf("# Acquire a host-wide exclusive lock before any state-changing operation.");
+  const lockStart = runner.indexOf("# Share one lock across every deployment entrypoint to prevent overlapping updates.");
   const lockEnd = runner.indexOf('command -v apt-get >/dev/null || die "Only Debian/Ubuntu supported."', lockStart);
-  assert.ok(lockStart >= 0, "runner must document the lock acquisition block");
+  assert.ok(lockStart >= 0, "runner must document the shared lock acquisition block");
   assert.ok(lockEnd > lockStart, "lock must be acquired before package-manager checks and setup");
 
+  for (const [name, script] of [["setup", setup], ["deploy", deploy], ["runner", runner]]) {
+    assert.match(script, /DEPLOY_LOCK_FILE=\/run\/lock\/stargram-deploy\.lock/, name + " must use the shared lock path");
+    assert.match(script, /command -v flock/, name + " must verify flock is available");
+    assert.match(script, /flock -n "\$DEPLOY_LOCK_FD"/, name + " must reject concurrent operations");
+    assert.match(script, /Another Stargram setup, deployment, or Runner operation is already running/);
+  }
+
   const lockBlock = runner.slice(lockStart, lockEnd)
-    .replace('RUNNER_LOCK_FILE=/run/lock/stargram-runner.lock', 'RUNNER_LOCK_FILE="$TEST_RUNNER_LOCK_FILE"');
+    .replace('DEPLOY_LOCK_FILE=/run/lock/stargram-deploy.lock', 'DEPLOY_LOCK_FILE="$TEST_RUNNER_LOCK_FILE"');
   assert.match(lockBlock, /command -v flock/);
-  assert.match(lockBlock, /flock -n "\$RUNNER_LOCK_FD"/);
-  assert.match(lockBlock, /Another Stargram Runner instance is already running/);
+  assert.match(lockBlock, /flock -n "\$DEPLOY_LOCK_FD"/);
+  assert.match(lockBlock, /Another Stargram setup, deployment, or Runner operation is already running/);
 
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-runner-lock-"));
   const lockFile = path.join(tempDir, "runner.lock");
