@@ -21,6 +21,25 @@ log(){ printf '\n==> %s\n' "$*"; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
 NETWORK_TXN_ACTIVE=0
 NETWORK_TXN_DIR=""
+AUTO_SETUP_ACTIVE=0
+AUTO_TURN_CONFIG_TOUCHED=0
+AUTO_TURN_CONFIG_EXISTED=0
+AUTO_TURN_BACKUP=""
+rollback_auto_setup(){
+  [[ "$AUTO_SETUP_ACTIVE" == 1 ]] || return 0
+  log "Automatic service setup failed; removing only resources created by this attempt"
+  docker rm -f stargram-seaweedfs stargram-mongodb >/dev/null 2>&1 || true
+  docker volume rm stargram-seaweedfs-data stargram-mongodb-data >/dev/null 2>&1 || true
+  rm -f /run/stargram-generated.env
+  if [[ "$AUTO_TURN_CONFIG_TOUCHED" == 1 ]]; then
+    if [[ "$AUTO_TURN_CONFIG_EXISTED" == 1 && -n "$AUTO_TURN_BACKUP" && -f "$AUTO_TURN_BACKUP" ]]; then
+      cp -a "$AUTO_TURN_BACKUP" /etc/turnserver.conf
+    else
+      rm -f /etc/turnserver.conf
+    fi
+    systemctl restart coturn >/dev/null 2>&1 || true
+  fi
+}
 snapshot_path(){
   local name="$1" path="$2"
   if [[ -e "$path" || -L "$path" ]]; then
@@ -47,6 +66,9 @@ begin_network_transaction(){
 }
 runner_exit_handler(){
   local status="$1"
+  if [[ "$status" -ne 0 && "$AUTO_SETUP_ACTIVE" == 1 ]]; then
+    rollback_auto_setup
+  fi
   if [[ "$NETWORK_TXN_ACTIVE" == 1 && "$status" -ne 0 ]]; then
     log "Network/configuration update failed; restoring saved application, Nginx and TURN configuration"
     restore_path env "$ENV_FILE"
@@ -179,6 +201,8 @@ setup_auto_services(){
   # cannot leave a half-installed database behind.
   docker pull "$MONGO_IMAGE"
   docker pull "$SEAWEEDFS_IMAGE"
+  # From this point onward, any error rolls back only the resources this run creates.
+  AUTO_SETUP_ACTIVE=1
   # Legacy stargram-minio-data is deliberately left untouched and is not reused.
   docker volume create stargram-mongodb-data >/dev/null
   docker volume create stargram-seaweedfs-data >/dev/null
@@ -193,7 +217,12 @@ setup_auto_services(){
     sleep 2
   done
   [[ "$s3_http_code" =~ ^[234][0-9][0-9]$ ]] || { docker logs --tail 60 stargram-seaweedfs >&2 || true; die "SeaweedFS S3 endpoint did not become ready on 127.0.0.1:8333."; }
-  if [[ -f /etc/turnserver.conf ]]; then cp -a /etc/turnserver.conf "$BACKUP_DIR/turnserver.conf.$(date +%Y%m%d%H%M%S).bak"; fi
+  if [[ -f /etc/turnserver.conf ]]; then
+    AUTO_TURN_CONFIG_EXISTED=1
+    AUTO_TURN_BACKUP="$BACKUP_DIR/turnserver.conf.$(date +%Y%m%d%H%M%S).bak"
+    cp -a /etc/turnserver.conf "$AUTO_TURN_BACKUP"
+  fi
+  AUTO_TURN_CONFIG_TOUCHED=1
   cat > /etc/turnserver.conf <<EOF
 listening-port=3478
 fingerprint
@@ -230,6 +259,7 @@ TURN_MIN_PORT=$TURN_MIN_PORT
 TURN_MAX_PORT=$TURN_MAX_PORT
 EOF
   chmod 600 /run/stargram-generated.env
+  AUTO_SETUP_ACTIVE=0
 }
 setup_network(){
   local domain email ip url nginx_backup="" default_backup=""
