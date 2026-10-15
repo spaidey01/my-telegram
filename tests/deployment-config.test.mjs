@@ -185,6 +185,42 @@ test("network updates snapshot config before mutation and roll back on failure",
   assert.match(optionThree, /NETWORK_TXN_ACTIVE=0/);
 });
 
+
+test("TURN external address includes the local interface address when behind NAT", () => {
+  const start = runner.indexOf("turn_external_ip(){");
+  const end = runner.indexOf("\n}", start) + 2;
+  assert.ok(start >= 0 && end > start, "turn_external_ip helper must exist");
+  const helper = runner.slice(start, end);
+  const invoke = `
+ip(){ printf '%s\\n' "$IP_ROUTE"; }
+${helper}
+turn_external_ip "$1"
+`;
+  const run = (publicIp, route) => spawnSync("bash", ["-c", invoke, "test", publicIp], {
+    encoding: "utf8",
+    env: { ...process.env, IP_ROUTE: route },
+  });
+  const nat = run("203.0.113.10", "1.1.1.1 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 0");
+  assert.equal(nat.status, 0, nat.stderr);
+  assert.equal(nat.stdout, "203.0.113.10/10.0.0.5");
+  const direct = run("8.8.8.8", "1.1.1.1 via 8.8.8.1 dev eth0 src 8.8.8.8 uid 0");
+  assert.equal(direct.status, 0, direct.stderr);
+  assert.equal(direct.stdout, "8.8.8.8");
+});
+
+test("domain HTTPS setup does not require an external IPv4 lookup", () => {
+  const network = runner.split(/setup_network\(\)\{/)[1]?.split(/\nwrite_manual_env\(\)\{/)[0] ?? "";
+  const domainBranch = network.split(/if \[\[ -n "\$domain" \]\]; then/)[1]?.split(/\n  else/)[0] ?? "";
+  assert.ok(domainBranch.includes('url="https://$domain"'));
+  assert.doesNotMatch(domainBranch, /public_ipv4/);
+  assert.match(network, /else\s+ip="\$\(public_ipv4\)"/);
+});
+
+test("runner fails if the Certbot renewal timer cannot be enabled", () => {
+  assert.match(runner, /systemctl enable --now certbot\.timer \|\| die "Certbot renewal timer could not be enabled/);
+  assert.doesNotMatch(runner, /systemctl enable --now certbot\.timer \|\| true/);
+});
+
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
   const certbotFailure = runner.indexOf('if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then');
   const refusal = runner.indexOf("HTTPS certificate issuance failed. Previous Nginx configuration was restored", certbotFailure);

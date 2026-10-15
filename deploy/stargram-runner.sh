@@ -126,6 +126,18 @@ public_ipv4(){
   (( 10#$octet_a < 240 )) || die "Public IPv4 lookup returned a reserved address: $candidate"
   printf '%s' "$candidate"
 }
+turn_external_ip(){
+  local public_ip="$1" source_ip=""
+  if command -v ip >/dev/null 2>&1; then
+    source_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<NF; i++) if ($i == "src") {print $(i+1); exit}}' || true)"
+  fi
+  if [[ "$source_ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ && "$source_ip" != "$public_ip" && ! "$source_ip" =~ ^(0|127|169\.254)\. ]]; then
+    printf '%s/%s' "$public_ip" "$source_ip"
+  else
+    printf '%s' "$public_ip"
+  fi
+}
+
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash deploy/stargram-runner.sh"
 command -v apt-get >/dev/null || die "Only Debian/Ubuntu supported."
 mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
@@ -280,7 +292,7 @@ static-auth-secret=$turn_secret
 realm=$realm
 server-name=$realm
 listening-ip=0.0.0.0
-external-ip=$public_ip
+external-ip=$(turn_external_ip "$public_ip")
 min-port=$TURN_MIN_PORT
 max-port=$TURN_MAX_PORT
 no-multicast-peers
@@ -332,12 +344,12 @@ valid_turn_realm(){
 setup_network(){
   local domain email ip url nginx_backup="" default_backup=""
   domain="$(ask "Domain (blank = IP/HTTP test mode)" "")"
-  ip="$(public_ipv4)"
   if [[ -n "$domain" ]]; then
     valid_domain "$domain" || die "Invalid domain hostname; use valid DNS labels without leading/trailing hyphens."
     email="$(ask "Let's Encrypt email" "")"; valid_email "$email" || die "Valid email required."
     url="https://$domain"
   else
+    ip="$(public_ipv4)"
     url="http://$ip"
     echo "WARNING: public HTTP over IP normally blocks browser microphone/camera. HTTPS is needed for public calls."
   fi
@@ -435,7 +447,7 @@ EOF
       if nginx -t; then systemctl reload nginx || true; fi
       die "HTTPS certificate issuance failed. Previous Nginx configuration was restored; fix DNS/firewall and rerun option 3."
     fi
-    systemctl enable --now certbot.timer || true
+    systemctl enable --now certbot.timer || die "Certbot renewal timer could not be enabled; HTTPS renewal would not be reliable."
     if [[ -f "/etc/letsencrypt/live/$domain/fullchain.pem" ]]; then
       sed -i '/^cert=/d;/^pkey=/d;/^tls-listening-port=/d' /etc/turnserver.conf
       printf '\ntls-listening-port=5349\ncert=/etc/letsencrypt/live/%s/fullchain.pem\npkey=/etc/letsencrypt/live/%s/privkey.pem\n' "$domain" "$domain" >> /etc/turnserver.conf
