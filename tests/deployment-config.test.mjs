@@ -105,6 +105,14 @@ test("runner removes partial auto-created containers and volumes when setup fail
   assert.match(runner, /AUTO_SETUP_ACTIVE=0\n\}\nsetup_network\(\)/);
 });
 
+test("runner validates DNS hostnames and certificate email addresses", () => {
+  assert.match(runner, /valid_domain\(\)\{/);
+  assert.match(runner, /valid_email\(\)\{/);
+  assert.match(runner, /valid_domain "\$domain" \|\| die "Invalid domain hostname/);
+  assert.match(runner, /valid_email "\$email" \|\| die "Valid email required/);
+  assert.match(runner, /value != \*\.\./);
+});
+
 test("runner preflights public IP before creating persistent service resources", () => {
   const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_network\(\)/)[0] ?? "";
   const publicIp = serviceSetup.indexOf('public_ip="$(public_ipv4)"');
