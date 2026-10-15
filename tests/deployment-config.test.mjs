@@ -154,8 +154,18 @@ test("runner rolls back Nginx site changes when service start or reload fails", 
 test("runner removes partial auto-created containers and volumes when setup fails", () => {
   assert.match(runner, /AUTO_SETUP_ACTIVE=0/);
   assert.match(runner, /rollback_auto_setup\(\)\{/);
-  assert.match(runner, /docker rm -f stargram-seaweedfs stargram-mongodb/);
-  assert.match(runner, /docker volume rm stargram-seaweedfs-data stargram-mongodb-data/);
+  assert.match(runner, /AUTO_MONGO_VOLUME_CREATED=0/);
+  assert.match(runner, /AUTO_SEAWEEDFS_VOLUME_CREATED=0/);
+  assert.match(runner, /AUTO_MONGO_CONTAINER_CREATED=0/);
+  assert.match(runner, /AUTO_SEAWEEDFS_CONTAINER_CREATED=0/);
+  assert.match(runner, /if \\[\\[ "\\$AUTO_MONGO_VOLUME_CREATED" == 1 \\]\\]; then\\s+docker volume rm stargram-mongodb-data/);
+  assert.match(runner, /if \\[\\[ "\\$AUTO_SEAWEEDFS_VOLUME_CREATED" == 1 \\]\\]; then\\s+docker volume rm stargram-seaweedfs-data/);
+  assert.match(runner, /if \\[\\[ "\\$AUTO_MONGO_CONTAINER_CREATED" == 1 \\]\\]; then\\s+docker rm -f stargram-mongodb/);
+  assert.match(runner, /if \\[\\[ "\\$AUTO_SEAWEEDFS_CONTAINER_CREATED" == 1 \\]\\]; then\\s+docker rm -f stargram-seaweedfs/);
+  assert.match(runner, /AUTO_MONGO_VOLUME_CREATED=1/);
+  assert.match(runner, /AUTO_SEAWEEDFS_VOLUME_CREATED=1/);
+  assert.match(runner, /AUTO_MONGO_CONTAINER_CREATED=1/);
+  assert.match(runner, /AUTO_SEAWEEDFS_CONTAINER_CREATED=1/);
   assert.match(runner, /AUTO_TURN_CONFIG_TOUCHED=1/);
   assert.match(runner, /if \[\[ "\$status" -ne 0 && "\$AUTO_SETUP_ACTIVE" == 1 \]\]; then\s+rollback_auto_setup/);
   const setupComplete = runner.indexOf("AUTO_SETUP_ACTIVE=0", runner.indexOf('  1) [[ ! -f "$ENV_FILE" ]]'));
