@@ -100,9 +100,10 @@ export const getRequestIp = (req: Request) => {
   const forwarded = req.headers.get("x-forwarded-for");
   if (n > 0 && forwarded) {
     const values = forwarded.split(",").map((value) => value.trim()).filter(Boolean);
-    // X-Forwarded-For is ordered client first, then each proxy. Skip the
-    // configured trusted proxies from the right and select the client-side hop.
-    if (values.length > n) return values[values.length - n - 1];
+    // Each trusted proxy appends the address of its direct peer. Select the
+    // leftmost address added by the trusted proxy chain, ignoring client-supplied
+    // values to its left.
+    if (values.length >= n) return values[Math.max(0, values.length - n)];
   }
   if (n > 0) {
     const realIp = req.headers.get("x-real-ip")?.trim();
