@@ -32,6 +32,13 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(deploy, /merge --ff-only "origin\/\$BRANCH"/);
 });
 
+test("runner keeps privileged Git metadata and checkout root out of runtime-user control", () => {
+  assert.match(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
+  assert.match(runner, /chown root:root "\$APP_DIR"/);
+  assert.match(runner, /chown -R root:root "\$APP_DIR\/\.git"/);
+  assert.match(runner, /chmod -R go-w "\$APP_DIR\/\.git"/);
+});
+
 test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
   assert.doesNotMatch(runner, /:latest\\b/);
   assert.match(runner, /MONGO_IMAGE=.*mongo:/);
