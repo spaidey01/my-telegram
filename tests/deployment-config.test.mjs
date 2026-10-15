@@ -82,6 +82,17 @@ test("runner refuses to downgrade failed domain HTTPS provisioning to public HTT
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
 });
 
+test("runner refuses private or invalid IP fallback for public URLs and TURN relay", () => {
+  assert.match(runner, /public_ipv4\(\)\{/);
+  assert.match(runner, /https:\/\/api\.ipify\.org/);
+  assert.match(runner, /https:\/\/checkip\.amazonaws\.com/);
+  assert.match(runner, /Could not determine the public IPv4 address/);
+  assert.match(runner, /carrier-grade NAT address/);
+  assert.match(runner, /public_ip="\$\(public_ipv4\)"/);
+  assert.match(runner, /ip="\$\(public_ipv4\)"/);
+  assert.doesNotMatch(runner, /hostname -I \| awk/);
+});
+
 test("runner initializes strict-mode secret variables before loading and validating env", () => {
   const secretKeyInit = runner.indexOf('secretKey=""');
   const turnSecretInit = runner.indexOf('TURN_SECRET=""');
