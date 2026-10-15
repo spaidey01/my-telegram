@@ -121,11 +121,11 @@ test("runner validates DNS hostnames and certificate email addresses", () => {
 test("TURN realm validator accepts hostnames and bounded IPv4 only", () => {
   const extractFunction = (name) => {
     const start = runner.indexOf(`${name}(){`);
-    const end = runner.indexOf("\\n}", start) + 2;
+    const end = runner.indexOf("\n}", start) + 2;
     assert.ok(start >= 0 && end > start, `${name} function must exist`);
     return runner.slice(start, end);
   };
-  const script = `${extractFunction("valid_domain")}\\n${extractFunction("valid_turn_realm")}\\nvalid_turn_realm "$1"`;
+  const script = `${extractFunction("valid_domain")}\n${extractFunction("valid_turn_realm")}\nvalid_turn_realm "$1"`;
   for (const realm of ["turn.example.com", "ci.turn.stargram.local", "8.8.8.8"]) {
     const result = spawnSync("bash", ["-c", script, "test", realm], { encoding: "utf8" });
     assert.equal(result.status, 0, `valid TURN realm rejected: ${realm}`);
