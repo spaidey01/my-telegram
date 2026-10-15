@@ -20,7 +20,12 @@ export const isSafeBrowserRequest = (req) => {
     }
   }
 
-  // Non-browser clients may not send Fetch Metadata or Origin/Referer.
+  // If a browser supplies Fetch Metadata but omits Origin/Referer, only
+  // same-origin requests (or user-initiated navigations marked "none") are
+  // accepted. Do not treat same-site sibling origins as trusted implicitly.
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") return false;
+
+  // Non-browser clients may omit Fetch Metadata and Origin/Referer entirely.
   // Authentication/session checks remain mandatory for these requests.
   return true;
 };
