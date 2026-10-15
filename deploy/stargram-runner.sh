@@ -93,7 +93,15 @@ checkout_app(){
   elif [[ -e "$APP_DIR" ]]; then die "$APP_DIR exists and is not a Git checkout."
   else git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"; fi
   id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "/home/$APP_USER" --shell /usr/sbin/nologin "$APP_USER"
-  chown -R "$APP_USER:$(id -gn "$APP_USER")" "$APP_DIR"
+  local app_group
+  app_group="$(id -gn "$APP_USER")"
+  # Keep the checkout metadata and repository root out of the runtime user's control.
+  # The runner later executes Git as root; a writable .git/hooks directory would
+  # let the app user plant hooks that execute during privileged checkout/merge.
+  chown -R "$APP_USER:$app_group" "$APP_DIR"
+  chown root:root "$APP_DIR"
+  chown -R root:root "$APP_DIR/.git"
+  chmod -R go-w "$APP_DIR/.git"
 }
 setup_auto_services(){
   local mongo_pw s3_user s3_pw turn_secret realm public_ip
