@@ -414,7 +414,7 @@ configure_clamav(){
   [[ "$reply" == "PONG" ]] || die "ClamAV clamd did not answer PING on 127.0.0.1:3310; refusing to start Stargram without scanning."
 }
 load_env_file(){
-  local line key value
+  local line key
   local -A seen_keys=()
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
   while IFS= read -r line || [[ -n "$line" ]]; do
