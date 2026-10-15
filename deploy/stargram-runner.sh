@@ -23,6 +23,7 @@ die(){ echo "ERROR: $*" >&2; exit 1; }
 NETWORK_TXN_ACTIVE=0
 NETWORK_TXN_DIR=""
 AUTO_SETUP_ACTIVE=0
+APP_TREE_PROTECTED=0
 AUTO_TURN_CONFIG_TOUCHED=0
 AUTO_TURN_CONFIG_EXISTED=0
 AUTO_TURN_BACKUP=""
@@ -68,6 +69,9 @@ begin_network_transaction(){
 }
 runner_exit_handler(){
   local status="$1"
+  if [[ "$status" -ne 0 && "$APP_TREE_PROTECTED" == 1 && -d "$APP_DIR" ]] && id "$APP_USER" >/dev/null 2>&1; then
+    chown -R "$APP_USER:" "$APP_DIR" || true
+  fi
   if [[ "$status" -ne 0 && "$AUTO_SETUP_ACTIVE" == 1 ]]; then
     rollback_auto_setup
   fi
@@ -91,6 +95,7 @@ runner_exit_handler(){
 }
 trap 'runner_exit_handler "$?"' EXIT
 ask(){ local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
+ask_secret(){ local v; read -r -s -p "$1: " v; printf '\n' >&2; printf '%s' "$v"; }
 randhex(){ openssl rand -hex "$1"; }
 public_ipv4(){
   local candidate octet_a octet_b octet_c octet_d octet
@@ -171,6 +176,9 @@ git_app(){
 checkout_app(){
   log "Preparing source with Git metadata separated from the writable runtime tree"
   [[ ! -L "$APP_DIR" && ! -L "$GIT_DIR" ]] || die "Application directory and Git metadata path must not be symlinks."
+  [[ ! -L "$APP_DIR/.git" ]] || die "Git metadata path $APP_DIR/.git must not be a symlink."
+  [[ ! -e "$APP_DIR" || -d "$APP_DIR" ]] || die "$APP_DIR exists and is not a directory."
+  [[ ! -e "$GIT_DIR" || -d "$GIT_DIR" ]] || die "$GIT_DIR exists and is not a directory."
   id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "/home/$APP_USER" --shell /usr/sbin/nologin "$APP_USER"
   local app_group
   app_group="$(id -gn "$APP_USER")"
@@ -187,7 +195,9 @@ checkout_app(){
 
   if [[ -d "$GIT_DIR" ]]; then
     [[ -z "$(git_app status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
+    APP_TREE_PROTECTED=1
     chown -R root:root "$APP_DIR"
+    chmod -R go-w "$APP_DIR"
     git_app fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
     if ! git_app checkout "$BRANCH"; then
       git_app checkout -b "$BRANCH" "origin/$BRANCH"
@@ -214,6 +224,7 @@ checkout_app(){
   [[ ! -L "$APP_DIR/node_modules" ]] || rm -f "$APP_DIR/node_modules"
   [[ ! -L "$APP_DIR/.next" ]] || rm -f "$APP_DIR/.next"
   chown -R "$APP_USER:$app_group" "$APP_DIR"
+  APP_TREE_PROTECTED=0
   install -d -o "$APP_USER" -g "$app_group" -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
   [[ ! -L "$APP_DIR/next-env.d.ts" ]] || rm -f "$APP_DIR/next-env.d.ts"
   [[ ! -L "$APP_DIR/tsconfig.tsbuildinfo" ]] || rm -f "$APP_DIR/tsconfig.tsbuildinfo"
@@ -441,10 +452,10 @@ EOF
 }
 write_manual_env(){
   local mongo redis s3 bucket access secret turn turnsecret realm
-  mongo="$(ask "MongoDB URI" "")"; redis="$(ask "Redis URL" "redis://127.0.0.1:6379")"
+  mongo="$(ask_secret "MongoDB URI")"; redis="$(ask "Redis URL" "redis://127.0.0.1:6379")"
   s3="$(ask "S3 endpoint (HTTPS or local loopback HTTP)" "")"; bucket="$(ask "S3 bucket" "")"
-  access="$(ask "S3 access key" "")"; secret="$(ask "S3 secret key" "")"
-  turn="$(ask "TURN URL(s)" "")"; turnsecret="$(ask "TURN secret (32+ chars)" "")"; realm="$(ask "TURN realm" "")"
+  access="$(ask "S3 access key" "")"; secret="$(ask_secret "S3 secret key")"
+  turn="$(ask "TURN URL(s)" "")"; turnsecret="$(ask_secret "TURN secret (32+ chars)")"; realm="$(ask "TURN realm" "")"
 
   [[ "$mongo" == mongodb://* || "$mongo" == mongodb+srv://* ]] || die "Invalid MongoDB URI."
   [[ "$s3" == https://* || "$s3" == http://127.0.0.1:* ]] || die "S3 must use HTTPS or loopback HTTP."

@@ -44,6 +44,27 @@ test("runner separates root-owned Git metadata from the writable runtime tree", 
   assert.doesNotMatch(runner, /chown -R root:root "\$APP_DIR"\n\s*chmod -R go-w "\$APP_DIR\/\.git"/);
 });
 
+
+test("runner restores app ownership after a failed privileged Git update", () => {
+  assert.match(runner, /APP_TREE_PROTECTED=1\s+chown -R root:root "\$APP_DIR"\s+chmod -R go-w "\$APP_DIR"/);
+  assert.match(runner, /APP_TREE_PROTECTED=0/);
+  assert.match(runner, /chown -R "\$APP_USER:" "\$APP_DIR" \|\| true/);
+});
+
+test("runner refuses a symlinked .git path and non-directory checkout paths", () => {
+  assert.match(runner, /\[\[ ! -L "\$APP_DIR\/.git" \]\] \|\| die "Git metadata path/);
+  assert.match(runner, /\[\[ ! -e "\$APP_DIR" \|\| -d "\$APP_DIR" \]\]/);
+  assert.match(runner, /\[\[ ! -e "\$GIT_DIR" \|\| -d "\$GIT_DIR" \]\]/);
+});
+
+test("manual database URI and secret credentials are not echoed to the terminal", () => {
+  assert.match(runner, /ask_secret\(\)\{ local v; read -r -s -p/);
+  const manual = runner.split(/write_manual_env\(\)\{/)[1]?.split(/\nconfigure_clamav\(\)\{/)[0] ?? "";
+  assert.match(manual, /mongo="\$\(ask_secret "MongoDB URI"\)"/);
+  assert.match(manual, /secret="\$\(ask_secret "S3 secret key"\)"/);
+  assert.match(manual, /turnsecret="\$\(ask_secret "TURN secret \(32\+ chars\)"\)"/);
+});
+
 test("runner refuses symlinked checkout and Git metadata paths", () => {
   assert.match(runner, /\[\[ ! -L "\$APP_DIR" && ! -L "\$GIT_DIR" \]\] \|\| die "Application directory and Git metadata path must not be symlinks\."/);
 });
