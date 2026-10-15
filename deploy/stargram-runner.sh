@@ -155,6 +155,16 @@ turn_external_ip(){
 }
 
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash deploy/stargram-runner.sh"
+
+# Acquire a host-wide exclusive lock before any state-changing operation.
+# Keep the descriptor open until process exit so EXIT rollback runs while locked.
+RUNNER_LOCK_FILE=/run/lock/stargram-runner.lock
+command -v flock >/dev/null 2>&1 || die "The flock utility is required to prevent concurrent Runner executions."
+exec {RUNNER_LOCK_FD}>"$RUNNER_LOCK_FILE" || die "Cannot open Runner lock file: $RUNNER_LOCK_FILE"
+if ! flock -n "$RUNNER_LOCK_FD"; then
+  die "Another Stargram Runner instance is already running. Wait for it to finish before starting another."
+fi
+
 command -v apt-get >/dev/null || die "Only Debian/Ubuntu supported."
 mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
 
