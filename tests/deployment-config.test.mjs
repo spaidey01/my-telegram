@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const setup = readFileSync(new URL("../deploy/setup-vps.sh", import.meta.url), "utf8");
@@ -33,6 +33,76 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(deploy, /status --porcelain/);
   assert.match(deploy, /checkout -b "\$BRANCH" "origin\/\$BRANCH"/);
   assert.match(deploy, /merge --ff-only "origin\/\$BRANCH"/);
+});
+
+
+test("runner acquires an exclusive process lock before state-changing operations", async () => {
+  const lockStart = runner.indexOf("# Acquire a host-wide exclusive lock before any state-changing operation.");
+  const lockEnd = runner.indexOf('command -v apt-get >/dev/null || die "Only Debian/Ubuntu supported."', lockStart);
+  assert.ok(lockStart >= 0, "runner must document the lock acquisition block");
+  assert.ok(lockEnd > lockStart, "lock must be acquired before package-manager checks and setup");
+
+  const lockBlock = runner.slice(lockStart, lockEnd)
+    .replace('RUNNER_LOCK_FILE=/run/lock/stargram-runner.lock', 'RUNNER_LOCK_FILE="$TEST_RUNNER_LOCK_FILE"');
+  assert.match(lockBlock, /command -v flock/);
+  assert.match(lockBlock, /flock -n "\$RUNNER_LOCK_FD"/);
+  assert.match(lockBlock, /Another Stargram Runner instance is already running/);
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-runner-lock-"));
+  const lockFile = path.join(tempDir, "runner.lock");
+  const harness = 'die(){ echo "$*" >&2; exit 1; }\n' + lockBlock;
+  const first = spawn("bash", ["-c", harness + "\nprintf 'LOCK_ACQUIRED\\n'\nsleep 1.2"], {
+    env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let firstStdout = "";
+  let firstStderr = "";
+  first.stdout.setEncoding("utf8");
+  first.stderr.setEncoding("utf8");
+  first.stdout.on("data", chunk => { firstStdout += chunk; });
+  first.stderr.on("data", chunk => { firstStderr += chunk; });
+
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("first runner did not acquire lock in time")), 2000);
+      first.stdout.on("data", () => {
+        if (firstStdout.includes("LOCK_ACQUIRED")) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+      first.once("error", error => { clearTimeout(timer); reject(error); });
+      first.once("exit", code => {
+        if (code !== 0) { clearTimeout(timer); reject(new Error("first runner exited " + code + ": " + firstStderr)); }
+      });
+    });
+
+    const second = spawnSync("bash", ["-c", harness + "\nprintf 'UNEXPECTEDLY_ACQUIRED\\n'"], {
+      encoding: "utf8",
+      env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
+      timeout: 2000,
+    });
+    assert.notEqual(second.status, 0, "a concurrent runner must be rejected");
+    assert.match(second.stderr, /Another Stargram Runner instance is already running/);
+    assert.doesNotMatch(second.stdout, /UNEXPECTEDLY_ACQUIRED/);
+
+    const firstExit = await new Promise((resolve, reject) => {
+      first.once("error", reject);
+      first.once("exit", (code, signal) => resolve({ code, signal }));
+    });
+    assert.equal(firstExit.code, 0, "first runner failed: " + firstStderr);
+
+    const third = spawnSync("bash", ["-c", harness + "\nprintf 'ACQUIRED_AFTER_RELEASE\\n'"], {
+      encoding: "utf8",
+      env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
+      timeout: 2000,
+    });
+    assert.equal(third.status, 0, third.stderr);
+    assert.match(third.stdout, /ACQUIRED_AFTER_RELEASE/);
+  } finally {
+    if (first.exitCode === null && first.signalCode === null) first.kill("SIGTERM");
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("runner separates root-owned Git metadata from the writable runtime tree", () => {
@@ -348,7 +418,7 @@ test("legacy VPS setup keeps the environment file root-owned and non-writable by
 });
 
 test("runner refuses existing containers and persistent volumes before creating resources", () => {
-  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_manual_services\(\)/)[0] ?? "";
+  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_network\(\)/)[0] ?? "";
   const containerGuard = serviceSetup.indexOf('docker container inspect stargram-mongodb');
   const volumeGuard = serviceSetup.indexOf('docker volume inspect stargram-mongodb-data');
   const volumeCreate = serviceSetup.indexOf('docker volume create stargram-mongodb-data');
@@ -394,7 +464,7 @@ test("runner configures ClamAV TCP and fails closed when scanner or signatures a
 });
 
 test("runner MongoDB readiness check uses a valid mongosh ping command", () => {
-  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_manual_services\(\)/)[0] ?? "";
+  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_network\(\)/)[0] ?? "";
   assert.equal((serviceSetup.match(/db\.adminCommand\(\{ping: 1\}\)\.ok/g) ?? []).length, 2);
   assert.doesNotMatch(serviceSetup, /db\.adminCommand\(\{ping\}\)\.ok/);
 });
