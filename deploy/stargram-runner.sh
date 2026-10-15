@@ -112,6 +112,8 @@ public_ipv4(){
   ! (( 10#$octet_a == 198 && 10#$octet_b == 51 && 10#$octet_c == 100 )) || die "Public IPv4 lookup returned a documentation address: $candidate"
   ! (( 10#$octet_a == 203 && 10#$octet_b == 0 && 10#$octet_c == 113 )) || die "Public IPv4 lookup returned a documentation address: $candidate"
   (( 10#$octet_a != 192 || 10#$octet_b != 31 || 10#$octet_c != 196 )) || die "Public IPv4 lookup returned a special-use address: $candidate"
+  (( 10#$octet_a != 192 || 10#$octet_b != 52 || 10#$octet_c != 193 )) || die "Public IPv4 lookup returned a special-use address: $candidate"
+  (( 10#$octet_a != 192 || 10#$octet_b != 175 || 10#$octet_c != 48 )) || die "Public IPv4 lookup returned a special-use address: $candidate"
   (( 10#$octet_a < 240 )) || die "Public IPv4 lookup returned a reserved address: $candidate"
   printf '%s' "$candidate"
 }
@@ -433,7 +435,7 @@ configure_clamav(){
   if command -v freshclam >/dev/null 2>&1; then
     systemctl stop clamav-freshclam >/dev/null 2>&1 || true
     timeout 180 freshclam --stdout --verbose || log "FreshClam update failed; checking whether existing signatures are usable"
-    systemctl enable --now clamav-freshclam || log "Could not start the FreshClam updater; scanner startup will still be validated"
+    systemctl enable --now clamav-freshclam || die "FreshClam updater could not be enabled; refusing to continue with signatures that may become stale."
   fi
   local version
   version="$(clamscan --version 2>/dev/null || true)"
