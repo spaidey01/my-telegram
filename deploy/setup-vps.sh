@@ -13,6 +13,14 @@ die() { echo "ERROR: $1" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "Run this script as root (sudo)."
 
+# Share one lock across every deployment entrypoint to prevent overlapping updates.
+DEPLOY_LOCK_FILE=/run/lock/stargram-deploy.lock
+command -v flock >/dev/null 2>&1 || die "The flock utility is required to prevent concurrent deployment operations."
+exec {DEPLOY_LOCK_FD}>"$DEPLOY_LOCK_FILE" || die "Cannot open deployment lock file: $DEPLOY_LOCK_FILE"
+if ! flock -n "$DEPLOY_LOCK_FD"; then
+  die "Another Stargram setup, deployment, or Runner operation is already running."
+fi
+
 if command -v apt-get >/dev/null 2>&1; then
   log "Installing base packages"
   export DEBIAN_FRONTEND=noninteractive
