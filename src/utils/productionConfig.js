@@ -72,9 +72,11 @@ export const validateProductionEnv = (env = process.env) => {
     throw new Error("CLAMAV_PORT must be a valid TCP port");
   }
 
-  const proxyCount = Number(env.TRUSTED_PROXY_COUNT ?? 0);
-  if (!Number.isInteger(proxyCount) || proxyCount < 0) {
-    throw new Error("TRUSTED_PROXY_COUNT must be a non-negative integer");
+  const proxyRaw = typeof env.TRUSTED_PROXY_COUNT === "string" ? env.TRUSTED_PROXY_COUNT.trim() : "";
+  if (!proxyRaw) throw new Error("TRUSTED_PROXY_COUNT must be explicitly configured in production");
+  const proxyCount = Number(proxyRaw);
+  if (!Number.isInteger(proxyCount) || proxyCount < 1) {
+    throw new Error("TRUSTED_PROXY_COUNT must be a positive integer in production");
   }
 
   return { ok: true };
