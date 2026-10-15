@@ -167,6 +167,7 @@ git_app(){
 }
 checkout_app(){
   log "Preparing source with Git metadata separated from the writable runtime tree"
+  [[ ! -L "$APP_DIR" && ! -L "$GIT_DIR" ]] || die "Application directory and Git metadata path must not be symlinks."
   id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "/home/$APP_USER" --shell /usr/sbin/nologin "$APP_USER"
   local app_group
   app_group="$(id -gn "$APP_USER")"
