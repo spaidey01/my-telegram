@@ -42,11 +42,18 @@ test("runner acquires an exclusive process lock before state-changing operations
   assert.ok(lockStart >= 0, "runner must document the shared lock acquisition block");
   assert.ok(lockEnd > lockStart, "lock must be acquired before package-manager checks and setup");
 
-  for (const [name, script] of [["setup", setup], ["deploy", deploy], ["runner", runner]]) {
+  for (const [name, script, firstMutation] of [
+    ["setup", setup, "apt-get update"],
+    ["deploy", deploy, 'git -C "$APP_DIR" fetch origin "$BRANCH"'],
+    ["runner", runner, "command -v apt-get >/dev/null"],
+  ]) {
+    const lockAt = script.indexOf("# Share one lock across every deployment entrypoint to prevent overlapping updates.");
+    const mutationAt = script.indexOf(firstMutation);
     assert.match(script, /DEPLOY_LOCK_FILE=\/run\/lock\/stargram-deploy\.lock/, name + " must use the shared lock path");
     assert.match(script, /command -v flock/, name + " must verify flock is available");
     assert.match(script, /flock -n "\$DEPLOY_LOCK_FD"/, name + " must reject concurrent operations");
     assert.match(script, /Another Stargram setup, deployment, or Runner operation is already running/);
+    assert.ok(lockAt >= 0 && mutationAt > lockAt, name + " must acquire the shared lock before its first state-changing operation");
   }
 
   const lockBlock = runner.slice(lockStart, lockEnd)
@@ -61,6 +68,10 @@ test("runner acquires an exclusive process lock before state-changing operations
   const first = spawn("bash", ["-c", harness + "\nprintf 'LOCK_ACQUIRED\\n'\nsleep 1.2"], {
     env: { ...process.env, TEST_RUNNER_LOCK_FILE: lockFile },
     stdio: ["ignore", "pipe", "pipe"],
+  });
+  const firstExitPromise = new Promise((resolve, reject) => {
+    first.once("error", reject);
+    first.once("exit", (code, signal) => resolve({ code, signal }));
   });
   let firstStdout = "";
   let firstStderr = "";
@@ -93,10 +104,7 @@ test("runner acquires an exclusive process lock before state-changing operations
     assert.match(second.stderr, /Another Stargram Runner instance is already running/);
     assert.doesNotMatch(second.stdout, /UNEXPECTEDLY_ACQUIRED/);
 
-    const firstExit = await new Promise((resolve, reject) => {
-      first.once("error", reject);
-      first.once("exit", (code, signal) => resolve({ code, signal }));
-    });
+    const firstExit = await firstExitPromise;
     assert.equal(firstExit.code, 0, "first runner failed: " + firstStderr);
 
     const third = spawnSync("bash", ["-c", harness + "\nprintf 'ACQUIRED_AFTER_RELEASE\\n'"], {
