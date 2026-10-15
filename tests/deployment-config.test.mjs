@@ -111,7 +111,7 @@ public_ipv4
   const direct = run({ IPIFY: "8.8.8.8", FALLBACK: "" });
   assert.equal(direct.status, 0, direct.stderr);
   assert.equal(direct.stdout, "8.8.8.8");
-  const fallback = run({ IPIFY: "not-an-ip", FALLBACK: "1.1.1.1\\n" });
+  const fallback = run({ IPIFY: "not-an-ip", FALLBACK: "1.1.1.1\n" });
   assert.equal(fallback.status, 0, fallback.stderr);
   assert.equal(fallback.stdout, "1.1.1.1");
   const privateAddress = run({ IPIFY: "192.168.1.4", FALLBACK: "" });
