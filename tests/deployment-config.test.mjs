@@ -428,3 +428,118 @@ test("manual first-install path rolls back network configuration until app setup
   assert.ok(optionTwo.indexOf("apply_config") < optionTwo.indexOf("NETWORK_TXN_ACTIVE=0"), "transaction commits only after app config succeeds");
   assert.match(runner, /restore_path coturn-default \/etc\/default\/coturn/);
 });
+
+
+// Behavioral regression tests: execute the actual environment parsing helpers in an
+// isolated Bash process instead of only asserting that their source text exists.
+function extractFunction(source, name, nextName) {
+  const start = source.indexOf(`${name}(){`);
+  const end = source.indexOf(`\n${nextName}(){`, start);
+  assert.ok(start >= 0 && end > start, `could not extract ${name} helper`);
+  return source.slice(start, end);
+}
+
+test("environment parser preserves shell metacharacters as literal values without executing them", () => {
+  const loader = extractFunction(runner, "load_env_file", "build_env_args");
+  const builder = extractFunction(runner, "build_env_args", "verify_s3_storage");
+  const script = `
+die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+secretKey=""
+TURN_SECRET=""
+S3_ENDPOINT_VALUE=""
+ENV_FILE="$1"
+${loader}
+${builder}
+load_env_file
+build_env_args
+printf 'SECRET=%s\\nTURN=%s\\nS3=%s\\n' "$secretKey" "$TURN_SECRET" "$S3_ENDPOINT_VALUE"
+printf 'ARGS=%s\\n' "${ENV_ARGS[*]}"
+`;
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-parser-"));
+  const envFile = path.join(dir, "test.env");
+  const marker = path.join(dir, "should-not-exist");
+  fs.writeFileSync(envFile, [
+    "# ordinary comment",
+    "secretKey=abcdefghijklmnopqrstuvwxyz123456",
+    "TURN_SECRET=turn-secret-abcdefghijklmnopqrstuvwxyz",
+    "S3_ENDPOINT=http://127.0.0.1:8333",
+    `UNTRUSTED=$(touch ${marker})`,
+    "QUOTED=hello; printf hacked",
+    ""
+  ].join("\\n"));
+  try {
+    const result = spawnSync("bash", ["-c", script, "test", envFile], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.existsSync(marker), false, "env-file command substitution must never execute");
+    assert.match(result.stdout, /SECRET=abcdefghijklmnopqrstuvwxyz123456/);
+    assert.match(result.stdout, /TURN=turn-secret-abcdefghijklmnopqrstuvwxyz/);
+    assert.match(result.stdout, /S3=http:\/\/127\.0\.0\.1:8333/);
+    assert.match(result.stdout, /UNTRUSTED=\$\(touch/);
+    assert.match(result.stdout, /QUOTED=hello;/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("environment parser rejects duplicate keys before producing runtime arguments", () => {
+  const loader = extractFunction(runner, "load_env_file", "build_env_args");
+  const builder = extractFunction(runner, "build_env_args", "verify_s3_storage");
+  const script = `
+die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+secretKey=""
+TURN_SECRET=""
+S3_ENDPOINT_VALUE=""
+ENV_FILE="$1"
+${loader}
+${builder}
+load_env_file
+build_env_args
+`;
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-duplicate-"));
+  const envFile = path.join(dir, "duplicate.env");
+  fs.writeFileSync(envFile, "NODE_ENV=production\\nNODE_ENV=development\\n");
+  try {
+    const result = spawnSync("bash", ["-c", script, "test", envFile], { encoding: "utf8" });
+    assert.notEqual(result.status, 0, "duplicate environment keys must fail");
+    assert.match(result.stderr, /Duplicate environment key: NODE_ENV/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("environment parser rejects malformed lines and invalid key names", () => {
+  const loader = extractFunction(runner, "load_env_file", "build_env_args");
+  const cases = [
+    { text: "NOT_AN_ASSIGNMENT\\n", error: /expected KEY=VALUE/ },
+    { text: "BAD-KEY=value\\n", error: /Invalid environment key: BAD-KEY/ }
+  ];
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-invalid-"));
+  const envFile = path.join(dir, "invalid.env");
+  try {
+    for (const item of cases) {
+      fs.writeFileSync(envFile, item.text);
+      const script = `
+die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+secretKey=""
+TURN_SECRET=""
+ENV_FILE="$1"
+${loader}
+load_env_file
+`;
+      const result = spawnSync("bash", ["-c", script, "test", envFile], { encoding: "utf8" });
+      assert.notEqual(result.status, 0, `invalid env line accepted: ${item.text}`);
+      assert.match(result.stderr, item.error);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
