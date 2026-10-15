@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 umask 077
 APP_DIR=/opt/my-telegram
+GIT_DIR=/opt/my-telegram.git
 APP_USER=telegram
 ENV_FILE=/etc/my-telegram.env
 BRANCH="${BRANCH:-stargram_clone}"
@@ -159,37 +160,56 @@ install_packages(){
   systemctl enable --now docker redis-server
   docker info >/dev/null 2>&1 || die "Docker daemon is unavailable."
 }
+git_app(){
+  env GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+    git -c core.hooksPath=/dev/null -c core.fsmonitor=false \
+    --git-dir="$GIT_DIR" --work-tree="$APP_DIR" "$@"
+}
 checkout_app(){
-  log "Preparing source without deleting local changes"
-  if [[ -d "$APP_DIR/.git" ]]; then
-    [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
-    git -C "$APP_DIR" fetch origin "$BRANCH"
-    if ! git -C "$APP_DIR" checkout "$BRANCH"; then
-      git -C "$APP_DIR" checkout -b "$BRANCH" "origin/$BRANCH"
-    fi
-    git -C "$APP_DIR" merge --ff-only "origin/$BRANCH"
-  elif [[ -e "$APP_DIR" ]]; then die "$APP_DIR exists and is not a Git checkout."
-  else git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"; fi
+  log "Preparing source with Git metadata separated from the writable runtime tree"
   id "$APP_USER" >/dev/null 2>&1 || useradd --system --create-home --home-dir "/home/$APP_USER" --shell /usr/sbin/nologin "$APP_USER"
   local app_group
   app_group="$(id -gn "$APP_USER")"
-  # Keep the checkout metadata and repository root out of the runtime user's control.
-  # The runner later executes Git as root; a writable .git/hooks directory would
-  # let the app user plant hooks that execute during privileged checkout/merge.
-  # Keep checked-out source and Git metadata root-owned; only build output is writable.
-  # Remove a pre-existing build-directory symlink rather than granting the app
-  # user write access through it to an arbitrary path outside the checkout.
+
+  if [[ -d "$APP_DIR/.git" ]]; then
+    [[ ! -e "$GIT_DIR" ]] || die "Both $APP_DIR/.git and $GIT_DIR exist; refusing an ambiguous Git migration."
+    [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
+    mv "$APP_DIR/.git" "$GIT_DIR"
+    git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
+  elif [[ -e "$APP_DIR/.git" ]]; then
+    die "Unsupported .git file in $APP_DIR; inspect the existing checkout before continuing."
+  fi
+
+  if [[ -d "$GIT_DIR" ]]; then
+    [[ -z "$(git_app status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
+    chown root:root "$APP_DIR"
+    git_app fetch origin "$BRANCH"
+    if ! git_app checkout "$BRANCH"; then
+      git_app checkout -b "$BRANCH" "origin/$BRANCH"
+    fi
+    git_app merge --ff-only "origin/$BRANCH"
+  elif [[ -e "$APP_DIR" ]]; then
+    [[ -d "$APP_DIR" && -z "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]] || die "$APP_DIR exists and is not an empty checkout."
+    git clone --separate-git-dir="$GIT_DIR" --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
+    git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
+  else
+    git clone --separate-git-dir="$GIT_DIR" --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
+    git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
+  fi
+
+  # Root owns the Git database and temporarily owns the work-tree root during
+  # privileged Git operations. The runtime tree is then app-owned so npm ci can
+  # replace node_modules and Next.js can write build output without running npm as root.
+  chown -R root:root "$GIT_DIR"
+  chmod -R go-w "$GIT_DIR"
+  git --git-dir="$GIT_DIR" config core.hooksPath /dev/null
+  git --git-dir="$GIT_DIR" config core.fsmonitor false
   [[ ! -L "$APP_DIR/node_modules" ]] || rm -f "$APP_DIR/node_modules"
   [[ ! -L "$APP_DIR/.next" ]] || rm -f "$APP_DIR/.next"
-  chown -R root:root "$APP_DIR"
-  chmod -R go-w "$APP_DIR/.git"
-  install -d -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
-  chown -R "$APP_USER:$app_group" "$APP_DIR/node_modules" "$APP_DIR/.next"
-  # Next.js and TypeScript generate these ignored files at the repository root.
-  # Do not follow pre-existing symlinks while preparing writable generated files.
+  chown -R "$APP_USER:$app_group" "$APP_DIR"
+  install -d -o "$APP_USER" -g "$app_group" -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
   [[ ! -L "$APP_DIR/next-env.d.ts" ]] || rm -f "$APP_DIR/next-env.d.ts"
   [[ ! -L "$APP_DIR/tsconfig.tsbuildinfo" ]] || rm -f "$APP_DIR/tsconfig.tsbuildinfo"
-  # Keep tracked source immutable while allowing the build user to update generated files.
   touch "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
   chown "$APP_USER:$app_group" "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
   chmod 0640 "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
