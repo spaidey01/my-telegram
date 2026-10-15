@@ -14,6 +14,17 @@ const CALL_STORAGE_KEY="stargram:active-call";
 const RING_TIMEOUT_MS=30_000;
 const ICE_RESTART_DELAY_MS=1_500;
 const MAX_ICE_RESTARTS=2;
+const MAX_PENDING_ICE_CANDIDATES=128;
+
+const getCandidateUfrag=(candidate:RTCIceCandidateInit)=>{
+  if(typeof candidate.usernameFragment==="string"&&candidate.usernameFragment)return candidate.usernameFragment;
+  return candidate.candidate?.match(/(?:^|\\s)ufrag\\s+([^\\s]+)/)?.[1]||null;
+};
+const matchesRemoteIceGeneration=(candidate:RTCIceCandidateInit,description:RTCSessionDescription|null)=>{
+  const ufrag=getCandidateUfrag(candidate);
+  if(!ufrag||!description?.sdp)return true;
+  return description.sdp.split(/\\r?\\n/).some(line=>line.startsWith("a=ice-ufrag:")&&line.slice("a=ice-ufrag:".length)===ufrag);
+};
 
 const persistCall=(call:CallInfo|null)=>{
   try{if(call)sessionStorage.setItem(CALL_STORAGE_KEY,JSON.stringify(call));else sessionStorage.removeItem(CALL_STORAGE_KEY);}catch{}
@@ -208,6 +219,7 @@ export default function CallOverlay(){
     if(!call||call.callId!==callId)return;
     try{
       const p=pc.current||await makePeer(call);await p.setRemoteDescription(description);
+      for(const candidate of pending.current.splice(0)){if(matchesRemoteIceGeneration(candidate,p.remoteDescription)){try{await p.addIceCandidate(candidate);}catch{}}}
       const stream=localRef.current||await getMedia(call.type);
       stream.getTracks().forEach(t=>{if(!p.getSenders().some(s=>s.track===t))p.addTrack(t,stream);});
       for(const candidate of pending.current.splice(0))await p.addIceCandidate(candidate);
@@ -216,12 +228,12 @@ export default function CallOverlay(){
   };
   const answer=async({callId,description}:{callId:string;description:RTCSessionDescriptionInit})=>{
     if(!call||call.callId!==callId||!pc.current)return;
-    try{await pc.current.setRemoteDescription(description);for(const candidate of pending.current.splice(0))await pc.current.addIceCandidate(candidate);setState("connecting");}
+    try{await pc.current.setRemoteDescription(description);for(const candidate of pending.current.splice(0)){if(matchesRemoteIceGeneration(candidate,pc.current.remoteDescription)){try{await pc.current.addIceCandidate(candidate);}catch{}}}setState("connecting");}
     catch{restartIce("پاسخ تماس نامعتبر بود؛ در حال تلاش مجدد...");}
   };
   const ice=async({callId,candidate}:{callId:string;candidate:RTCIceCandidateInit})=>{
     if(!call||call.callId!==callId)return;
-    if(pc.current?.remoteDescription){try{await pc.current.addIceCandidate(candidate);}catch{}}else pending.current.push(candidate);
+    if(pc.current?.remoteDescription){if(!matchesRemoteIceGeneration(candidate,pc.current.remoteDescription))return;try{await pc.current.addIceCandidate(candidate);}catch{}}else{if(pending.current.length>=MAX_PENDING_ICE_CANDIDATES)pending.current.shift();const ufrag=getCandidateUfrag(candidate);if(!pending.current.some(item=>item.candidate===candidate.candidate&&getCandidateUfrag(item)===ufrag))pending.current.push(candidate);}
   };
   const reconnect=async({callId,ready}:{callId:string;ready?:boolean})=>{if(call?.callId!==callId)return;if(!ready){setState("reconnecting");return;}if(!call.isCaller){setState("reconnecting");return;}try{const stream=localRef.current||await getMedia(call.type);const p=pc.current||await makePeer(call);stream.getTracks().forEach(t=>{if(!p.getSenders().some(s=>s.track===t))p.addTrack(t,stream);});if(!await restartIce("در حال بازیابی تماس...")) throw new Error("RECONNECT_FAILED");setState("connecting");}catch{setState("failed");setError("بازیابی تماس ممکن نشد.");}};
   const peerReconnecting=({callId}:{callId:string})=>{if(call?.callId===callId){setState("reconnecting");if(call.isCaller)void restartIce("طرف مقابل دوباره متصل شد؛ در حال بازسازی تماس...");}};
