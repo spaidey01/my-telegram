@@ -73,7 +73,7 @@ The reverse proxy should send the public HTTPS hostname to port 3000. If Socket.
 
 ```bash
 cd /opt/my-telegram
-git pull --ff-only origin main
+git pull --ff-only origin stargram_clone
 npm ci
 npm run build
 sudo systemctl restart my-telegram-web my-telegram-socket
@@ -86,7 +86,7 @@ CI must remain green before changes are merged to `main`.
 
 ## One-command VPS runner
 
-For a fresh Debian/Ubuntu VPS, the setup runner installs the required host packages, Node.js 20, Redis, ClamAV, coturn, Nginx, the `telegram` service user, Stargram, systemd units, dependencies, and the production build:
+For a fresh Debian/Ubuntu VPS, `setup-vps.sh` installs Node.js 22 and the baseline host packages. The interactive `stargram-runner.sh` additionally supports automatic local MongoDB + SeaweedFS S3 provisioning, firewall/network setup, and transactional configuration rollback. Run the interactive runner only on a fresh or disposable VPS first:
 
 ```bash
 sudo bash /opt/my-telegram/deploy/setup-vps.sh
@@ -95,7 +95,7 @@ sudo bash /opt/my-telegram/deploy/setup-vps.sh
 If the repository is not installed yet, clone it first:
 
 ```bash
-sudo git clone --branch main --single-branch https://github.com/spaidey01/my-telegram.git /opt/my-telegram
+sudo git clone --branch stargram_clone --single-branch https://github.com/spaidey01/my-telegram.git /opt/my-telegram
 sudo bash /opt/my-telegram/deploy/setup-vps.sh
 ```
 
@@ -112,8 +112,8 @@ That runner fetches the selected branch, installs the locked dependencies, valid
 Optional overrides:
 
 ```bash
-sudo env BRANCH=production-fixes bash /opt/my-telegram/deploy/deploy-vps.sh
+sudo env BRANCH=stargram_clone bash /opt/my-telegram/deploy/deploy-vps.sh
 sudo env APP_DIR=/srv/stargram bash /opt/my-telegram/deploy/setup-vps.sh
 ```
 
-The runner does not create or guess secrets, MongoDB credentials, S3 credentials, DNS records, TLS certificates, or public TURN credentials. Those remain explicit deployment inputs.
+The interactive runner generates secrets and credentials for its automatic local MongoDB/SeaweedFS option. In manual-service mode, MongoDB, S3, TURN, DNS, and certificate details remain explicit deployment inputs. The runner verifies S3 with an authenticated upload/download/delete cycle before building and starting the application.
