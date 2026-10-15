@@ -97,6 +97,8 @@ test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
   assert.match(runner, /MONGO_IMAGE=.*mongo:/);
   assert.match(runner, /SEAWEEDFS_IMAGE=.*seaweedfs@sha256:[a-f0-9]{64}/);
   assert.match(runner, /docker run -d --name stargram-seaweedfs/);
+  assert.match(runner, /-e S3_BUCKET=stargram/);
+  assert.match(runner, /verify_s3_storage/);
   assert.match(runner, /Legacy stargram-minio-data is deliberately left untouched and is not reused/);
 });
 
