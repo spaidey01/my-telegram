@@ -175,6 +175,7 @@ checkout_app(){
     [[ ! -e "$GIT_DIR" ]] || die "Both $APP_DIR/.git and $GIT_DIR exist; refusing an ambiguous Git migration."
     [[ -z "$(git -C "$APP_DIR" status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
     mv "$APP_DIR/.git" "$GIT_DIR"
+    git --git-dir="$GIT_DIR" config core.bare false
     git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
   elif [[ -e "$APP_DIR/.git" ]]; then
     die "Unsupported .git file in $APP_DIR; inspect the existing checkout before continuing."
@@ -191,9 +192,11 @@ checkout_app(){
   elif [[ -e "$APP_DIR" ]]; then
     [[ -d "$APP_DIR" && -z "$(find "$APP_DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]] || die "$APP_DIR exists and is not an empty checkout."
     git clone --separate-git-dir="$GIT_DIR" --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
+    git --git-dir="$GIT_DIR" config core.bare false
     git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
   else
     git clone --separate-git-dir="$GIT_DIR" --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
+    git --git-dir="$GIT_DIR" config core.bare false
     git --git-dir="$GIT_DIR" config core.worktree "$APP_DIR"
   fi
 
