@@ -32,11 +32,11 @@ test("deployment targets stargram_clone by default, not main", () => {
   assert.match(deploy, /merge --ff-only "origin\/\$BRANCH"/);
 });
 
-test("runner keeps privileged Git metadata and checkout root out of runtime-user control", () => {
-  assert.match(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
-  assert.match(runner, /chown root:root "\$APP_DIR"/);
-  assert.match(runner, /chown -R root:root "\$APP_DIR\/\.git"/);
+test("runner keeps source and Git root-owned while allowing only build output writes", () => {
+  assert.match(runner, /chown -R root:root "\$APP_DIR"/);
   assert.match(runner, /chmod -R go-w "\$APP_DIR\/\.git"/);
+  assert.match(runner, /install -d -o "\$APP_USER" -g "\$app_group" -m 0750 "\$APP_DIR\/node_modules" "\$APP_DIR\/\.next"/);
+  assert.doesNotMatch(runner, /chown -R "\$APP_USER:\$app_group" "\$APP_DIR"/);
 });
 
 test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
@@ -93,6 +93,24 @@ test("runner rolls back Nginx site changes when service start or reload fails", 
   assert.ok(fatal > restoreDefault, "runner must stop after rollback");
 });
 
+test("runner preflights public IP before creating persistent service resources", () => {
+  const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_network\(\)/)[0] ?? "";
+  const publicIp = serviceSetup.indexOf('public_ip="$(public_ipv4)"');
+  const firstVolume = serviceSetup.indexOf('docker volume create stargram-mongodb-data');
+  assert.ok(publicIp >= 0 && firstVolume > publicIp, "public IP must be validated before creating volumes");
+});
+
+test("network updates snapshot config before mutation and roll back on failure", () => {
+  assert.match(runner, /begin_network_transaction\(\)/);
+  assert.match(runner, /trap 'runner_exit_handler "\$\?"' EXIT/);
+  assert.match(runner, /restore_path env "\$ENV_FILE"/);
+  assert.match(runner, /restore_path nginx-available \/etc\/nginx\/sites-available\/stargram/);
+  assert.match(runner, /restore_path nginx-default \/etc\/nginx\/sites-enabled\/default/);
+  const optionThree = runner.split(/\n\s*3\) /)[1]?.split(/\n\s*4\) /)[0] ?? "";
+  assert.ok(optionThree.indexOf('cp -a "$ENV_FILE"') < optionThree.indexOf("begin_network_transaction"));
+  assert.match(optionThree, /NETWORK_TXN_ACTIVE=0/);
+});
+
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
   const certbotFailure = runner.indexOf('if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then');
   const refusal = runner.indexOf("HTTPS certificate issuance failed. Previous Nginx configuration was restored", certbotFailure);
@@ -130,6 +148,14 @@ public_ipv4
   assert.match(privateAddress.stderr, /private address/);
   const invalidOctet = run({ IPIFY: "999.1.1.1", FALLBACK: "" });
   assert.notEqual(invalidOctet.status, 0, "out-of-range octets must be rejected");
+  for (const address of [
+    "0.1.2.3", "100.64.1.2", "169.254.1.2", "192.0.0.8",
+    "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.7",
+    "203.0.113.4", "224.0.0.1", "240.0.0.1",
+  ]) {
+    const rejected = run({ IPIFY: address, FALLBACK: "" });
+    assert.notEqual(rejected.status, 0, `special-use IPv4 ${address} must be rejected`);
+  }
 });
 
 test("runner refuses private or invalid IP fallback for public URLs and TURN relay", () => {
@@ -150,11 +176,13 @@ test("runner initializes strict-mode secret variables before loading and validat
   assert.ok(turnSecretInit > secretKeyInit, "TURN_SECRET must be initialized after secretKey");
 });
 
-test("runner does not export arbitrary environment-file keys into its root shell", () => {
+test("runner does not source arbitrary env keys and rejects duplicate keys", () => {
   const loader = runner.split(/load_env_file\(\)\{/)[1]?.split(/\nbuild_env_args\(\)\{/)[0] ?? "";
   assert.match(loader, /case "\$key" in[\s\S]*secretKey\)[\s\S]*TURN_SECRET\)/);
   assert.doesNotMatch(loader, /export "\$key"/);
-  assert.match(loader, /Only copy the two values the root runner itself needs/);
+  assert.match(loader, /Duplicate environment key: \$key/);
+  const builder = runner.split(/build_env_args\(\)\{/)[1]?.split(/\nverify_s3_storage\(\)\{/)[0] ?? "";
+  assert.match(builder, /Duplicate environment key: \$key/);
 });
 
 test("legacy VPS setup keeps the environment file root-owned and non-writable by the app", () => {
@@ -187,6 +215,7 @@ test("runner configures ClamAV TCP and fails closed when scanner or signatures a
   assert.match(runner, /TCPAddr 127\.0\.0\.1/);
   assert.match(runner, /ClamAV signature database is missing or unusable/);
   assert.match(runner, /ClamAV clamd did not answer PING on 127\.0\.0\.1:3310/);
+  assert.match(runner, /systemctl enable --now clamav-freshclam/);
   assert.match(runner, /configure_clamav\n\s+cd "\$APP_DIR"; sudo -u "\$APP_USER" npm ci/);
 });
 
