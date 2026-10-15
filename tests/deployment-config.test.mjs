@@ -118,6 +118,12 @@ test("runner validates DNS hostnames and certificate email addresses", () => {
   assert.match(runner, /\$value" != \*\.\.\*/);
 });
 
+test("runner validates TURN realm before writing coturn configuration", () => {
+  assert.match(runner, /valid_turn_realm\(\)\{/);
+  assert.match(runner, /valid_turn_realm "\$realm" \|\| die "TURN realm must be a valid IPv4 address or DNS hostname\."/);
+  assert.match(runner, /valid_domain "\$realm"/);
+});
+
 test("runner preflights public IP before creating persistent service resources", () => {
   const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_network\(\)/)[0] ?? "";
   const publicIp = serviceSetup.indexOf('public_ip="$(public_ipv4)"');
