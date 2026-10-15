@@ -82,6 +82,17 @@ test("runner restores the previous Nginx configuration when certificate provisio
   assert.ok(failureExit > validateRestoredSite, "runner must stop after failed certificate provisioning");
 });
 
+test("runner rolls back Nginx site changes when service start or reload fails", () => {
+  const failedReload = runner.indexOf('if ! systemctl enable --now nginx || ! systemctl reload nginx; then');
+  const rollback = runner.indexOf('restoring the previous site configuration', failedReload);
+  const restoreDefault = runner.indexOf('cp -a "$default_backup" /etc/nginx/sites-enabled/default', rollback);
+  const fatal = runner.indexOf('Nginx failed to start or reload; previous site configuration was restored.', restoreDefault);
+  assert.ok(failedReload >= 0, "Nginx service operations must be checked");
+  assert.ok(rollback > failedReload, "service failure must trigger rollback");
+  assert.ok(restoreDefault > rollback, "rollback must restore the previous default site");
+  assert.ok(fatal > restoreDefault, "runner must stop after rollback");
+});
+
 test("runner refuses to downgrade failed domain HTTPS provisioning to public HTTP", () => {
   const certbotFailure = runner.indexOf('if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then');
   const refusal = runner.indexOf("HTTPS certificate issuance failed. Previous Nginx configuration was restored", certbotFailure);
