@@ -54,6 +54,10 @@ test("call reliability server keeps a reconnect grace window",()=>{
     'allowEvent(userID, "call:offer", 60, 60_000)',
     'allowEvent(userID, "call:answer", 60, 60_000)',
     'allowEvent(userID, "call:ice", 300, 60_000)',
+    'if (!c || !candidate || typeof candidate !== "object") return;',
+    'const isCaller = c.caller === userID && socket.id === c.callerSocketId;',
+    'const isCallee = c.callee === userID && socket.id === c.calleeSocketId;',
+    'if (!isCaller && !isCallee) return;',
     'allowEvent(userID, "call:end", 30, 60_000)',
   ]) assert.ok(server.includes(token),`missing server recovery primitive: ${token}`);
 });
