@@ -42,3 +42,21 @@ test("CSRF guard validates Referer when Origin is absent", () => {
 test("CSRF guard keeps non-browser clients compatible when no browser metadata exists", () => {
   assert.equal(isSafeBrowserRequest(request()), true);
 });
+
+test("CSRF guard rejects same-site requests when Origin and Referer are absent", () => {
+  assert.equal(isSafeBrowserRequest(request({
+    "sec-fetch-site": "same-site",
+  })), false);
+});
+
+test("CSRF guard rejects unknown Fetch Metadata values without Origin or Referer", () => {
+  assert.equal(isSafeBrowserRequest(request({
+    "sec-fetch-site": "unexpected-value",
+  })), false);
+});
+
+test("CSRF guard permits user-initiated navigation metadata without Origin or Referer", () => {
+  assert.equal(isSafeBrowserRequest(request({
+    "sec-fetch-site": "none",
+  })), true);
+});
