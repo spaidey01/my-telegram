@@ -446,7 +446,7 @@ test("environment parser preserves shell metacharacters as literal values withou
   const loader = extractFunction(runner, "load_env_file", "build_env_args");
   const builder = extractFunction(runner, "build_env_args", "verify_s3_storage");
   const script = `
-die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+die(){ printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 secretKey=""
 TURN_SECRET=""
 S3_ENDPOINT_VALUE=""
@@ -455,8 +455,8 @@ ${loader}
 ${builder}
 load_env_file
 build_env_args
-printf 'SECRET=%s\\nTURN=%s\\nS3=%s\\n' "$secretKey" "$TURN_SECRET" "$S3_ENDPOINT_VALUE"
-printf 'ARGS=%s\\n' "\${ENV_ARGS[*]}"
+printf 'SECRET=%s\nTURN=%s\nS3=%s\n' "$secretKey" "$TURN_SECRET" "$S3_ENDPOINT_VALUE"
+printf 'ARGS=%s\n' "\${ENV_ARGS[*]}"
 `;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-parser-"));
   const envFile = path.join(dir, "test.env");
@@ -469,7 +469,7 @@ printf 'ARGS=%s\\n' "\${ENV_ARGS[*]}"
     `UNTRUSTED=$(touch ${marker})`,
     "QUOTED=hello; printf hacked",
     ""
-  ].join("\\n"));
+  ].join("\n"));
   try {
     const result = spawnSync("bash", ["-c", script, "test", envFile], { encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
@@ -488,7 +488,7 @@ test("environment parser rejects duplicate keys before producing runtime argumen
   const loader = extractFunction(runner, "load_env_file", "build_env_args");
   const builder = extractFunction(runner, "build_env_args", "verify_s3_storage");
   const script = `
-die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+die(){ printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 secretKey=""
 TURN_SECRET=""
 S3_ENDPOINT_VALUE=""
@@ -500,7 +500,7 @@ build_env_args
 `;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-duplicate-"));
   const envFile = path.join(dir, "duplicate.env");
-  fs.writeFileSync(envFile, "NODE_ENV=production\\nNODE_ENV=development\\n");
+  fs.writeFileSync(envFile, "NODE_ENV=production\nNODE_ENV=development\n");
   try {
     const result = spawnSync("bash", ["-c", script, "test", envFile], { encoding: "utf8" });
     assert.notEqual(result.status, 0, "duplicate environment keys must fail");
@@ -513,8 +513,8 @@ build_env_args
 test("environment parser rejects malformed lines and invalid key names", () => {
   const loader = extractFunction(runner, "load_env_file", "build_env_args");
   const cases = [
-    { text: "NOT_AN_ASSIGNMENT\\n", error: /expected KEY=VALUE/ },
-    { text: "BAD-KEY=value\\n", error: /Invalid environment key: BAD-KEY/ }
+    { text: "NOT_AN_ASSIGNMENT\n", error: /expected KEY=VALUE/ },
+    { text: "BAD-KEY=value\n", error: /Invalid environment key: BAD-KEY/ }
   ];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "stargram-env-invalid-"));
   const envFile = path.join(dir, "invalid.env");
@@ -522,7 +522,7 @@ test("environment parser rejects malformed lines and invalid key names", () => {
     for (const item of cases) {
       fs.writeFileSync(envFile, item.text);
       const script = `
-die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+die(){ printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 secretKey=""
 TURN_SECRET=""
 ENV_FILE="$1"
