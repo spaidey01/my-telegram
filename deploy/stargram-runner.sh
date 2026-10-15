@@ -32,11 +32,20 @@ public_ipv4(){
   for octet in "$octet_a" "$octet_b" "$octet_c" "$octet_d"; do
     [[ "$octet" =~ ^[0-9]{1,3}$ ]] && (( 10#$octet <= 255 )) || die "Public IPv4 lookup returned an invalid address."
   done
+  # Reject special-use, private, documentation, benchmarking, multicast and reserved ranges.
   (( 10#$octet_a != 0 && 10#$octet_a != 10 && 10#$octet_a != 127 && 10#$octet_a < 224 )) || die "Public IPv4 lookup returned a non-public address: $candidate"
   ! (( 10#$octet_a == 169 && 10#$octet_b == 254 )) || die "Public IPv4 lookup returned a link-local address: $candidate"
   ! (( 10#$octet_a == 172 && 10#$octet_b >= 16 && 10#$octet_b <= 31 )) || die "Public IPv4 lookup returned a private address: $candidate"
   ! (( 10#$octet_a == 192 && 10#$octet_b == 168 )) || die "Public IPv4 lookup returned a private address: $candidate"
   ! (( 10#$octet_a == 100 && 10#$octet_b >= 64 && 10#$octet_b <= 127 )) || die "Public IPv4 lookup returned a carrier-grade NAT address: $candidate"
+  ! (( 10#$octet_a == 192 && 10#$octet_b == 0 && 10#$octet_c == 0 )) || die "Public IPv4 lookup returned a special-use address: $candidate"
+  ! (( 10#$octet_a == 192 && 10#$octet_b == 0 && 10#$octet_c == 2 )) || die "Public IPv4 lookup returned a documentation address: $candidate"
+  ! (( 10#$octet_a == 192 && 10#$octet_b == 88 && 10#$octet_c == 99 )) || die "Public IPv4 lookup returned a deprecated relay address: $candidate"
+  ! (( 10#$octet_a == 198 && (10#$octet_b == 18 || 10#$octet_b == 19) )) || die "Public IPv4 lookup returned a benchmarking address: $candidate"
+  ! (( 10#$octet_a == 198 && 10#$octet_b == 51 && 10#$octet_c == 100 )) || die "Public IPv4 lookup returned a documentation address: $candidate"
+  ! (( 10#$octet_a == 203 && 10#$octet_b == 0 && 10#$octet_c == 113 )) || die "Public IPv4 lookup returned a documentation address: $candidate"
+  (( 10#$octet_a != 192 || 10#$octet_b != 31 || 10#$octet_c != 196 )) || die "Public IPv4 lookup returned a special-use address: $candidate"
+  (( 10#$octet_a < 240 )) || die "Public IPv4 lookup returned a reserved address: $candidate"
   printf '%s' "$candidate"
 }
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash deploy/stargram-runner.sh"
