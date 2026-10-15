@@ -246,7 +246,20 @@ EOF
     nginx -t && systemctl reload nginx || true
     die "Nginx configuration validation failed; previous configuration was restored."
   fi
-  systemctl enable --now nginx; systemctl reload nginx
+  if ! systemctl enable --now nginx || ! systemctl reload nginx; then
+    log "Nginx failed to start or reload; restoring the previous site configuration"
+    if [[ -n "$nginx_backup" && -f "$nginx_backup" ]]; then
+      cp -a "$nginx_backup" /etc/nginx/sites-available/stargram
+      ln -sfn /etc/nginx/sites-available/stargram /etc/nginx/sites-enabled/stargram
+    else
+      rm -f /etc/nginx/sites-enabled/stargram /etc/nginx/sites-available/stargram
+    fi
+    if [[ -n "$default_backup" && -e "$default_backup" ]]; then
+      cp -a "$default_backup" /etc/nginx/sites-enabled/default
+    fi
+    if nginx -t; then systemctl reload nginx || true; fi
+    die "Nginx failed to start or reload; previous site configuration was restored."
+  fi
   if [[ -n "$domain" ]]; then
     apt-get install -y certbot python3-certbot-nginx
     if ! certbot --nginx -d "$domain" --email "$email" --agree-tos --non-interactive --redirect; then
