@@ -1638,7 +1638,7 @@ io.on("connection", (socket) => {
   on("call:offer", async ({ callId, description, restart = false }) => {
     if (!(await allowEvent(userID, "call:offer", 60, 60_000))) return;
     const c = await getActiveCall(callId);
-    if (!c || !description?.sdp) return;
+    if (!c || !description || !["offer", "answer"].includes(description.type) || typeof description.sdp !== "string" || !description.sdp.trim() || description.sdp.length > 256_000) return;
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
     if (!isCaller && !isCallee) return;
@@ -1652,14 +1652,18 @@ io.on("connection", (socket) => {
   on("call:answer", async ({ callId, description }) => {
     if (!(await allowEvent(userID, "call:answer", 60, 60_000))) return;
     const c = await getActiveCall(callId);
-    if (!c || c.callee !== userID || socket.id !== c.calleeSocketId || !description?.sdp) return;
+    if (!c || c.callee !== userID || socket.id !== c.calleeSocketId || !description || description.type !== "answer" || typeof description.sdp !== "string" || !description.sdp.trim() || description.sdp.length > 256_000) return;
     io.to(c.callerSocketId).emit("call:answer", { callId, description });
   });
 
   on("call:ice", async ({ callId, candidate }) => {
     if (!(await allowEvent(userID, "call:ice", 300, 60_000))) return;
     const c = await getActiveCall(callId);
-    if (!c || !candidate || typeof candidate !== "object") return;
+    if (!c || !candidate || typeof candidate !== "object" || Array.isArray(candidate)) return;
+    if (typeof candidate.candidate !== "string" || candidate.candidate.length > 8_192) return;
+    if (candidate.sdpMid != null && typeof candidate.sdpMid !== "string") return;
+    if (candidate.sdpMLineIndex != null && (!Number.isInteger(candidate.sdpMLineIndex) || candidate.sdpMLineIndex < 0)) return;
+    if (candidate.usernameFragment != null && (typeof candidate.usernameFragment !== "string" || candidate.usernameFragment.length > 256)) return;
     // Only the currently registered socket for a call participant may relay ICE data.
     const isCaller = c.caller === userID && socket.id === c.callerSocketId;
     const isCallee = c.callee === userID && socket.id === c.calleeSocketId;
