@@ -312,6 +312,7 @@ valid_turn_realm(){
     done
     return 0
   fi
+  [[ ! "$realm" =~ ^[0-9.]+$ ]] || return 1
   valid_domain "$realm"
 }
 setup_network(){
