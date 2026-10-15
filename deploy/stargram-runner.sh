@@ -70,7 +70,9 @@ begin_network_transaction(){
 runner_exit_handler(){
   local status="$1"
   if [[ "$status" -ne 0 && "$APP_TREE_PROTECTED" == 1 && -d "$APP_DIR" ]] && id "$APP_USER" >/dev/null 2>&1; then
-    chown -R "$APP_USER:" "$APP_DIR" || true
+    local restore_group
+    restore_group="$(id -gn "$APP_USER")"
+    chown -R "$APP_USER:$restore_group" "$APP_DIR" || true
   fi
   if [[ "$status" -ne 0 && "$AUTO_SETUP_ACTIVE" == 1 ]]; then
     rollback_auto_setup
@@ -655,7 +657,9 @@ EOF
      AUTO_SETUP_ACTIVE=0; NETWORK_TXN_ACTIVE=0
      rm -rf "$NETWORK_TXN_DIR"; NETWORK_TXN_DIR="" ;;
   2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
-     install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
+     install_packages; checkout_app; open_ports; begin_network_transaction; setup_network; write_manual_env; apply_config
+     NETWORK_TXN_ACTIVE=0
+     rm -rf "$NETWORK_TXN_DIR"; NETWORK_TXN_DIR="" ;;
   3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
      install_packages; open_ports
      cp -a "$ENV_FILE" "$BACKUP_DIR/my-telegram.env.$(date +%Y%m%d%H%M%S).bak"

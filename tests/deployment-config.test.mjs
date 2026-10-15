@@ -48,7 +48,9 @@ test("runner separates root-owned Git metadata from the writable runtime tree", 
 test("runner restores app ownership after a failed privileged Git update", () => {
   assert.match(runner, /APP_TREE_PROTECTED=1\s+chown -R root:root "\$APP_DIR"\s+chmod -R go-w "\$APP_DIR"/);
   assert.match(runner, /APP_TREE_PROTECTED=0/);
-  assert.match(runner, /chown -R "\$APP_USER:" "\$APP_DIR" \|\| true/);
+  assert.match(runner, /local restore_group/);
+  assert.match(runner, /restore_group="\$\(id -gn "\$APP_USER"\)"/);
+  assert.match(runner, /chown -R "\$APP_USER:\$restore_group" "\$APP_DIR" \|\| true/);
 });
 
 test("runner refuses a symlinked .git path and non-directory checkout paths", () => {
@@ -389,4 +391,14 @@ test("runner sends a newline-terminated ClamAV PING and uses loopback for S3 hea
   assert.match(runner, /S3_HEALTH_ENDPOINT="\$\{S3_ENDPOINT_VALUE:-\}"/);
   assert.match(runner, /docker container inspect stargram-seaweedfs[\s\S]*?S3_HEALTH_ENDPOINT=http:\/\/127\.0\.0\.1:8333/);
   assert.match(runner, /env "\$\{ENV_ARGS\[@\]\}" S3_ENDPOINT="\$S3_HEALTH_ENDPOINT" node --input-type=module/);
+});
+
+
+test("manual first-install path rolls back network configuration until app setup succeeds", () => {
+  const optionTwo = runner.split(/\\n\\s*2\\) /)[1]?.split(/\\n\\s*3\\) /)[0] ?? "";
+  assert.ok(optionTwo.indexOf("begin_network_transaction") >= 0, "manual setup must snapshot config before network changes");
+  assert.ok(optionTwo.indexOf("begin_network_transaction") < optionTwo.indexOf("setup_network"));
+  assert.ok(optionTwo.indexOf("setup_network") < optionTwo.indexOf("apply_config"));
+  assert.ok(optionTwo.indexOf("apply_config") < optionTwo.indexOf("NETWORK_TXN_ACTIVE=0"), "transaction commits only after app config succeeds");
+  assert.match(runner, /restore_path coturn-default \/etc\/default\/coturn/);
 });
