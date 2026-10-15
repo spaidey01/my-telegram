@@ -548,7 +548,7 @@ load_env_file(){
   local -A seen_keys=()
   [[ -f "$ENV_FILE" ]] || die "Missing $ENV_FILE."
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \\#* ]] && continue
+    [[ -z "$line" || "$line" == \#* ]] && continue
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
@@ -566,7 +566,7 @@ build_env_args(){
   local line key value
   local -A seen_keys=()
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" == \\#* ]] && continue
+    [[ -z "$line" || "$line" == \#* ]] && continue
     [[ "$line" == *=* ]] || die "Invalid environment line (expected KEY=VALUE)."
     key="${line%%=*}"; value="${line#*=}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Invalid environment key: $key"
