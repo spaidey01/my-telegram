@@ -18,12 +18,12 @@ const MAX_PENDING_ICE_CANDIDATES=128;
 
 const getCandidateUfrag=(candidate:RTCIceCandidateInit)=>{
   if(typeof candidate.usernameFragment==="string"&&candidate.usernameFragment)return candidate.usernameFragment;
-  return candidate.candidate?.match(/(?:^|\\s)ufrag\\s+([^\\s]+)/)?.[1]||null;
+  return candidate.candidate?.match(/(?:^|\s)ufrag\s+([^\s]+)/)?.[1]||null;
 };
 const matchesRemoteIceGeneration=(candidate:RTCIceCandidateInit,description:RTCSessionDescription|null)=>{
   const ufrag=getCandidateUfrag(candidate);
   if(!ufrag||!description?.sdp)return true;
-  return description.sdp.split(/\\r?\\n/).some(line=>line.startsWith("a=ice-ufrag:")&&line.slice("a=ice-ufrag:".length)===ufrag);
+  return description.sdp.split(/\r?\n/).some(line=>line.startsWith("a=ice-ufrag:")&&line.slice("a=ice-ufrag:".length)===ufrag);
 };
 
 const persistCall=(call:CallInfo|null)=>{
