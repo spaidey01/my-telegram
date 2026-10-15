@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const setup = readFileSync(new URL("../deploy/setup-vps.sh", import.meta.url), "utf8");
@@ -80,6 +81,37 @@ test("runner refuses to downgrade failed domain HTTPS provisioning to public HTT
   assert.ok(certbotFailure >= 0, "domain HTTPS must use Certbot with redirect");
   assert.ok(refusal > certbotFailure, "failed HTTPS issuance must stop instead of silently leaving public HTTP");
   assert.doesNotMatch(runner, /certificate issuance failed[^\n]*Keeping HTTP test mode/);
+});
+
+test("public IPv4 helper accepts public addresses, falls back, and rejects private addresses", () => {
+  const start = runner.indexOf("public_ipv4(){");
+  const end = runner.indexOf("\n}", start) + 2;
+  assert.ok(start >= 0 && end > start, "public_ipv4 helper must exist");
+  const helper = runner.slice(start, end);
+  const invoke = `
+die(){ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
+curl(){
+  case "$*" in
+    *api.ipify.org*) printf '%s' "${IPIFY:-}";;
+    *checkip.amazonaws.com*) printf '%s\\n' "${FALLBACK:-}";;
+    *) return 22;;
+  esac
+}
+${helper}
+public_ipv4
+`;
+  const run = (env) => spawnSync("bash", ["-c", invoke], { encoding: "utf8", env: { ...process.env, ...env } });
+  const direct = run({ IPIFY: "8.8.8.8", FALLBACK: "" });
+  assert.equal(direct.status, 0, direct.stderr);
+  assert.equal(direct.stdout, "8.8.8.8");
+  const fallback = run({ IPIFY: "not-an-ip", FALLBACK: "1.1.1.1\\n" });
+  assert.equal(fallback.status, 0, fallback.stderr);
+  assert.equal(fallback.stdout, "1.1.1.1");
+  const privateAddress = run({ IPIFY: "192.168.1.4", FALLBACK: "" });
+  assert.notEqual(privateAddress.status, 0, "private IPv4 must be rejected");
+  assert.match(privateAddress.stderr, /private address/);
+  const invalidOctet = run({ IPIFY: "999.1.1.1", FALLBACK: "" });
+  assert.notEqual(invalidOctet.status, 0, "out-of-range octets must be rejected");
 });
 
 test("runner refuses private or invalid IP fallback for public URLs and TURN relay", () => {
