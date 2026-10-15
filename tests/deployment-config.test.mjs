@@ -158,10 +158,10 @@ test("runner removes partial auto-created containers and volumes when setup fail
   assert.match(runner, /AUTO_SEAWEEDFS_VOLUME_CREATED=0/);
   assert.match(runner, /AUTO_MONGO_CONTAINER_CREATED=0/);
   assert.match(runner, /AUTO_SEAWEEDFS_CONTAINER_CREATED=0/);
-  assert.match(runner, /if \\[\\[ "\\$AUTO_MONGO_VOLUME_CREATED" == 1 \\]\\]; then\\s+docker volume rm stargram-mongodb-data/);
-  assert.match(runner, /if \\[\\[ "\\$AUTO_SEAWEEDFS_VOLUME_CREATED" == 1 \\]\\]; then\\s+docker volume rm stargram-seaweedfs-data/);
-  assert.match(runner, /if \\[\\[ "\\$AUTO_MONGO_CONTAINER_CREATED" == 1 \\]\\]; then\\s+docker rm -f stargram-mongodb/);
-  assert.match(runner, /if \\[\\[ "\\$AUTO_SEAWEEDFS_CONTAINER_CREATED" == 1 \\]\\]; then\\s+docker rm -f stargram-seaweedfs/);
+  assert.ok(runner.includes('if [[ "$AUTO_MONGO_VOLUME_CREATED" == 1 ]]; then\\n    docker volume rm stargram-mongodb-data'));
+  assert.ok(runner.includes('if [[ "$AUTO_SEAWEEDFS_VOLUME_CREATED" == 1 ]]; then\\n    docker volume rm stargram-seaweedfs-data'));
+  assert.ok(runner.includes('if [[ "$AUTO_MONGO_CONTAINER_CREATED" == 1 ]]; then\\n    docker rm -f stargram-mongodb'));
+  assert.ok(runner.includes('if [[ "$AUTO_SEAWEEDFS_CONTAINER_CREATED" == 1 ]]; then\\n    docker rm -f stargram-seaweedfs'));
   assert.match(runner, /AUTO_MONGO_VOLUME_CREATED=1/);
   assert.match(runner, /AUTO_SEAWEEDFS_VOLUME_CREATED=1/);
   assert.match(runner, /AUTO_MONGO_CONTAINER_CREATED=1/);
