@@ -21,6 +21,24 @@ log(){ printf '\n==> %s\n' "$*"; }
 die(){ echo "ERROR: $*" >&2; exit 1; }
 ask(){ local v; read -r -p "$1 [$2]: " v; printf '%s' "${v:-$2}"; }
 randhex(){ openssl rand -hex "$1"; }
+public_ipv4(){
+  local candidate octet_a octet_b octet_c octet_d octet
+  candidate="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+  if [[ ! "$candidate" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]]; then
+    candidate="$(curl -4fsS --max-time 5 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]' || true)"
+  fi
+  [[ "$candidate" =~ ^([0-9]{1,3}\\.){3}[0-9]{1,3}$ ]] || die "Could not determine the public IPv4 address. Check outbound network access and rerun."
+  IFS=. read -r octet_a octet_b octet_c octet_d <<< "$candidate"
+  for octet in "$octet_a" "$octet_b" "$octet_c" "$octet_d"; do
+    [[ "$octet" =~ ^[0-9]{1,3}$ ]] && (( 10#$octet <= 255 )) || die "Public IPv4 lookup returned an invalid address."
+  done
+  (( 10#$octet_a != 0 && 10#$octet_a != 10 && 10#$octet_a != 127 && 10#$octet_a < 224 )) || die "Public IPv4 lookup returned a non-public address: $candidate"
+  ! (( 10#$octet_a == 169 && 10#$octet_b == 254 )) || die "Public IPv4 lookup returned a link-local address: $candidate"
+  ! (( 10#$octet_a == 172 && 10#$octet_b >= 16 && 10#$octet_b <= 31 )) || die "Public IPv4 lookup returned a private address: $candidate"
+  ! (( 10#$octet_a == 192 && 10#$octet_b == 168 )) || die "Public IPv4 lookup returned a private address: $candidate"
+  ! (( 10#$octet_a == 100 && 10#$octet_b >= 64 && 10#$octet_b <= 127 )) || die "Public IPv4 lookup returned a carrier-grade NAT address: $candidate"
+  printf '%s' "$candidate"
+}
 [[ $EUID -eq 0 ]] || die "Run as root: sudo bash deploy/stargram-runner.sh"
 command -v apt-get >/dev/null || die "Only Debian/Ubuntu supported."
 mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
@@ -104,7 +122,7 @@ setup_auto_services(){
     sleep 2
   done
   [[ "$s3_http_code" =~ ^[234][0-9][0-9]$ ]] || { docker logs --tail 60 stargram-seaweedfs >&2 || true; die "SeaweedFS S3 endpoint did not become ready on 127.0.0.1:8333."; }
-  public_ip="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+  public_ip="$(public_ipv4)"
   realm="$(ask "TURN realm (public IP or hostname)" "$public_ip")"; turn_secret="$(randhex 32)"
   if [[ -f /etc/turnserver.conf ]]; then cp -a /etc/turnserver.conf "$BACKUP_DIR/turnserver.conf.$(date +%Y%m%d%H%M%S).bak"; fi
   cat > /etc/turnserver.conf <<EOF
@@ -147,7 +165,7 @@ EOF
 setup_network(){
   local domain email ip url nginx_backup="" default_backup=""
   domain="$(ask "Domain (blank = IP/HTTP test mode)" "")"
-  ip="$(curl -4fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
+  ip="$(public_ipv4)"
   if [[ -n "$domain" ]]; then
     [[ "$domain" =~ ^[A-Za-z0-9.-]+$ && "$domain" == *.* ]] || die "Invalid domain."
     email="$(ask "Let's Encrypt email" "")"; [[ "$email" == *@*.* ]] || die "Valid email required."
