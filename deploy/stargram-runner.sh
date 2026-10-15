@@ -31,7 +31,7 @@ rollback_auto_setup(){
   log "Automatic service setup failed; removing only resources created by this attempt"
   docker rm -f stargram-seaweedfs stargram-mongodb >/dev/null 2>&1 || true
   docker volume rm stargram-seaweedfs-data stargram-mongodb-data >/dev/null 2>&1 || true
-  rm -f /run/stargram-generated.env
+  rm -f /run/stargram-generated.env /run/stargram-network.env
   if [[ "$AUTO_TURN_CONFIG_TOUCHED" == 1 ]]; then
     if [[ "$AUTO_TURN_CONFIG_EXISTED" == 1 && -n "$AUTO_TURN_BACKUP" && -f "$AUTO_TURN_BACKUP" ]]; then
       cp -a "$AUTO_TURN_BACKUP" /etc/turnserver.conf
@@ -63,6 +63,7 @@ begin_network_transaction(){
   snapshot_path nginx-enabled /etc/nginx/sites-enabled/stargram
   snapshot_path nginx-default /etc/nginx/sites-enabled/default
   snapshot_path turnserver /etc/turnserver.conf
+  snapshot_path coturn-default /etc/default/coturn
   NETWORK_TXN_ACTIVE=1
 }
 runner_exit_handler(){
@@ -77,6 +78,8 @@ runner_exit_handler(){
     restore_path nginx-enabled /etc/nginx/sites-enabled/stargram
     restore_path nginx-default /etc/nginx/sites-enabled/default
     restore_path turnserver /etc/turnserver.conf
+    restore_path coturn-default /etc/default/coturn
+    rm -f /run/stargram-network.env /run/stargram-generated.env
     if nginx -t; then systemctl reload nginx || true; fi
     systemctl restart coturn >/dev/null 2>&1 || true
     systemctl restart my-telegram-web my-telegram-socket >/dev/null 2>&1 || true
@@ -294,7 +297,6 @@ TURN_MIN_PORT=$TURN_MIN_PORT
 TURN_MAX_PORT=$TURN_MAX_PORT
 EOF
   chmod 600 /run/stargram-generated.env
-  AUTO_SETUP_ACTIVE=0
 }
 valid_domain(){
   local value="$1"
@@ -466,7 +468,6 @@ TURN_MIN_PORT=$TURN_MIN_PORT
 TURN_MAX_PORT=$TURN_MAX_PORT
 CLAMAV_HOST=127.0.0.1
 CLAMAV_PORT=3310
-TRUSTED_PROXY_COUNT=1
 EOF
 }
 configure_clamav(){
@@ -611,7 +612,7 @@ echo "0) Exit"
 choice="$(ask "Choose" "1")"
 case "$choice" in
   1) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to revalidate/rebuild or option 3 to edit it."
-     install_packages; checkout_app; open_ports; setup_auto_services; setup_network
+     install_packages; checkout_app; open_ports; begin_network_transaction; setup_auto_services; setup_network
      cat > "$ENV_FILE" <<EOF
 NODE_ENV=production
 secretKey=$(randhex 32)
@@ -621,7 +622,9 @@ CLAMAV_HOST=127.0.0.1
 CLAMAV_PORT=3310
 $(cat /run/stargram-network.env)
 EOF
-     apply_config ;;
+     apply_config
+     AUTO_SETUP_ACTIVE=0; NETWORK_TXN_ACTIVE=0
+     rm -rf "$NETWORK_TXN_DIR"; NETWORK_TXN_DIR="" ;;
   2) [[ ! -f "$ENV_FILE" ]] || die "Configuration already exists. Choose option 4 to edit it or option 5 to validate/rebuild."
      install_packages; checkout_app; open_ports; setup_network; write_manual_env; apply_config ;;
   3) [[ -f "$ENV_FILE" ]] || die "No configuration exists yet."
