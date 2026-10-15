@@ -184,7 +184,7 @@ checkout_app(){
   if [[ -d "$GIT_DIR" ]]; then
     [[ -z "$(git_app status --porcelain)" ]] || die "Local changes in $APP_DIR; refusing to overwrite."
     chown -R root:root "$APP_DIR"
-    git_app fetch origin "$BRANCH"
+    git_app fetch origin "$BRANCH:refs/remotes/origin/$BRANCH"
     if ! git_app checkout "$BRANCH"; then
       git_app checkout -b "$BRANCH" "origin/$BRANCH"
     fi
