@@ -118,6 +118,24 @@ test("runner validates DNS hostnames and certificate email addresses", () => {
   assert.match(runner, /\$value" != \*\.\.\*/);
 });
 
+test("TURN realm validator accepts hostnames and bounded IPv4 only", () => {
+  const extractFunction = (name) => {
+    const start = runner.indexOf(`${name}(){`);
+    const end = runner.indexOf("\\n}", start) + 2;
+    assert.ok(start >= 0 && end > start, `${name} function must exist`);
+    return runner.slice(start, end);
+  };
+  const script = `${extractFunction("valid_domain")}\\n${extractFunction("valid_turn_realm")}\\nvalid_turn_realm "$1"`;
+  for (const realm of ["turn.example.com", "ci.turn.stargram.local", "8.8.8.8"]) {
+    const result = spawnSync("bash", ["-c", script, "test", realm], { encoding: "utf8" });
+    assert.equal(result.status, 0, `valid TURN realm rejected: ${realm}`);
+  }
+  for (const realm of ["999.1.1.1", "256.1.1.1", "-bad.example.com", "bad..example.com", "123.456"]) {
+    const result = spawnSync("bash", ["-c", script, "test", realm], { encoding: "utf8" });
+    assert.notEqual(result.status, 0, `invalid TURN realm accepted: ${realm}`);
+  }
+});
+
 test("runner validates TURN realm before writing coturn configuration", () => {
   assert.match(runner, /valid_turn_realm\(\)\{/);
   assert.match(runner, /valid_turn_realm "\$realm" \|\| die "TURN realm must be a valid IPv4 address or DNS hostname\."/);
