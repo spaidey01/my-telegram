@@ -11,7 +11,14 @@ const getClient = async () => {
   if (!clientPromise) {
     const client = createClient({ url: redisUrl });
     client.on("error", (error) => console.error("Session mutation lock Redis error:", error));
-    clientPromise = client.connect().then(() => client);
+    const connecting = client.connect().then(() => client).catch(async (error) => {
+      // Do not cache a rejected connection promise forever: Redis may recover,
+      // and later session mutations must be allowed to reconnect without a process restart.
+      if (clientPromise === connecting) clientPromise = undefined;
+      if (client.isOpen) await client.quit().catch(() => {});
+      throw error;
+    });
+    clientPromise = connecting;
   }
   return clientPromise;
 };
