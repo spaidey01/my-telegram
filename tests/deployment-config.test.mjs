@@ -95,6 +95,16 @@ test("runner rolls back Nginx site changes when service start or reload fails", 
   assert.ok(fatal > restoreDefault, "runner must stop after rollback");
 });
 
+test("runner removes partial auto-created containers and volumes when setup fails", () => {
+  assert.match(runner, /AUTO_SETUP_ACTIVE=0/);
+  assert.match(runner, /rollback_auto_setup\(\)\{/);
+  assert.match(runner, /docker rm -f stargram-seaweedfs stargram-mongodb/);
+  assert.match(runner, /docker volume rm stargram-seaweedfs-data stargram-mongodb-data/);
+  assert.match(runner, /AUTO_TURN_CONFIG_TOUCHED=1/);
+  assert.match(runner, /if \[\[ "\$status" -ne 0 && "\$AUTO_SETUP_ACTIVE" == 1 \]\]; then\s+rollback_auto_setup/);
+  assert.match(runner, /AUTO_SETUP_ACTIVE=0\n\}\nsetup_network\(\)/);
+});
+
 test("runner preflights public IP before creating persistent service resources", () => {
   const serviceSetup = runner.split(/setup_auto_services\(\)\{/)[1]?.split(/\n\}\nsetup_network\(\)/)[0] ?? "";
   const publicIp = serviceSetup.indexOf('public_ip="$(public_ipv4)"');
