@@ -40,6 +40,7 @@ export default function CallOverlay(){
  const timer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const statsTimer=useRef<ReturnType<typeof setInterval>|null>(null);
  const reconnectTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+ const retryTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
  const durationTimer=useRef<ReturnType<typeof setInterval>|null>(null);
  const restartCount=useRef(0);
  const retrying=useRef(false);
@@ -54,8 +55,10 @@ export default function CallOverlay(){
    if(timer.current)clearTimeout(timer.current);
    if(statsTimer.current)clearInterval(statsTimer.current);
    if(reconnectTimer.current)clearTimeout(reconnectTimer.current);
+   if(retryTimer.current)clearTimeout(retryTimer.current);
    if(durationTimer.current)clearInterval(durationTimer.current);
-   timer.current=null;statsTimer.current=null;reconnectTimer.current=null;durationTimer.current=null;
+   timer.current=null;statsTimer.current=null;reconnectTimer.current=null;retryTimer.current=null;durationTimer.current=null;
+   retrying.current=false;
  },[]);
 
  const cleanup=useCallback((notify=false)=>{
@@ -94,12 +97,17 @@ export default function CallOverlay(){
    }
  },[]);
 
+ const scheduleRetryUnlock=useCallback(()=>{
+   if(retryTimer.current)clearTimeout(retryTimer.current);
+   retryTimer.current=setTimeout(()=>{retrying.current=false;retryTimer.current=null;},ICE_RESTART_DELAY_MS);
+ },[]);
+
  const restartIce=useCallback(async(reason:string)=>{
    const peer=pc.current;
    if(!peer||!call||retrying.current)return false;
    if(restartCount.current>=MAX_ICE_RESTARTS){setState("failed");setError("اتصال پایدار نشد. دوباره تلاش کنید.");return false;}
    retrying.current=true;restartCount.current+=1;setState("reconnecting");setError(reason);
-   if(!call.isCaller){socket?.emit("call:retry",{callId:call.callId});setTimeout(()=>{retrying.current=false;},ICE_RESTART_DELAY_MS);return true;}
+   if(!call.isCaller){socket?.emit("call:retry",{callId:call.callId});scheduleRetryUnlock();return true;}
    try{
      if(peer.signalingState==="have-local-offer") await peer.setLocalDescription({type:"rollback"});
      if(peer.signalingState!=="stable") { retrying.current=false; return false; }
@@ -109,8 +117,8 @@ export default function CallOverlay(){
      socket?.emit("call:retry",{callId:call.callId});
      return true;
    }catch{setState("failed");setError("بازسازی اتصال ناموفق بود.");return false;}
-   finally{setTimeout(()=>{retrying.current=false;},ICE_RESTART_DELAY_MS);}
- },[call,socket]);
+   finally{scheduleRetryUnlock();}
+ },[call,socket,scheduleRetryUnlock]);
 
  const startQualityMonitor=useCallback((peer:RTCPeerConnection)=>{
    if(statsTimer.current)clearInterval(statsTimer.current);
