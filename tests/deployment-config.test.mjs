@@ -44,6 +44,10 @@ test("runner separates root-owned Git metadata from the writable runtime tree", 
   assert.doesNotMatch(runner, /chown -R root:root "\$APP_DIR"\n\s*chmod -R go-w "\$APP_DIR\/\.git"/);
 });
 
+test("runner refuses symlinked checkout and Git metadata paths", () => {
+  assert.match(runner, /\[\[ ! -L "\$APP_DIR" && ! -L "\$GIT_DIR" \]\] \|\| die "Application directory and Git metadata path must not be symlinks\."/);
+});
+
 test("runner pins container images and uses SeaweedFS instead of MinIO", () => {
   assert.doesNotMatch(runner, /:latest\\b/);
   assert.match(runner, /MONGO_IMAGE=.*mongo:/);
