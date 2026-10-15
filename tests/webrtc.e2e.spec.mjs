@@ -23,7 +23,7 @@ const PAGE = `<!doctype html><html><body><script src="http://127.0.0.1:${SOCKET_
 window.bootstrap = async (token, iceServers) => {
   const socket = io("http://127.0.0.1:${SOCKET_PORT}", { auth: { token }, transports: ["websocket"] });
   await new Promise((resolve, reject) => { socket.once("connect", resolve); socket.once("connect_error", reject); });
-  const state = { socket, pc: null, stream: null, remoteTracks: 0, connected: false, callId: null, iceServers };
+  const state = { socket, pc: null, stream: null, remoteTracks: 0, connected: false, callId: null, iceServers, answersReceived: 0, offersReceived: 0, reconnectedEvents: 0, peerReconnectedEvents: 0 };
   window.callState = state;
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const makePeer = async (callId, caller) => {
@@ -44,6 +44,7 @@ window.bootstrap = async (token, iceServers) => {
     });
     socket.on("call:offer", async ({ callId: incomingId, description }) => {
       if (incomingId !== state.callId || caller || !state.pc) return;
+      state.offersReceived += 1;
       await state.pc.setRemoteDescription(description);
       const answer = await state.pc.createAnswer();
       await state.pc.setLocalDescription(answer);
@@ -51,7 +52,14 @@ window.bootstrap = async (token, iceServers) => {
     });
     socket.on("call:answer", async ({ callId: incomingId, description }) => {
       if (incomingId !== state.callId || !caller || !state.pc) return;
+      state.answersReceived += 1;
       await state.pc.setRemoteDescription(description);
+    });
+    socket.on("call:reconnected", ({ callId: incomingId }) => {
+      if (incomingId === state.callId) state.reconnectedEvents += 1;
+    });
+    socket.on("call:peer-reconnected", ({ callId: incomingId }) => {
+      if (incomingId === state.callId) state.peerReconnectedEvents += 1;
     });
     return state.pc;
   };
@@ -318,7 +326,19 @@ test("real browser peers survive ICE restart and Socket.IO disconnect/reconnect 
   await expect.poll(() => caller.evaluate(() => Boolean(window.callState?.socket?.disconnected)), { timeout: 5_000 }).toBe(true);
   await caller.evaluate(() => window.reconnectSocket());
   await expect.poll(() => caller.evaluate(() => Boolean(window.callState?.socket?.connected)), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => caller.evaluate(() => window.callState?.reconnectedEvents), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => callee.evaluate(() => window.callState?.peerReconnectedEvents), { timeout: 10_000 }).toBeGreaterThan(0);
 
+  // Prove that signaling still works after the socket has been rebound to the active call.
+  const answersBeforeRestart = await caller.evaluate(() => window.callState.answersReceived);
+  await caller.evaluate(() => window.restartIce());
+  await expect.poll(() => caller.evaluate(() => window.callState?.answersReceived), { timeout: 15_000 }).toBeGreaterThan(answersBeforeRestart);
+  await expect.poll(() => caller.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => callee.evaluate(() => window.callState?.connected), { timeout: 20_000 }).toBe(true);
+
+  await caller.evaluate(() => new Promise((resolve) => {
+    window.callState.socket.emit("call:end", { callId: window.callState.callId }, resolve);
+  }));
   await callerContext.close();
   await calleeContext.close();
 });
