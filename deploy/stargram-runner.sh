@@ -185,6 +185,11 @@ checkout_app(){
   chmod -R go-w "$APP_DIR/.git"
   install -d -m 0750 "$APP_DIR/node_modules" "$APP_DIR/.next"
   chown -R "$APP_USER:$app_group" "$APP_DIR/node_modules" "$APP_DIR/.next"
+  # Next.js and TypeScript generate these ignored files at the repository root.
+  # Keep tracked source immutable while allowing the build user to update generated files.
+  touch "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
+  chown "$APP_USER:$app_group" "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
+  chmod 0640 "$APP_DIR/next-env.d.ts" "$APP_DIR/tsconfig.tsbuildinfo"
 }
 setup_auto_services(){
   local mongo_pw s3_user s3_pw turn_secret realm public_ip
