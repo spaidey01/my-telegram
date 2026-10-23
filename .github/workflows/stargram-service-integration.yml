@@ -72,7 +72,7 @@ jobs:
       TURN_REALM: ci.turn.stargram.local
       CLAMAV_HOST: 127.0.0.1
       CLAMAV_PORT: "3310"
-      TRUSTED_PROXY_COUNT: "0"
+      TRUSTED_PROXY_COUNT: "1"
       SOCKET_PORT: "3101"
       SOCKET_HANDSHAKE_IP_LIMIT: "1000"
       SOCKET_HANDSHAKE_USER_LIMIT: "1000"
