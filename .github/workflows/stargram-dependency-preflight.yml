@@ -29,6 +29,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Refresh lockfile for pinned patched framework
+        run: npm install --package-lock-only --ignore-scripts
       - name: Install locked dependencies
         run: npm ci --include=dev
       - name: Collect audit report without hiding findings
