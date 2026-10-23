@@ -18,3 +18,12 @@ test("Iranian phone input accepts Persian digits without an extra leading zero",
     assert.ok(!source.includes(incorrect), "the Persian-digit pattern must not require an extra leading zero");
   }
 });
+
+test("registration rolls back partially created account data when a later step fails", async () => {
+  const register = await readFile(new URL("../src/app/api/auth/register/route.ts", import.meta.url), "utf8");
+  assert.match(register, /createdUserId = userData\._id\.toString\(\)/);
+  assert.match(register, /Promise\.allSettled\(\[/);
+  assert.match(register, /SessionSchema\.deleteMany\(\{ user: createdUserId \}\)/);
+  assert.match(register, /RoomSchema\.deleteMany\(\{ creator: createdUserId, type: "private", name: "Saved Messages" \}\)/);
+  assert.match(register, /UserSchema\.deleteOne\(\{ _id: createdUserId \}\)/);
+});
