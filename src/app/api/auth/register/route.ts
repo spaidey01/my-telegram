@@ -9,6 +9,7 @@ import { isSafeBrowserRequest } from "@/utils/csrf";
 import SessionSchema from "@/schemas/sessionSchema";
 
 export const POST = async (req: Request) => {
+  let createdUserId: string | null = null;
   if (!isSafeBrowserRequest(req)) return Response.json({ message: "Forbidden" }, { status: 403 });
   const ipLimit = await rateLimit("register:ip:" + getRequestIp(req), 5, 60_000);
   if (!ipLimit.allowed) return Response.json({ message: "Too many attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(ipLimit.retryAfter) } });
@@ -25,6 +26,7 @@ export const POST = async (req: Request) => {
 
     const password = await hash(purePass, 12);
     const userData = await UserSchema.create({ name: usernameRaw, lastName: "", username: usernameRaw.toLowerCase(), password, phone, sessionVersion: 0 });
+    createdUserId = userData._id.toString();
     await RoomSchema.create({ name: "Saved Messages", avatar: "", type: "private", creator: userData._id, participants: [userData._id], admins: [userData._id] });
 
     const session = await SessionSchema.create({
@@ -46,6 +48,18 @@ export const POST = async (req: Request) => {
     delete safeUser.password;
     return Response.json(safeUser, { status: 201 });
   } catch (error) {
+    // Registration spans multiple collections. If any step after user creation fails,
+    // best-effort rollback prevents orphan accounts that cannot complete onboarding.
+    if (createdUserId) {
+      const rollback = await Promise.allSettled([
+        SessionSchema.deleteMany({ user: createdUserId }),
+        RoomSchema.deleteMany({ creator: createdUserId, type: "private", name: "Saved Messages" }),
+        UserSchema.deleteOne({ _id: createdUserId }),
+      ]);
+      for (const result of rollback) {
+        if (result.status === "rejected") console.error("Registration rollback failed:", result.reason);
+      }
+    }
     const mongoError = error as { code?: number; keyPattern?: Record<string, unknown> };
     if (mongoError.code === 11000) {
       const field = Object.keys(mongoError.keyPattern || {})[0];
