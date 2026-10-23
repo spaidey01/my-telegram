@@ -42,9 +42,8 @@ jobs:
           node-version: 22
           cache: npm
 
+      - run: npm install --package-lock-only --ignore-scripts
       - run: npm ci
-      - name: Install Playwright test runner
-        run: npm install --no-save --package-lock=false @playwright/test@1.64.0
       - run: npx playwright install chromium
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run test:production-config
